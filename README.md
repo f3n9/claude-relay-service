@@ -38,7 +38,7 @@
 
 ✅ **找朋友拼车**: 三五好友一起分摊Claude Code Max订阅，Opus爽用  
 ✅ **隐私敏感**: 不想让第三方镜像看到你的对话内容  
-✅ **技术折腾**: 有基本的技术基础，愿意自己搭建和维护 
+✅ **技术折腾**: 有基本的技术基础，愿意自己搭建和维护  
 ✅ **稳定需求**: 需要长期稳定的Claude访问，不想受制于镜像站  
 ✅ **地区受限**: 无法直接访问Claude官方服务  
 
@@ -106,27 +106,7 @@
 
 ---
 
-## 🐳 最简单的部署方式（Docker）
-
-如果你懒得折腾环境，直接用Docker：
-
-```bash
-# 1. 下载项目
-git clone https://github.com/yourusername/claude-relay-service.git
-cd claude-relay-service
-
-# 2. 一键启动
-docker-compose up -d
-
-# 3. 查看是否启动成功
-docker-compose ps
-```
-
-就这么简单，服务就跑起来了。
-
----
-
-## 📦 手动部署（适合折腾党）
+## 📦 手动部署
 
 ### 第一步：环境准备
 
@@ -225,7 +205,7 @@ npm run service:status
 这一步比较关键，需要OAuth授权：
 
 1. 点击「Claude账户」标签
-2. 如果你在国内，先配置代理（重要！）
+2. 如果你担心多个账号共用1个IP怕被封禁，可以选择设置静态代理IP（可选）
 3. 点击「添加账户」
 4. 点击「生成授权链接」，会打开一个新页面
 5. 在新页面完成Claude登录和授权
@@ -321,7 +301,7 @@ redis-cli ping
 
 **强烈建议使用nginx反向代理 + SSL证书**
 
-建议使用nginx反向代理并配置SSL证书：
+建议使用nginx反向代理并配置SSL证书：（以下为Nginx示例，如不想折腾可以选择面板，比如宝塔、1panel）
 
 **1. 安装nginx和获取SSL证书**
 ```bash
