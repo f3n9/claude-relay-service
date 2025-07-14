@@ -201,7 +201,7 @@ module.exports = {
 
 ```bash
 # 初始化
-npm run setup # 会尝试随机的账号密码信息，存储在data/Init.json
+npm run setup # 会随机生成后台账号密码信息，存储在 data/Init.json
 
 # 启动服务
 npm run service:start:daemon   # 后台运行（推荐）
