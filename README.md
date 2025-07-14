@@ -7,7 +7,7 @@
 [![Redis](https://img.shields.io/badge/Redis-6+-red.svg)](https://redis.io/)
 [![Docker](https://img.shields.io/badge/Docker-Ready-blue.svg)](https://www.docker.com/)
 
-**🔐 自行搭建Claude API中转服务，支持多账户管理**
+**🔐 自行搭建Claude API中转服务，支持多账户管理** 
 
 [English](#english) • [中文文档](#中文文档)
 
@@ -45,9 +45,9 @@
 ### 不适合的场景
 
 ❌ **纯小白**: 完全不懂技术，连服务器都不会买  
-❌ **偶尔使用**: 一个月用不了几次，没必要折腾
-❌ **注册问题**: 无法自行注册Claude账号
-❌ **支付问题**: 没有支付渠道订阅Claude Code
+❌ **偶尔使用**: 一个月用不了几次，没必要折腾  
+❌ **注册问题**: 无法自行注册Claude账号  
+❌ **支付问题**: 没有支付渠道订阅Claude Code  
 
 ---
 
@@ -100,9 +100,9 @@
 - **操作系统**: 建议Linux
 
 ### 费用估算
-- **服务器**: 轻量云服务器，一个月10-30块
+- **服务器**: 轻量云服务器，一个月30-60块
 - **Claude订阅**: 看你怎么分摊了
-- **其他**: 基本没有了
+- **其他**: 域名（可选）
 
 ---
 
@@ -314,67 +314,126 @@ redis-cli ping
 
 ---
 
-## 🛠️ 高级玩法
+## 🛠️ 进阶
 
-### 设置代理（国内用户必看）
 
-如果你在国内，需要配置代理才能正常使用：
+### 生产环境部署建议（重要！）
 
-```javascript
-// 在账户配置中添加
-{
-  "proxy": {
-    "type": "socks5",           // 或者 "http"
-    "host": "127.0.0.1",
-    "port": 1080,
-    "username": "用户名",        // 如果代理需要认证
-    "password": "密码"          // 如果代理需要认证
-  }
+**强烈建议使用nginx反向代理 + SSL证书**
+
+建议使用nginx反向代理并配置SSL证书：
+
+**1. 安装nginx和获取SSL证书**
+```bash
+# Ubuntu/Debian
+sudo apt install nginx certbot python3-certbot-nginx
+
+# 获取免费SSL证书（以Let's Encrypt为例）
+sudo certbot --nginx -d your-domain.com
+```
+
+**2. nginx配置示例**
+
+创建 `/etc/nginx/sites-available/claude-relay` 配置文件：
+```nginx
+server {
+    listen 80;
+    server_name your-domain.com;
+    return 301 https://$server_name$request_uri;
+}
+
+server {
+    listen 443 ssl http2;
+    server_name your-domain.com;
+    
+    # SSL配置
+    ssl_certificate /etc/letsencrypt/live/your-domain.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/your-domain.com/privkey.pem;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_ciphers HIGH:!aNULL:!MD5;
+    
+    # 安全头
+    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+    add_header X-Frame-Options DENY;
+    add_header X-Content-Type-Options nosniff;
+    
+    # 反向代理配置
+    location / {
+        proxy_pass http://127.0.0.1:3000;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_cache_bypass $http_upgrade;
+        
+        # 超时设置
+        proxy_connect_timeout 60s;
+        proxy_send_timeout 60s;
+        proxy_read_timeout 60s;
+    }
 }
 ```
 
-### 命令行管理工具
-
-懒得打开网页？用命令行：
-
+**3. 启用配置**
 ```bash
-# 查看所有API Key
-npm run cli keys list
+# 启用站点
+sudo ln -s /etc/nginx/sites-available/claude-relay /etc/nginx/sites-enabled/
 
-# 创建新Key
-npm run cli keys create --name "测试Key" --limit 1000
+# 测试配置
+sudo nginx -t
 
-# 查看账户状态
-npm run cli accounts list
-
-# 测试账户连接
-npm run cli accounts test --id 账户ID
+# 重启nginx
+sudo systemctl restart nginx
 ```
 
-### 监控集成
+**4. 更新服务配置**
 
-如果你想要更专业的监控，可以接入Prometheus：
+修改你的服务配置，让它只监听本地：
+```javascript
+// config/config.js
+module.exports = {
+  server: {
+    port: 3000,
+    host: '127.0.0.1'  // 只监听本地，通过nginx代理
+  }
+  // ... 其他配置
+}
+```
 
-访问 `http://你的域名(或IP):3000/metrics` 获取指标数据。
+**5. 使用HTTPS API**
+
+配置完成后，你的API地址变为：
+```bash
+curl https://your-domain.com/api/v1/messages \
+  -H "x-api-key: cr_your-key" \
+  -H "content-type: application/json" \
+  -d '{"model":"claude-3-sonnet-20240229","messages":[{"role":"user","content":"你好"}]}'
+```
+
+**安全优势：**
+- 🔒 **数据加密**: 所有API请求都通过HTTPS加密传输
+- 🛡️ **隐藏端口**: 不直接暴露服务端口，降低攻击面
+- 🚀 **更好性能**: nginx的静态文件服务和缓存能力
+- 📊 **访问日志**: nginx提供详细的访问日志和监控
+
 
 ---
 
 ## 💡 使用建议
 
 ### 账户管理
-- **多账户**: 建议添加2-3个Claude账户，防止单点故障
 - **定期检查**: 每周看看账户状态，及时处理异常
-- **备用方案**: 准备几个备用账户，关键时刻能顶上
-
-### 成本控制
-- **设置限额**: 给每个API Key设置合理的使用限制
-- **监控支出**: 定期查看成本统计，控制预算
-- **合理分配**: 根据使用频率分配配额
+- **合理分配**: 可以给不同的人分配不同的apikey，可以根据不同的apikey来分析用量
 
 ### 安全建议
+- **使用HTTPS**: 强烈建议配置nginx反向代理和SSL证书，确保数据传输安全
 - **定期备份**: 重要配置和数据要备份
 - **监控日志**: 定期查看异常日志
 - **更新密钥**: 定期更换JWT和加密密钥
+- **防火墙设置**: 只开放必要的端口（80, 443），隐藏直接服务端口
 
 ---
 

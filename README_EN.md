@@ -352,11 +352,113 @@ npm run cli accounts list
 npm run cli accounts test --id account-ID
 ```
 
+### Production Deployment Recommendations (Important!)
+
+**Strongly recommend using nginx reverse proxy + SSL certificate**
+
+Directly exposing service ports poses security risks. It's recommended to use nginx reverse proxy with SSL certificate:
+
+**1. Install nginx and obtain SSL certificate**
+```bash
+# Ubuntu/Debian
+sudo apt install nginx certbot python3-certbot-nginx
+
+# Get free SSL certificate (using Let's Encrypt as example)
+sudo certbot --nginx -d your-domain.com
+```
+
+**2. nginx configuration example**
+
+Create `/etc/nginx/sites-available/claude-relay` configuration file:
+```nginx
+server {
+    listen 80;
+    server_name your-domain.com;
+    return 301 https://$server_name$request_uri;
+}
+
+server {
+    listen 443 ssl http2;
+    server_name your-domain.com;
+    
+    # SSL configuration
+    ssl_certificate /etc/letsencrypt/live/your-domain.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/your-domain.com/privkey.pem;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_ciphers HIGH:!aNULL:!MD5;
+    
+    # Security headers
+    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+    add_header X-Frame-Options DENY;
+    add_header X-Content-Type-Options nosniff;
+    
+    # Reverse proxy configuration
+    location / {
+        proxy_pass http://127.0.0.1:3000;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_cache_bypass $http_upgrade;
+        
+        # Timeout settings
+        proxy_connect_timeout 60s;
+        proxy_send_timeout 60s;
+        proxy_read_timeout 60s;
+    }
+}
+```
+
+**3. Enable configuration**
+```bash
+# Enable site
+sudo ln -s /etc/nginx/sites-available/claude-relay /etc/nginx/sites-enabled/
+
+# Test configuration
+sudo nginx -t
+
+# Restart nginx
+sudo systemctl restart nginx
+```
+
+**4. Update service configuration**
+
+Modify your service configuration to listen only locally:
+```javascript
+// config/config.js
+module.exports = {
+  server: {
+    port: 3000,
+    host: '127.0.0.1'  // Listen only locally, proxy through nginx
+  }
+  // ... other configurations
+}
+```
+
+**5. Use HTTPS API**
+
+After configuration, your API address becomes:
+```bash
+curl https://your-domain.com/api/v1/messages \
+  -H "x-api-key: cr_your-key" \
+  -H "content-type: application/json" \
+  -d '{"model":"claude-3-sonnet-20240229","messages":[{"role":"user","content":"Hello"}]}'
+```
+
+**Security advantages:**
+- 🔒 **Data Encryption**: All API requests transmitted through HTTPS encryption
+- 🛡️ **Hide Ports**: Don't directly expose service ports, reduce attack surface
+- 🚀 **Better Performance**: nginx's static file serving and caching capabilities
+- 📊 **Access Logs**: nginx provides detailed access logs and monitoring
+
 ### Monitoring Integration
 
 If you want more professional monitoring, you can integrate Prometheus:
 
-Visit `http://your-domain(or-IP):3000/metrics` to get metrics data.
+Visit `https://your-domain/metrics` to get metrics data.
 
 ---
 
@@ -373,9 +475,11 @@ Visit `http://your-domain(or-IP):3000/metrics` to get metrics data.
 - **Reasonable Allocation**: Allocate quotas based on usage frequency
 
 ### Security Recommendations
+- **Use HTTPS**: Strongly recommend configuring nginx reverse proxy and SSL certificate to ensure secure data transmission
 - **Regular Backups**: Back up important configurations and data
 - **Monitor Logs**: Regularly check exception logs
 - **Update Keys**: Regularly change JWT and encryption keys
+- **Firewall Settings**: Only open necessary ports (80, 443), hide direct service ports
 
 ---
 
