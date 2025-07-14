@@ -201,7 +201,7 @@ module.exports = {
 
 ```bash
 # 初始化
-npm run setup
+npm run setup # 会尝试随机的账号密码信息，存储在data/Init.json
 
 # 启动服务
 npm run service:start:daemon   # 后台运行（推荐）
@@ -218,7 +218,7 @@ npm run service:status
 
 浏览器访问：`http://你的服务器IP:3000/web`
 
-默认管理员账号：admin / admin123
+默认管理员账号：data/Init.json 中寻找
 
 ### 2. 添加Claude账户
 
