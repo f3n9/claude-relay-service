@@ -301,7 +301,7 @@ redis-cli ping
 
 **强烈建议使用nginx反向代理 + SSL证书**
 
-建议使用nginx反向代理并配置SSL证书：（以下为Nginx示例，如不想折腾可以选择面板，比如宝塔、1panel）
+建议使用nginx反向代理并配置SSL证书：（以下为Nginx示例，如不想折腾可以选择安装面板进行操作，比如宝塔、1panel等）
 
 **1. 安装nginx和获取SSL证书**
 ```bash
