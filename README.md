@@ -7,7 +7,7 @@
 [![Redis](https://img.shields.io/badge/Redis-6+-red.svg)](https://redis.io/)
 [![Docker](https://img.shields.io/badge/Docker-Ready-blue.svg)](https://www.docker.com/)
 
-**🔐 自己搭建的Claude API中转服务，支持多账户管理**
+**🔐 自行搭建Claude API中转服务，支持多账户管理**
 
 [English](#english) • [中文文档](#中文文档)
 
