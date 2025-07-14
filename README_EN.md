@@ -32,7 +32,7 @@
 - 👥 **Cost Sharing**: Want to share Claude Code Max subscription costs with friends?
 - ⚡ **Stability**: Third-party mirror sites often have outages and instability, affecting efficiency?
 
-If you nodded yes, this project might be for you.
+If you have any of these concerns, this project might be suitable for you.
 
 ### Suitable Scenarios
 
@@ -53,9 +53,7 @@ If you nodded yes, this project might be for you.
 
 ## 💭 Why Build Your Own?
 
-Honestly, there are quite a few Claude proxy services online now, but there are also many issues:
-
-### Problems with Existing Proxies
+### Problems with Existing Mirror Sites
 
 - 🕵️ **Privacy Risk**: Your conversation content is seen clearly by others, forget about business secrets
 - 🐌 **Performance Instability**: Slow when many people use it, often crashes during peak hours
@@ -64,7 +62,7 @@ Honestly, there are quite a few Claude proxy services online now, but there are 
 ### Benefits of Self-hosting
 
 - 🔐 **Data Security**: All API requests only go through your own server, direct connection to Anthropic API
-- ⚡ **Controllable Performance**: Only a few of you using it, as fast as you want
+- ⚡ **Controllable Performance**: Only a few of you using it, Max $200 package basically allows you to enjoy Opus freely
 - 💰 **Cost Transparency**: Clear view of how many tokens used, specific costs calculated at official prices
 - 📊 **Complete Monitoring**: Usage statistics, cost analysis, performance monitoring all available
 
@@ -101,9 +99,9 @@ Honestly, there are quite a few Claude proxy services online now, but there are 
 - **Operating System**: Linux recommended
 
 ### Cost Estimation
-- **Server**: Light cloud server, 10-30 RMB per month
+- **Server**: Light cloud server, 30-60 RMB per month
 - **Claude Subscription**: Depends on how you share costs
-- **Others**: Basically none
+- **Others**: Domain name (optional)
 
 ---
 
@@ -202,7 +200,7 @@ module.exports = {
 
 ```bash
 # Initialize
-npm run setup
+npm run setup # Will randomly generate admin account password info, stored in data/Init.json
 
 # Start service
 npm run service:start:daemon   # Run in background (recommended)
@@ -219,7 +217,7 @@ npm run service:status
 
 Browser visit: `http://your-server-IP:3000/web`
 
-Default admin account: admin / admin123
+Default admin account: Look in data/Init.json
 
 ### 2. Add Claude Account
 
@@ -317,46 +315,11 @@ redis-cli ping
 
 ## 🛠️ Advanced Usage
 
-### Setting Up Proxy (Must-read for Chinese Users)
-
-If you're in China, you need to configure proxy to use normally:
-
-```javascript
-// Add in account configuration
-{
-  "proxy": {
-    "type": "socks5",           // or "http"
-    "host": "127.0.0.1",
-    "port": 1080,
-    "username": "username",      // if proxy requires authentication
-    "password": "password"       // if proxy requires authentication
-  }
-}
-```
-
-### Command Line Management Tool
-
-Too lazy to open webpage? Use command line:
-
-```bash
-# View all API Keys
-npm run cli keys list
-
-# Create new Key
-npm run cli keys create --name "Test Key" --limit 1000
-
-# View account status
-npm run cli accounts list
-
-# Test account connection
-npm run cli accounts test --id account-ID
-```
-
 ### Production Deployment Recommendations (Important!)
 
 **Strongly recommend using nginx reverse proxy + SSL certificate**
 
-Directly exposing service ports poses security risks. It's recommended to use nginx reverse proxy with SSL certificate:
+It's recommended to use nginx reverse proxy with SSL certificate:
 
 **1. Install nginx and obtain SSL certificate**
 ```bash
@@ -454,25 +417,13 @@ curl https://your-domain.com/api/v1/messages \
 - 🚀 **Better Performance**: nginx's static file serving and caching capabilities
 - 📊 **Access Logs**: nginx provides detailed access logs and monitoring
 
-### Monitoring Integration
-
-If you want more professional monitoring, you can integrate Prometheus:
-
-Visit `https://your-domain/metrics` to get metrics data.
-
 ---
 
 ## 💡 Usage Recommendations
 
 ### Account Management
-- **Multiple Accounts**: Recommend adding 2-3 Claude accounts to prevent single point of failure
 - **Regular Checks**: Check account status weekly, handle exceptions promptly
-- **Backup Plan**: Prepare several backup accounts that can step in during critical moments
-
-### Cost Control
-- **Set Limits**: Set reasonable usage limits for each API Key
-- **Monitor Spending**: Regularly check cost statistics, control budget
-- **Reasonable Allocation**: Allocate quotas based on usage frequency
+- **Reasonable Allocation**: Can assign different API keys to different people, analyze usage based on different API keys
 
 ### Security Recommendations
 - **Use HTTPS**: Strongly recommend configuring nginx reverse proxy and SSL certificate to ensure secure data transmission
