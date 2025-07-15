@@ -286,8 +286,8 @@ class ClaudeAccountService {
     }
   }
 
-  // 🎯 智能选择可用账户
-  async selectAvailableAccount() {
+  // 🎯 智能选择可用账户（支持sticky会话）
+  async selectAvailableAccount(sessionHash = null) {
     try {
       const accounts = await redis.getAllClaudeAccounts();
       
@@ -300,6 +300,24 @@ class ClaudeAccountService {
         throw new Error('No active Claude accounts available');
       }
 
+      // 如果有会话哈希，检查是否有已映射的账户
+      if (sessionHash) {
+        const mappedAccountId = await redis.getSessionAccountMapping(sessionHash);
+        if (mappedAccountId) {
+          // 验证映射的账户是否仍然可用
+          const mappedAccount = activeAccounts.find(acc => acc.id === mappedAccountId);
+          if (mappedAccount) {
+            logger.info(`🎯 Using sticky session account: ${mappedAccount.name} (${mappedAccountId}) for session ${sessionHash}`);
+            return mappedAccountId;
+          } else {
+            logger.warn(`⚠️ Mapped account ${mappedAccountId} is no longer available, selecting new account`);
+            // 清理无效的映射
+            await redis.deleteSessionAccountMapping(sessionHash);
+          }
+        }
+      }
+
+      // 如果没有映射或映射无效，选择新账户
       // 优先选择最近刷新过token的账户
       const sortedAccounts = activeAccounts.sort((a, b) => {
         const aLastRefresh = new Date(a.lastRefreshAt || 0).getTime();
@@ -307,7 +325,15 @@ class ClaudeAccountService {
         return bLastRefresh - aLastRefresh;
       });
 
-      return sortedAccounts[0].id;
+      const selectedAccountId = sortedAccounts[0].id;
+      
+      // 如果有会话哈希，建立新的映射
+      if (sessionHash) {
+        await redis.setSessionAccountMapping(sessionHash, selectedAccountId, 3600); // 1小时过期
+        logger.info(`🎯 Created new sticky session mapping: ${sortedAccounts[0].name} (${selectedAccountId}) for session ${sessionHash}`);
+      }
+
+      return selectedAccountId;
     } catch (error) {
       logger.error('❌ Failed to select available account:', error);
       throw error;

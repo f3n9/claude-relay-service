@@ -2,6 +2,7 @@ const https = require('https');
 const { SocksProxyAgent } = require('socks-proxy-agent');
 const { HttpsProxyAgent } = require('https-proxy-agent');
 const claudeAccountService = require('./claudeAccountService');
+const sessionHelper = require('../utils/sessionHelper');
 const logger = require('../utils/logger');
 const config = require('../../config/config');
 
@@ -16,10 +17,13 @@ class ClaudeRelayService {
   // 🚀 转发请求到Claude API
   async relayRequest(requestBody, apiKeyData) {
     try {
-      // 选择可用的Claude账户
-      const accountId = apiKeyData.claudeAccountId || await claudeAccountService.selectAvailableAccount();
+      // 生成会话哈希用于sticky会话
+      const sessionHash = sessionHelper.generateSessionHash(requestBody);
       
-      logger.info(`📤 Processing API request for key: ${apiKeyData.name || apiKeyData.id}, account: ${accountId}`);
+      // 选择可用的Claude账户（支持sticky会话）
+      const accountId = apiKeyData.claudeAccountId || await claudeAccountService.selectAvailableAccount(sessionHash);
+      
+      logger.info(`📤 Processing API request for key: ${apiKeyData.name || apiKeyData.id}, account: ${accountId}${sessionHash ? `, session: ${sessionHash}` : ''}`);
       
       // 获取有效的访问token
       const accessToken = await claudeAccountService.getValidAccessToken(accountId);
@@ -224,10 +228,13 @@ class ClaudeRelayService {
   // 🌊 处理流式响应（带usage数据捕获）
   async relayStreamRequestWithUsageCapture(requestBody, apiKeyData, responseStream, usageCallback) {
     try {
-      // 选择可用的Claude账户
-      const accountId = apiKeyData.claudeAccountId || await claudeAccountService.selectAvailableAccount();
+      // 生成会话哈希用于sticky会话
+      const sessionHash = sessionHelper.generateSessionHash(requestBody);
       
-      logger.info(`📡 Processing streaming API request with usage capture for key: ${apiKeyData.name || apiKeyData.id}, account: ${accountId}`);
+      // 选择可用的Claude账户（支持sticky会话）
+      const accountId = apiKeyData.claudeAccountId || await claudeAccountService.selectAvailableAccount(sessionHash);
+      
+      logger.info(`📡 Processing streaming API request with usage capture for key: ${apiKeyData.name || apiKeyData.id}, account: ${accountId}${sessionHash ? `, session: ${sessionHash}` : ''}`);
       
       // 获取有效的访问token
       const accessToken = await claudeAccountService.getValidAccessToken(accountId);

@@ -405,20 +405,20 @@ class RedisClient {
     return await this.client.del(key);
   }
 
-  // 🔐 会话管理
+  // 🔐 会话管理（用于管理员登录等）
   async setSession(sessionId, sessionData, ttl = 86400) {
-    const key = `session:${sessionId}`;
+    const key = `admin_session:${sessionId}`;
     await this.client.hset(key, sessionData);
     await this.client.expire(key, ttl);
   }
 
   async getSession(sessionId) {
-    const key = `session:${sessionId}`;
+    const key = `admin_session:${sessionId}`;
     return await this.client.hgetall(key);
   }
 
   async deleteSession(sessionId) {
-    const key = `session:${sessionId}`;
+    const key = `admin_session:${sessionId}`;
     return await this.client.del(key);
   }
 
@@ -638,6 +638,22 @@ class RedisClient {
         totalTokens: 0
       };
     }
+  }
+
+  // 🔗 会话sticky映射管理
+  async setSessionAccountMapping(sessionHash, accountId, ttl = 3600) {
+    const key = `session:${sessionHash}`;
+    await this.client.set(key, accountId, 'EX', ttl);
+  }
+
+  async getSessionAccountMapping(sessionHash) {
+    const key = `session:${sessionHash}`;
+    return await this.client.get(key);
+  }
+
+  async deleteSessionAccountMapping(sessionHash) {
+    const key = `session:${sessionHash}`;
+    return await this.client.del(key);
   }
 
   // 🧹 清理过期数据
