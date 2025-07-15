@@ -721,6 +721,12 @@
                                         </td>
                                         <td class="px-6 py-4 whitespace-nowrap text-sm space-x-2">
                                             <button 
+                                                @click="openEditAccountModal(account)" 
+                                                class="text-blue-600 hover:text-blue-900 font-medium hover:bg-blue-50 px-3 py-1 rounded-lg transition-colors"
+                                            >
+                                                <i class="fas fa-edit mr-1"></i>编辑
+                                            </button>
+                                            <button 
                                                 @click="deleteAccount(account.id)" 
                                                 class="text-red-600 hover:text-red-900 font-medium hover:bg-red-50 px-3 py-1 rounded-lg transition-colors"
                                             >
@@ -1827,6 +1833,30 @@
                 <div v-if="oauthStep === 1">
                     <div class="space-y-6">
                         <div>
+                            <label class="block text-sm font-semibold text-gray-700 mb-3">添加方式</label>
+                            <div class="flex gap-4">
+                                <label class="flex items-center cursor-pointer">
+                                    <input 
+                                        type="radio" 
+                                        v-model="accountForm.addType" 
+                                        value="oauth" 
+                                        class="mr-2"
+                                    >
+                                    <span class="text-sm text-gray-700">OAuth 授权 (推荐)</span>
+                                </label>
+                                <label class="flex items-center cursor-pointer">
+                                    <input 
+                                        type="radio" 
+                                        v-model="accountForm.addType" 
+                                        value="manual" 
+                                        class="mr-2"
+                                    >
+                                    <span class="text-sm text-gray-700">手动输入 Access Token</span>
+                                </label>
+                            </div>
+                        </div>
+                        
+                        <div>
                             <label class="block text-sm font-semibold text-gray-700 mb-3">账户名称</label>
                             <input 
                                 v-model="accountForm.name" 
@@ -1845,6 +1875,42 @@
                                 class="form-input w-full resize-none"
                                 placeholder="账户用途说明..."
                             ></textarea>
+                        </div>
+                        
+                        <!-- 手动输入 Token 字段 -->
+                        <div v-if="accountForm.addType === 'manual'" class="space-y-4 bg-blue-50 p-4 rounded-lg border border-blue-200">
+                            <div class="flex items-start gap-3 mb-4">
+                                <div class="w-8 h-8 bg-blue-500 rounded-lg flex items-center justify-center flex-shrink-0 mt-1">
+                                    <i class="fas fa-info text-white text-sm"></i>
+                                </div>
+                                <div>
+                                    <h5 class="font-semibold text-blue-900 mb-2">手动输入 Token</h5>
+                                    <p class="text-sm text-blue-800 mb-2">请输入有效的 Claude Access Token。如果您有 Refresh Token，建议也一并填写以支持自动刷新。</p>
+                                    <p class="text-xs text-blue-600">💡 如果未填写 Refresh Token，Token 过期后需要手动更新。</p>
+                                </div>
+                            </div>
+                            
+                            <div>
+                                <label class="block text-sm font-semibold text-gray-700 mb-3">Access Token *</label>
+                                <textarea 
+                                    v-model="accountForm.accessToken" 
+                                    rows="4" 
+                                    class="form-input w-full resize-none font-mono text-sm"
+                                    placeholder="sk-ant-oat01-..."
+                                    required
+                                ></textarea>
+                            </div>
+                            
+                            <div>
+                                <label class="block text-sm font-semibold text-gray-700 mb-3">Refresh Token (可选)</label>
+                                <textarea 
+                                    v-model="accountForm.refreshToken" 
+                                    rows="4" 
+                                    class="form-input w-full resize-none font-mono text-sm"
+                                    placeholder="sk-ant-ort01-..."
+                                ></textarea>
+                                <p class="text-xs text-gray-500 mt-2">如果有 Refresh Token，填写后系统可以自动刷新过期的 Access Token</p>
+                            </div>
                         </div>
 
                         <div class="border-t pt-6">
@@ -1913,12 +1979,24 @@
                             取消
                         </button>
                         <button 
+                            v-if="accountForm.addType === 'oauth'"
                             type="button" 
                             @click="nextOAuthStep()"
                             :disabled="!accountForm.name"
                             class="btn btn-primary flex-1 py-3 px-6 font-semibold"
                         >
                             下一步 <i class="fas fa-arrow-right ml-2"></i>
+                        </button>
+                        <button 
+                            v-if="accountForm.addType === 'manual'"
+                            type="button" 
+                            @click="createManualAccount()"
+                            :disabled="!accountForm.name || !accountForm.accessToken || createAccountLoading"
+                            class="btn btn-primary flex-1 py-3 px-6 font-semibold"
+                        >
+                            <div v-if="createAccountLoading" class="loading-spinner mr-2"></div>
+                            <i v-else class="fas fa-check mr-2"></i>
+                            {{ createAccountLoading ? '创建中...' : '创建账户' }}
                         </button>
                     </div>
                 </div>
@@ -2027,6 +2105,163 @@
                             {{ createAccountLoading ? '创建中...' : '完成创建' }}
                         </button>
                     </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 编辑 Claude 账户模态框 -->
+        <div v-if="showEditAccountModal" class="fixed inset-0 modal z-50 flex items-center justify-center p-4">
+            <div class="modal-content w-full max-w-2xl p-8 mx-auto max-h-[90vh] overflow-y-auto">
+                <div class="flex items-center justify-between mb-6">
+                    <div class="flex items-center gap-3">
+                        <div class="w-10 h-10 bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl flex items-center justify-center">
+                            <i class="fas fa-edit text-white"></i>
+                        </div>
+                        <h3 class="text-xl font-bold text-gray-900">编辑 Claude 账户</h3>
+                    </div>
+                    <button 
+                        @click="closeEditAccountModal"
+                        class="text-gray-400 hover:text-gray-600 transition-colors"
+                    >
+                        <i class="fas fa-times text-xl"></i>
+                    </button>
+                </div>
+                
+                <div class="space-y-6">
+                    <div>
+                        <label class="block text-sm font-semibold text-gray-700 mb-3">账户名称</label>
+                        <input 
+                            v-model="editAccountForm.name" 
+                            type="text" 
+                            required 
+                            class="form-input w-full"
+                            placeholder="为账户设置一个易识别的名称"
+                        >
+                    </div>
+                    
+                    <div>
+                        <label class="block text-sm font-semibold text-gray-700 mb-3">描述 (可选)</label>
+                        <textarea 
+                            v-model="editAccountForm.description" 
+                            rows="3" 
+                            class="form-input w-full resize-none"
+                            placeholder="账户用途说明..."
+                        ></textarea>
+                    </div>
+                    
+                    <!-- Token 更新区域 -->
+                    <div class="bg-amber-50 p-4 rounded-lg border border-amber-200">
+                        <div class="flex items-start gap-3 mb-4">
+                            <div class="w-8 h-8 bg-amber-500 rounded-lg flex items-center justify-center flex-shrink-0 mt-1">
+                                <i class="fas fa-key text-white text-sm"></i>
+                            </div>
+                            <div>
+                                <h5 class="font-semibold text-amber-900 mb-2">更新 Token</h5>
+                                <p class="text-sm text-amber-800 mb-2">可以更新 Access Token 和 Refresh Token。为了安全起见，不会显示当前的 Token 值。</p>
+                                <p class="text-xs text-amber-600">💡 留空表示不更新该字段。</p>
+                            </div>
+                        </div>
+                        
+                        <div class="space-y-4">
+                            <div>
+                                <label class="block text-sm font-semibold text-gray-700 mb-3">Access Token</label>
+                                <textarea 
+                                    v-model="editAccountForm.accessToken" 
+                                    rows="4" 
+                                    class="form-input w-full resize-none font-mono text-sm"
+                                    placeholder="留空表示不更新，否则输入新的 Access Token"
+                                ></textarea>
+                            </div>
+                            
+                            <div>
+                                <label class="block text-sm font-semibold text-gray-700 mb-3">Refresh Token</label>
+                                <textarea 
+                                    v-model="editAccountForm.refreshToken" 
+                                    rows="4" 
+                                    class="form-input w-full resize-none font-mono text-sm"
+                                    placeholder="留空表示不更新，否则输入新的 Refresh Token"
+                                ></textarea>
+                                <p class="text-xs text-gray-500 mt-2">如果有 Refresh Token，填写后系统可以自动刷新过期的 Access Token</p>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- 代理设置 -->
+                    <div class="border-t pt-6">
+                        <label class="block text-sm font-semibold text-gray-700 mb-3">代理设置 (可选)</label>
+                        <p class="text-sm text-gray-500 mb-4">如果需要修改代理设置，请更新代理信息。</p>
+                        <select 
+                            v-model="editAccountForm.proxyType" 
+                            class="form-input w-full"
+                        >
+                            <option value="">不使用代理</option>
+                            <option value="socks5">SOCKS5 代理</option>
+                            <option value="http">HTTP 代理</option>
+                        </select>
+                    </div>
+                    
+                    <div v-if="editAccountForm.proxyType" class="space-y-4 pl-4 border-l-2 border-blue-200">
+                        <div class="grid grid-cols-2 gap-4">
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-2">代理主机</label>
+                                <input 
+                                    v-model="editAccountForm.proxyHost" 
+                                    type="text" 
+                                    class="form-input w-full"
+                                    placeholder="127.0.0.1"
+                                >
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-2">代理端口</label>
+                                <input 
+                                    v-model="editAccountForm.proxyPort" 
+                                    type="number" 
+                                    class="form-input w-full"
+                                    placeholder="1080"
+                                >
+                            </div>
+                        </div>
+                        <div class="grid grid-cols-2 gap-4">
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-2">用户名 (可选)</label>
+                                <input 
+                                    v-model="editAccountForm.proxyUsername" 
+                                    type="text" 
+                                    class="form-input w-full"
+                                    placeholder="代理用户名"
+                                >
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-2">密码 (可选)</label>
+                                <input 
+                                    v-model="editAccountForm.proxyPassword" 
+                                    type="password" 
+                                    class="form-input w-full"
+                                    placeholder="代理密码"
+                                >
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="flex gap-3 pt-6">
+                    <button 
+                        type="button" 
+                        @click="closeEditAccountModal" 
+                        class="flex-1 px-6 py-3 bg-gray-100 text-gray-700 rounded-xl font-semibold hover:bg-gray-200 transition-colors"
+                    >
+                        取消
+                    </button>
+                    <button 
+                        type="button" 
+                        @click="updateAccount()"
+                        :disabled="!editAccountForm.name || editAccountLoading"
+                        class="btn btn-primary flex-1 py-3 px-6 font-semibold"
+                    >
+                        <div v-if="editAccountLoading" class="loading-spinner mr-2"></div>
+                        <i v-else class="fas fa-save mr-2"></i>
+                        {{ editAccountLoading ? '更新中...' : '保存修改' }}
+                    </button>
                 </div>
             </div>
         </div>

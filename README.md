@@ -237,27 +237,15 @@ npm run service:status
 4. 设置使用限制（可选）
 5. 保存，记下生成的Key
 
-### 4. 开始使用API
+### 4. 开始使用Claude code
 
 现在你可以用自己的服务替换官方API了：
 
-**原来的请求：**
+**设置环境变量：**
 ```bash
-curl https://api.anthropic.com/v1/messages \
-  -H "x-api-key: 官方的key" \
-  -H "content-type: application/json" \
-  -d '{"model":"claude-3-sonnet-20240229","messages":[{"role":"user","content":"你好"}]}'
+export ANTHROPIC_BASE_URL="http://127.0.0.1:3000/api/" # 根据实际填写你服务器的ip地址或者域名
+export ANTHROPIC_AUTH_TOKEN="后台创建的API密钥"
 ```
-
-**现在的请求：**
-```bash
-curl http://你的域名:3000/api/v1/messages \
-  -H "x-api-key: cr_你创建的key" \
-  -H "content-type: application/json" \
-  -d '{"model":"claude-3-sonnet-20240229","messages":[{"role":"user","content":"你好"}]}'
-```
-
-就是把域名换一下，API Key换成你自己生成的，其他都一样。
 
 ---
 

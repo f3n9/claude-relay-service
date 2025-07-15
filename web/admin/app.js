@@ -140,6 +140,25 @@ const app = createApp({
             accountForm: {
                 name: '',
                 description: '',
+                addType: 'oauth', // 'oauth' 或 'manual'
+                accessToken: '',
+                refreshToken: '',
+                proxyType: '',
+                proxyHost: '',
+                proxyPort: '',
+                proxyUsername: '',
+                proxyPassword: ''
+            },
+            
+            // 编辑账户相关
+            showEditAccountModal: false,
+            editAccountLoading: false,
+            editAccountForm: {
+                id: '',
+                name: '',
+                description: '',
+                accessToken: '',
+                refreshToken: '',
                 proxyType: '',
                 proxyHost: '',
                 proxyPort: '',
@@ -294,11 +313,123 @@ const app = createApp({
             this.resetAccountForm();
         },
         
+        // 打开编辑账户模态框
+        openEditAccountModal(account) {
+            this.editAccountForm = {
+                id: account.id,
+                name: account.name,
+                description: account.description || '',
+                accessToken: '',
+                refreshToken: '',
+                proxyType: account.proxy ? account.proxy.type : '',
+                proxyHost: account.proxy ? account.proxy.host : '',
+                proxyPort: account.proxy ? account.proxy.port : '',
+                proxyUsername: account.proxy ? account.proxy.username : '',
+                proxyPassword: account.proxy ? account.proxy.password : ''
+            };
+            this.showEditAccountModal = true;
+        },
+        
+        // 关闭编辑账户模态框
+        closeEditAccountModal() {
+            this.showEditAccountModal = false;
+            this.editAccountForm = {
+                id: '',
+                name: '',
+                description: '',
+                accessToken: '',
+                refreshToken: '',
+                proxyType: '',
+                proxyHost: '',
+                proxyPort: '',
+                proxyUsername: '',
+                proxyPassword: ''
+            };
+        },
+        
+        // 更新账户
+        async updateAccount() {
+            this.editAccountLoading = true;
+            try {
+                // 构建更新数据
+                let updateData = {
+                    name: this.editAccountForm.name,
+                    description: this.editAccountForm.description
+                };
+                
+                // 只在有值时才更新 token
+                if (this.editAccountForm.accessToken.trim()) {
+                    // 构建新的 OAuth 数据
+                    const newOauthData = {
+                        accessToken: this.editAccountForm.accessToken,
+                        refreshToken: this.editAccountForm.refreshToken || '',
+                        expiresAt: Date.now() + (365 * 24 * 60 * 60 * 1000), // 默认设置1年后过期
+                        scopes: ['user:inference']
+                    };
+                    updateData.claudeAiOauth = newOauthData;
+                }
+                
+                // 更新代理配置
+                if (this.editAccountForm.proxyType) {
+                    updateData.proxy = {
+                        type: this.editAccountForm.proxyType,
+                        host: this.editAccountForm.proxyHost,
+                        port: parseInt(this.editAccountForm.proxyPort),
+                        username: this.editAccountForm.proxyUsername || null,
+                        password: this.editAccountForm.proxyPassword || null
+                    };
+                } else {
+                    updateData.proxy = null;
+                }
+                
+                const response = await fetch(`/admin/claude-accounts/${this.editAccountForm.id}`, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': 'Bearer ' + this.authToken
+                    },
+                    body: JSON.stringify(updateData)
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    this.showToast('账户更新成功！', 'success', '更新成功');
+                    this.closeEditAccountModal();
+                    await this.loadAccounts();
+                } else {
+                    this.showToast(data.message || 'Account update failed', 'error', 'Update Failed');
+                }
+            } catch (error) {
+                console.error('Error updating account:', error);
+                
+                let errorMessage = '更新失败，请检查网络连接';
+                
+                if (error.response) {
+                    try {
+                        const errorData = await error.response.json();
+                        errorMessage = errorData.message || errorMessage;
+                    } catch (parseError) {
+                        console.error('Failed to parse error response:', parseError);
+                    }
+                } else if (error.message) {
+                    errorMessage = error.message;
+                }
+                
+                this.showToast(errorMessage, 'error', '网络错误', 8000);
+            } finally {
+                this.editAccountLoading = false;
+            }
+        },
+        
         // 重置账户表单
         resetAccountForm() {
             this.accountForm = {
                 name: '',
                 description: '',
+                addType: 'oauth',
+                accessToken: '',
+                refreshToken: '',
                 proxyType: '',
                 proxyHost: '',
                 proxyPort: '',
@@ -450,6 +581,76 @@ const app = createApp({
                         errorMessage = errorData.message || errorMessage;
                     } catch (parseError) {
                         // 如果无法解析JSON，使用默认消息
+                        console.error('Failed to parse error response:', parseError);
+                    }
+                } else if (error.message) {
+                    errorMessage = error.message;
+                }
+                
+                this.showToast(errorMessage, 'error', '网络错误', 8000);
+            } finally {
+                this.createAccountLoading = false;
+            }
+        },
+        
+        // 创建手动账户
+        async createManualAccount() {
+            this.createAccountLoading = true;
+            try {
+                // 构建代理配置
+                let proxy = null;
+                if (this.accountForm.proxyType) {
+                    proxy = {
+                        type: this.accountForm.proxyType,
+                        host: this.accountForm.proxyHost,
+                        port: parseInt(this.accountForm.proxyPort),
+                        username: this.accountForm.proxyUsername || null,
+                        password: this.accountForm.proxyPassword || null
+                    };
+                }
+                
+                // 构建手动 OAuth 数据
+                const manualOauthData = {
+                    accessToken: this.accountForm.accessToken,
+                    refreshToken: this.accountForm.refreshToken || '',
+                    expiresAt: Date.now() + (365 * 24 * 60 * 60 * 1000), // 默认设置1年后过期
+                    scopes: ['user:inference'] // 默认权限
+                };
+                
+                // 创建账户
+                const createResponse = await fetch('/admin/claude-accounts', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': 'Bearer ' + this.authToken
+                    },
+                    body: JSON.stringify({
+                        name: this.accountForm.name,
+                        description: this.accountForm.description,
+                        claudeAiOauth: manualOauthData,
+                        proxy: proxy
+                    })
+                });
+                
+                const createData = await createResponse.json();
+                
+                if (createData.success) {
+                    this.showToast('手动账户创建成功！', 'success', '账户创建成功');
+                    this.closeCreateAccountModal();
+                    await this.loadAccounts();
+                } else {
+                    this.showToast(createData.message || 'Account creation failed', 'error', 'Creation Failed');
+                }
+            } catch (error) {
+                console.error('Error creating manual account:', error);
+                
+                let errorMessage = '创建失败，请检查网络连接';
+                
+                if (error.response) {
+                    try {
+                        const errorData = await error.response.json();
+                        errorMessage = errorData.message || errorMessage;
+                    } catch (parseError) {
                         console.error('Failed to parse error response:', parseError);
                     }
                 } else if (error.message) {

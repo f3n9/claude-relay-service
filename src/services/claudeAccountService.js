@@ -107,7 +107,7 @@ class ClaudeAccountService {
       const refreshToken = this._decryptSensitiveData(accountData.refreshToken);
       
       if (!refreshToken) {
-        throw new Error('No refresh token available');
+        throw new Error('No refresh token available - manual token update required');
       }
 
       // 创建代理agent
@@ -183,9 +183,20 @@ class ClaudeAccountService {
       const now = Date.now();
       
       if (!expiresAt || now >= (expiresAt - 10000)) { // 10秒提前刷新
-        logger.info(`🔄 Token expired/expiring for account ${accountId}, refreshing...`);
-        const refreshResult = await this.refreshAccountToken(accountId);
-        return refreshResult.accessToken;
+        logger.info(`🔄 Token expired/expiring for account ${accountId}, attempting refresh...`);
+        try {
+          const refreshResult = await this.refreshAccountToken(accountId);
+          return refreshResult.accessToken;
+        } catch (refreshError) {
+          logger.warn(`⚠️ Token refresh failed for account ${accountId}: ${refreshError.message}`);
+          // 如果刷新失败，仍然尝试使用当前token（可能是手动添加的长期有效token）
+          const currentToken = this._decryptSensitiveData(accountData.accessToken);
+          if (currentToken) {
+            logger.info(`🔄 Using current token for account ${accountId} (refresh failed)`);
+            return currentToken;
+          }
+          throw refreshError;
+        }
       }
 
       const accessToken = this._decryptSensitiveData(accountData.accessToken);
@@ -240,7 +251,7 @@ class ClaudeAccountService {
         throw new Error('Account not found');
       }
 
-      const allowedUpdates = ['name', 'description', 'email', 'password', 'refreshToken', 'proxy', 'isActive'];
+      const allowedUpdates = ['name', 'description', 'email', 'password', 'refreshToken', 'proxy', 'isActive', 'claudeAiOauth'];
       const updatedData = { ...accountData };
 
       for (const [field, value] of Object.entries(updates)) {
@@ -249,6 +260,18 @@ class ClaudeAccountService {
             updatedData[field] = this._encryptSensitiveData(value);
           } else if (field === 'proxy') {
             updatedData[field] = value ? JSON.stringify(value) : '';
+          } else if (field === 'claudeAiOauth') {
+            // 更新 Claude AI OAuth 数据
+            if (value) {
+              updatedData.claudeAiOauth = this._encryptSensitiveData(JSON.stringify(value));
+              updatedData.accessToken = this._encryptSensitiveData(value.accessToken);
+              updatedData.refreshToken = this._encryptSensitiveData(value.refreshToken);
+              updatedData.expiresAt = value.expiresAt.toString();
+              updatedData.scopes = value.scopes.join(' ');
+              updatedData.status = 'active';
+              updatedData.errorMessage = '';
+              updatedData.lastRefreshAt = new Date().toISOString();
+            }
           } else {
             updatedData[field] = value.toString();
           }
