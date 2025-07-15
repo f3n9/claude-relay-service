@@ -100,7 +100,7 @@ class SessionHelper {
    * @returns {string} - Redis键名
    */
   getSessionRedisKey(sessionHash) {
-    return `session:${sessionHash}`;
+    return `sticky_session:${sessionHash}`;
   }
 
   /**
