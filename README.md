@@ -247,6 +247,11 @@ export ANTHROPIC_BASE_URL="http://127.0.0.1:3000/api/" # 根据实际填写你�
 export ANTHROPIC_AUTH_TOKEN="后台创建的API密钥"
 ```
 
+**使用claude：**
+```bash
+claude
+```
+
 ---
 
 ## 🔧 日常维护
@@ -382,16 +387,6 @@ module.exports = {
   }
   // ... 其他配置
 }
-```
-
-**5. 使用HTTPS API**
-
-配置完成后，你的API地址变为：
-```bash
-curl https://your-domain.com/api/v1/messages \
-  -H "x-api-key: cr_your-key" \
-  -H "content-type: application/json" \
-  -d '{"model":"claude-3-sonnet-20240229","messages":[{"role":"user","content":"你好"}]}'
 ```
 
 **安全优势：**

@@ -7,9 +7,9 @@
 [![Redis](https://img.shields.io/badge/Redis-6+-red.svg)](https://redis.io/)
 [![Docker](https://img.shields.io/badge/Docker-Ready-blue.svg)](https://www.docker.com/)
 
-**🔐 Self-hosted Claude API relay service with multi-account management**
+**🔐 Self-hosted Claude API relay service with multi-account management** 
 
-[English](#english) • [中文文档](#中文文档)
+[English](#english) • [中文文档](#中文文档) • [📸 Interface Preview](docs/preview.md)
 
 </div>
 
@@ -25,19 +25,28 @@
 
 ---
 
+> 💡 **Thanks to [@vista8](https://x.com/vista8) for the recommendation!**
+> 
+> If you're interested in Vibe coding, follow:
+> 
+> - 🐦 **X**: [@vista8](https://x.com/vista8) - Sharing cutting-edge tech trends
+> - 📱 **WeChat**: 向阳乔木推荐看  
+
+---
+
 ## 🤔 Is This Project Right for You?
 
 - 🌍 **Regional Restrictions**: Can't directly access Claude Code service in your region?
 - 🔒 **Privacy Concerns**: Worried about third-party mirror services logging or leaking your conversation content?
 - 👥 **Cost Sharing**: Want to share Claude Code Max subscription costs with friends?
-- ⚡ **Stability**: Third-party mirror sites often have outages and instability, affecting efficiency?
+- ⚡ **Stability Issues**: Third-party mirror sites often fail and are unstable, affecting efficiency?
 
 If you have any of these concerns, this project might be suitable for you.
 
 ### Suitable Scenarios
 
 ✅ **Cost Sharing with Friends**: 3-5 friends sharing Claude Code Max subscription, enjoying Opus freely  
-✅ **Privacy Sensitive**: Don't want third parties to see your conversation content  
+✅ **Privacy Sensitive**: Don't want third-party mirrors to see your conversation content  
 ✅ **Technical Tinkering**: Have basic technical skills, willing to build and maintain yourself  
 ✅ **Stability Needs**: Need long-term stable Claude access, don't want to be restricted by mirror sites  
 ✅ **Regional Restrictions**: Cannot directly access Claude official service  
@@ -49,13 +58,15 @@ If you have any of these concerns, this project might be suitable for you.
 ❌ **Registration Issues**: Cannot register Claude account yourself  
 ❌ **Payment Issues**: No payment method to subscribe to Claude Code  
 
+**If you're just an ordinary user with low privacy requirements, just want to casually play around and quickly experience Claude, then choosing a mirror site you're familiar with would be more suitable.**
+
 ---
 
 ## 💭 Why Build Your Own?
 
-### Problems with Existing Mirror Sites
+### Potential Issues with Existing Mirror Sites
 
-- 🕵️ **Privacy Risk**: Your conversation content is seen clearly by others, forget about business secrets
+- 🕵️ **Privacy Risk**: Your conversation content is completely visible to others, forget about business secrets
 - 🐌 **Performance Instability**: Slow when many people use it, often crashes during peak hours
 - 💰 **Price Opacity**: Don't know the actual costs
 
@@ -69,6 +80,8 @@ If you have any of these concerns, this project might be suitable for you.
 ---
 
 ## 🚀 Core Features
+
+> 📸 **[Click to view interface preview](docs/preview.md)** - See detailed screenshots of the Web management interface
 
 ### Basic Features
 - ✅ **Multi-account Management**: Add multiple Claude accounts for automatic rotation
@@ -87,11 +100,11 @@ If you have any of these concerns, this project might be suitable for you.
 ## 📋 Deployment Requirements
 
 ### Hardware Requirements (Minimum Configuration)
-- **CPU**: 1 core is enough
+- **CPU**: 1 core is sufficient
 - **Memory**: 512MB (1GB recommended)
 - **Storage**: 30GB available space
 - **Network**: Access to Anthropic API (recommend US region servers)
-- **Suggestion**: 2 cores 4GB is basically enough, choose network with good return routes to your country (to improve speed, recommend not using proxy or setting server IP for direct connection)
+- **Recommendation**: 2 cores 4GB is basically enough, choose network with good return routes to your country (to improve speed, recommend not using proxy or setting server IP for direct connection)
 
 ### Software Requirements
 - **Node.js** 18 or higher
@@ -99,33 +112,13 @@ If you have any of these concerns, this project might be suitable for you.
 - **Operating System**: Linux recommended
 
 ### Cost Estimation
-- **Server**: Light cloud server, 30-60 RMB per month
+- **Server**: Light cloud server, $5-10 per month
 - **Claude Subscription**: Depends on how you share costs
 - **Others**: Domain name (optional)
 
 ---
 
-## 🐳 Simplest Deployment Method (Docker)
-
-If you're too lazy to set up the environment, use Docker directly:
-
-```bash
-# 1. Download project
-git clone https://github.com/Wei-Shaw/claude-relay-service.git
-cd claude-relay-service
-
-# 2. One-click start
-docker-compose up -d
-
-# 3. Check if started successfully
-docker-compose ps
-```
-
-That simple, the service is running.
-
----
-
-## 📦 Manual Deployment (For Tinkerers)
+## 📦 Manual Deployment
 
 ### Step 1: Environment Setup
 
@@ -156,7 +149,7 @@ sudo systemctl start redis
 
 ```bash
 # Download project
-git clone https://github.com/yourusername/claude-relay-service.git
+git clone https://github.com/Wei-Shaw/claude-relay-service.git
 cd claude-relay-service
 
 # Install dependencies
@@ -224,7 +217,7 @@ Default admin account: Look in data/Init.json
 This step is quite important, requires OAuth authorization:
 
 1. Click "Claude Accounts" tab
-2. If you're in China, configure proxy first (Important!)
+2. If you're worried about multiple accounts sharing 1 IP getting banned, you can optionally set a static proxy IP
 3. Click "Add Account"
 4. Click "Generate Authorization Link", will open a new page
 5. Complete Claude login and authorization in the new page
@@ -243,27 +236,20 @@ Assign a key to each user:
 4. Set usage limits (optional)
 5. Save, note down the generated key
 
-### 4. Start Using API
+### 4. Start Using Claude Code
 
 Now you can replace the official API with your own service:
 
-**Original request:**
+**Set environment variables:**
 ```bash
-curl https://api.anthropic.com/v1/messages \
-  -H "x-api-key: official-key" \
-  -H "content-type: application/json" \
-  -d '{"model":"claude-3-sonnet-20240229","messages":[{"role":"user","content":"Hello"}]}'
+export ANTHROPIC_BASE_URL="http://127.0.0.1:3000/api/" # Fill in your server's IP address or domain according to actual situation
+export ANTHROPIC_AUTH_TOKEN="API key created in the backend"
 ```
 
-**Current request:**
+**Use claude:**
 ```bash
-curl http://your-domain:3000/api/v1/messages \
-  -H "x-api-key: cr_your-created-key" \
-  -H "content-type: application/json" \
-  -d '{"model":"claude-3-sonnet-20240229","messages":[{"role":"user","content":"Hello"}]}'
+claude
 ```
-
-Just change the domain and API Key to your own generated one, everything else is the same.
 
 ---
 
@@ -319,7 +305,7 @@ redis-cli ping
 
 **Strongly recommend using nginx reverse proxy + SSL certificate**
 
-It's recommended to use nginx reverse proxy with SSL certificate:
+It's recommended to use nginx reverse proxy and configure SSL certificate: (The following is an nginx example, if you don't want to fiddle with it, you can choose to install a panel for operation, such as Baota, 1panel, etc.)
 
 **1. Install nginx and obtain SSL certificate**
 ```bash
@@ -399,16 +385,6 @@ module.exports = {
   }
   // ... other configurations
 }
-```
-
-**5. Use HTTPS API**
-
-After configuration, your API address becomes:
-```bash
-curl https://your-domain.com/api/v1/messages \
-  -H "x-api-key: cr_your-key" \
-  -H "content-type: application/json" \
-  -d '{"model":"claude-3-sonnet-20240229","messages":[{"role":"user","content":"Hello"}]}'
 ```
 
 **Security advantages:**
