@@ -444,13 +444,36 @@ class RedisClient {
   // 🔗 OAuth会话管理
   async setOAuthSession(sessionId, sessionData, ttl = 600) { // 10分钟过期
     const key = `oauth:${sessionId}`;
-    await this.client.hset(key, sessionData);
+    
+    // 序列化复杂对象，特别是 proxy 配置
+    const serializedData = {};
+    for (const [dataKey, value] of Object.entries(sessionData)) {
+      if (typeof value === 'object' && value !== null) {
+        serializedData[dataKey] = JSON.stringify(value);
+      } else {
+        serializedData[dataKey] = value;
+      }
+    }
+    
+    await this.client.hset(key, serializedData);
     await this.client.expire(key, ttl);
   }
 
   async getOAuthSession(sessionId) {
     const key = `oauth:${sessionId}`;
-    return await this.client.hgetall(key);
+    const data = await this.client.hgetall(key);
+    
+    // 反序列化 proxy 字段
+    if (data.proxy) {
+      try {
+        data.proxy = JSON.parse(data.proxy);
+      } catch (error) {
+        // 如果解析失败，设置为 null
+        data.proxy = null;
+      }
+    }
+    
+    return data;
   }
 
   async deleteOAuthSession(sessionId) {
