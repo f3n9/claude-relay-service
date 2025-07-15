@@ -150,7 +150,7 @@ sudo systemctl start redis
 
 ```bash
 # 下载项目
-git clone https://github.com/yourusername/claude-relay-service.git
+git clone https://github.com/Wei-Shaw/claude-relay-service.git
 cd claude-relay-service
 
 # 安装依赖

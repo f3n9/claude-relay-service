@@ -111,7 +111,7 @@ If you're too lazy to set up the environment, use Docker directly:
 
 ```bash
 # 1. Download project
-git clone https://github.com/yourusername/claude-relay-service.git
+git clone https://github.com/Wei-Shaw/claude-relay-service.git
 cd claude-relay-service
 
 # 2. One-click start
