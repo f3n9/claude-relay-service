@@ -25,8 +25,6 @@
 
 ---
 
-## 🌟 推荐阅读
-
 > 💡 **感谢 [Vibe Coding](https://x.com/vista8) 的推荐！**
 > 
 > 如果你对Vibe coding感兴趣，推荐关注：
