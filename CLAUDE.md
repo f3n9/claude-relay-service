@@ -151,6 +151,12 @@ npm run setup  # 自动生成密钥并创建管理员账户
 - 检查日志文件 `logs/claude-relay-*.log` 确认服务正常运行
 - 注意：当前项目缺少实际测试文件，建议补充单元测试和集成测试
 
+### 开发工作流
+- **功能开发**: 始终从理解现有代码开始，重用已有的服务和模式
+- **调试流程**: 使用 Winston 日志 + Web 界面实时日志查看 + CLI 状态工具
+- **代码审查**: 关注安全性（加密存储）、性能（异步处理）、错误处理
+- **部署前检查**: 运行 lint → 测试 CLI 功能 → 检查日志 → Docker 构建
+
 ### 常见文件位置
 - 核心服务逻辑：`src/services/` 目录
 - 路由处理：`src/routes/` 目录 
@@ -179,3 +185,36 @@ npm run setup  # 自动生成密钥并创建管理员账户
 - **优雅降级**: Redis 连接失败时的回退机制
 - **自动重试**: 指数退避重试策略和错误隔离
 - **资源清理**: 客户端断开时的自动清理机制
+
+## 项目特定注意事项
+
+### Redis 数据结构
+- **API Keys**: `api_key:{id}` (详细信息) + `api_key_hash:{hash}` (快速查找)
+- **Claude 账户**: `claude_account:{id}` (加密的 OAuth 数据)
+- **管理员**: `admin:{id}` + `admin_username:{username}` (用户名映射)
+- **会话**: `session:{token}` (JWT 会话管理)
+- **使用统计**: `usage:daily:{date}:{key}:{model}` (多维度统计)
+- **系统信息**: `system_info` (系统状态缓存)
+
+### 流式响应处理
+- 支持 SSE (Server-Sent Events) 流式传输
+- 自动从流中解析 usage 数据并记录
+- 客户端断开时通过 AbortController 清理资源
+- 错误时发送适当的 SSE 错误事件
+
+### CLI 工具使用示例
+```bash
+# 创建新的 API Key
+npm run cli keys create -- --name "MyApp" --limit 1000
+
+# 查看系统状态
+npm run cli status
+
+# 管理 Claude 账户
+npm run cli accounts list
+npm run cli accounts refresh <accountId>
+
+# 管理员操作
+npm run cli admin create -- --username admin2
+npm run cli admin reset-password -- --username admin
+```
