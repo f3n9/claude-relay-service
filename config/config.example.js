@@ -29,7 +29,7 @@ const config = {
     retryDelayOnFailover: 100,
     maxRetriesPerRequest: 3,
     lazyConnect: true,
-    enableTLS: process.env.REDIS_ENABLE_TLS || false,
+    enableTLS: process.env.REDIS_ENABLE_TLS === 'true',
   },
 
   // 🎯 Claude API配置
