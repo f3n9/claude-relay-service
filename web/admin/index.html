@@ -72,7 +72,7 @@
         <!-- 管理界面 -->
         <div v-if="isLoggedIn" class="min-h-screen p-6">
             <!-- 顶部导航 -->
-            <div class="glass-strong rounded-3xl p-6 mb-8 shadow-xl">
+            <div class="glass-strong rounded-3xl p-6 mb-8 shadow-xl" style="z-index: 10; position: relative;">
                 <div class="flex flex-col md:flex-row justify-between items-center gap-4">
                     <div class="flex items-center gap-4">
                         <div class="w-12 h-12 bg-gradient-to-br from-blue-500/20 to-purple-500/20 border border-gray-300/30 rounded-xl flex items-center justify-center backdrop-blur-sm flex-shrink-0">
@@ -97,8 +97,8 @@
                         <!-- 悬浮菜单 -->
                         <div 
                             v-if="userMenuOpen" 
-                            class="fixed right-6 top-20 w-48 bg-white rounded-xl shadow-xl border border-gray-200 py-2"
-                            style="z-index: 99999;"
+                            class="absolute right-0 top-full mt-2 w-48 bg-white rounded-xl shadow-xl border border-gray-200 py-2"
+                            style="z-index: 999999;"
                             @click.stop
                         >
                             <button 
@@ -124,7 +124,7 @@
             </div>
 
             <!-- 主内容区域 -->
-            <div class="glass-strong rounded-3xl p-6 shadow-xl">
+            <div class="glass-strong rounded-3xl p-6 shadow-xl" style="z-index: 1;">
                 <!-- 标签栏 -->
                 <div class="flex flex-wrap gap-2 mb-8 bg-white/10 rounded-2xl p-2 backdrop-blur-sm">
                     <button 
