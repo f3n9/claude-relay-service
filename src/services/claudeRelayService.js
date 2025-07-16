@@ -1,4 +1,7 @@
 const https = require('https');
+const zlib = require('zlib');
+const fs = require('fs');
+const path = require('path');
 const { SocksProxyAgent } = require('socks-proxy-agent');
 const { HttpsProxyAgent } = require('https-proxy-agent');
 const claudeAccountService = require('./claudeAccountService');
@@ -91,6 +94,9 @@ class ClaudeRelayService {
     // 深拷贝请求体
     const processedBody = JSON.parse(JSON.stringify(body));
 
+    // 验证并限制max_tokens参数
+    this._validateAndLimitMaxTokens(processedBody);
+
     // 移除cache_control中的ttl字段
     this._stripTtlFromCacheControl(processedBody);
 
@@ -131,6 +137,49 @@ class ClaudeRelayService {
     }
 
     return processedBody;
+  }
+
+  // 🔢 验证并限制max_tokens参数
+  _validateAndLimitMaxTokens(body) {
+    if (!body || !body.max_tokens) return;
+
+    try {
+      // 读取模型定价配置文件
+      const pricingFilePath = path.join(__dirname, '../../data/model_pricing.json');
+      
+      if (!fs.existsSync(pricingFilePath)) {
+        logger.warn('⚠️ Model pricing file not found, skipping max_tokens validation');
+        return;
+      }
+
+      const pricingData = JSON.parse(fs.readFileSync(pricingFilePath, 'utf8'));
+      const model = body.model || 'claude-sonnet-4-20250514';
+      
+      // 查找对应模型的配置
+      const modelConfig = pricingData[model];
+      
+      if (!modelConfig) {
+        logger.debug(`🔍 Model ${model} not found in pricing file, skipping max_tokens validation`);
+        return;
+      }
+
+      // 获取模型的最大token限制
+      const maxLimit = modelConfig.max_tokens || modelConfig.max_output_tokens;
+      
+      if (!maxLimit) {
+        logger.debug(`🔍 No max_tokens limit found for model ${model}, skipping validation`);
+        return;
+      }
+
+      // 检查并调整max_tokens
+      if (body.max_tokens > maxLimit) {
+        logger.warn(`⚠️ max_tokens ${body.max_tokens} exceeds limit ${maxLimit} for model ${model}, adjusting to ${maxLimit}`);
+        body.max_tokens = maxLimit;
+      }
+    } catch (error) {
+      logger.error('❌ Failed to validate max_tokens from pricing file:', error);
+      // 如果文件读取失败，不进行校验，让请求继续处理
+    }
   }
 
   // 🧹 移除TTL字段
@@ -251,18 +300,40 @@ class ClaudeRelayService {
       }
 
       const req = https.request(options, (res) => {
-        let responseData = '';
+        let responseData = Buffer.alloc(0);
         
         res.on('data', (chunk) => {
-          responseData += chunk;
+          responseData = Buffer.concat([responseData, chunk]);
         });
         
         res.on('end', () => {
           try {
+            let bodyString = '';
+            
+            // 根据Content-Encoding处理响应数据
+            const contentEncoding = res.headers['content-encoding'];
+            if (contentEncoding === 'gzip') {
+              try {
+                bodyString = zlib.gunzipSync(responseData).toString('utf8');
+              } catch (unzipError) {
+                logger.error('❌ Failed to decompress gzip response:', unzipError);
+                bodyString = responseData.toString('utf8');
+              }
+            } else if (contentEncoding === 'deflate') {
+              try {
+                bodyString = zlib.inflateSync(responseData).toString('utf8');
+              } catch (unzipError) {
+                logger.error('❌ Failed to decompress deflate response:', unzipError);
+                bodyString = responseData.toString('utf8');
+              }
+            } else {
+              bodyString = responseData.toString('utf8');
+            }
+            
             const response = {
               statusCode: res.statusCode,
               headers: res.headers,
-              body: responseData
+              body: bodyString
             };
             
             logger.debug(`🔗 Claude API response: ${res.statusCode}`);
@@ -505,7 +576,7 @@ class ClaudeRelayService {
         
         if (!responseStream.destroyed) {
           // 发送 SSE 错误事件
-          responseStream.write(`event: error\n`);
+          responseStream.write('event: error\n');
           responseStream.write(`data: ${JSON.stringify({ 
             error: errorMessage,
             code: error.code,
@@ -528,7 +599,7 @@ class ClaudeRelayService {
         }
         if (!responseStream.destroyed) {
           // 发送 SSE 错误事件
-          responseStream.write(`event: error\n`);
+          responseStream.write('event: error\n');
           responseStream.write(`data: ${JSON.stringify({ 
             error: 'Request timeout',
             code: 'TIMEOUT',
@@ -635,7 +706,7 @@ class ClaudeRelayService {
         
         if (!responseStream.destroyed) {
           // 发送 SSE 错误事件
-          responseStream.write(`event: error\n`);
+          responseStream.write('event: error\n');
           responseStream.write(`data: ${JSON.stringify({ 
             error: errorMessage,
             code: error.code,
@@ -658,7 +729,7 @@ class ClaudeRelayService {
         }
         if (!responseStream.destroyed) {
           // 发送 SSE 错误事件
-          responseStream.write(`event: error\n`);
+          responseStream.write('event: error\n');
           responseStream.write(`data: ${JSON.stringify({ 
             error: 'Request timeout',
             code: 'TIMEOUT',
