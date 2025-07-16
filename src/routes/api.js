@@ -45,20 +45,7 @@ router.post('/v1/messages', authenticateApiKey, async (req, res) => {
       res.setHeader('Connection', 'keep-alive');
       res.setHeader('Access-Control-Allow-Origin', '*');
       
-      // 为流式响应添加客户端断开检测，确保并发计数正确减少
-      if (req.concurrencyInfo) {
-        // 添加响应关闭事件监听器
-        res.on('close', () => {
-          logger.api(`🔌 Stream response closed for key: ${req.apiKey.id} (${req.apiKey.name}), triggering concurrency decrement`);
-          req.concurrencyInfo.decrementConcurrency();
-        });
-        
-        // 添加错误事件监听器
-        res.on('error', (error) => {
-          logger.api(`⚠️ Stream response error for key: ${req.apiKey.id} (${req.apiKey.name}): ${error.message}`);
-          req.concurrencyInfo.decrementConcurrency();
-        });
-      }
+      // 流式响应不需要额外处理，中间件已经设置了监听器
       
       let usageDataCaptured = false;
       
@@ -99,7 +86,7 @@ router.post('/v1/messages', authenticateApiKey, async (req, res) => {
         apiKeyName: req.apiKey.name
       });
       
-      const response = await claudeRelayService.relayRequest(req.body, req.apiKey);
+      const response = await claudeRelayService.relayRequest(req.body, req.apiKey, req, res);
       
       logger.info('📡 Claude API response received', {
         statusCode: response.statusCode,
@@ -201,7 +188,6 @@ router.get('/v1/key-info', authenticateApiKey, async (req, res) => {
         id: req.apiKey.id,
         name: req.apiKey.name,
         tokenLimit: req.apiKey.tokenLimit,
-        requestLimit: req.apiKey.requestLimit,
         usage
       },
       timestamp: new Date().toISOString()
@@ -224,7 +210,7 @@ router.get('/v1/usage', authenticateApiKey, async (req, res) => {
       usage,
       limits: {
         tokens: req.apiKey.tokenLimit,
-        requests: req.apiKey.requestLimit
+        requests: 0 // 请求限制已移除
       },
       timestamp: new Date().toISOString()
     });

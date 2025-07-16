@@ -30,7 +30,6 @@ router.post('/api-keys', authenticateAdmin, async (req, res) => {
       name,
       description,
       tokenLimit,
-      requestLimit,
       expiresAt,
       claudeAccountId,
       concurrencyLimit
@@ -53,9 +52,6 @@ router.post('/api-keys', authenticateAdmin, async (req, res) => {
       return res.status(400).json({ error: 'Token limit must be a non-negative integer' });
     }
 
-    if (requestLimit && (!Number.isInteger(Number(requestLimit)) || Number(requestLimit) < 0)) {
-      return res.status(400).json({ error: 'Request limit must be a non-negative integer' });
-    }
 
     if (concurrencyLimit !== undefined && concurrencyLimit !== null && concurrencyLimit !== '' && (!Number.isInteger(Number(concurrencyLimit)) || Number(concurrencyLimit) < 0)) {
       return res.status(400).json({ error: 'Concurrency limit must be a non-negative integer' });
@@ -65,7 +61,6 @@ router.post('/api-keys', authenticateAdmin, async (req, res) => {
       name,
       description,
       tokenLimit,
-      requestLimit,
       expiresAt,
       claudeAccountId,
       concurrencyLimit

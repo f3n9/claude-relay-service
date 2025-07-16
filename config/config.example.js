@@ -47,14 +47,7 @@ const config = {
 
   // 📈 使用限制
   limits: {
-    defaultTokenLimit: parseInt(process.env.DEFAULT_TOKEN_LIMIT) || 1000000,
-    defaultRequestLimit: parseInt(process.env.DEFAULT_REQUEST_LIMIT) || 1000
-  },
-
-  // 🚦 速率限制
-  rateLimit: {
-    windowMs: parseInt(process.env.RATE_LIMIT_WINDOW) || 60000,
-    maxRequests: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS) || 100
+    defaultTokenLimit: parseInt(process.env.DEFAULT_TOKEN_LIMIT) || 1000000
   },
 
   // 📝 日志配置

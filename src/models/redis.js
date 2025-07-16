@@ -482,22 +482,6 @@ class RedisClient {
     return await this.client.del(key);
   }
 
-  // 🚦 速率限制
-  async checkRateLimit(identifier, limit = 100, window = 60) {
-    const key = `ratelimit:${identifier}`;
-    const current = await this.client.incr(key);
-
-    if (current === 1) {
-      await this.client.expire(key, window);
-    }
-
-    return {
-      allowed: current <= limit,
-      current,
-      limit,
-      resetTime: await this.client.ttl(key)
-    };
-  }
 
   // 📈 系统统计
   async getSystemStats() {

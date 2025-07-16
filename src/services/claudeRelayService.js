@@ -15,7 +15,9 @@ class ClaudeRelayService {
   }
 
   // 🚀 转发请求到Claude API
-  async relayRequest(requestBody, apiKeyData) {
+  async relayRequest(requestBody, apiKeyData, clientRequest, clientResponse) {
+    let upstreamRequest = null;
+    
     try {
       // 生成会话哈希用于sticky会话
       const sessionHash = sessionHelper.generateSessionHash(requestBody);
@@ -34,8 +36,37 @@ class ClaudeRelayService {
       // 获取代理配置
       const proxyAgent = await this._getProxyAgent(accountId);
       
-      // 发送请求到Claude API
-      const response = await this._makeClaudeRequest(processedBody, accessToken, proxyAgent);
+      // 设置客户端断开监听器
+      const handleClientDisconnect = () => {
+        logger.info('🔌 Client disconnected, aborting upstream request');
+        if (upstreamRequest && !upstreamRequest.destroyed) {
+          upstreamRequest.destroy();
+        }
+      };
+      
+      // 监听客户端断开事件
+      if (clientRequest) {
+        clientRequest.once('close', handleClientDisconnect);
+      }
+      if (clientResponse) {
+        clientResponse.once('close', handleClientDisconnect);
+      }
+      
+      // 发送请求到Claude API（传入回调以获取请求对象）
+      const response = await this._makeClaudeRequest(
+        processedBody, 
+        accessToken, 
+        proxyAgent,
+        (req) => { upstreamRequest = req; }
+      );
+      
+      // 移除监听器（请求成功完成）
+      if (clientRequest) {
+        clientRequest.removeListener('close', handleClientDisconnect);
+      }
+      if (clientResponse) {
+        clientResponse.removeListener('close', handleClientDisconnect);
+      }
       
       // 记录成功的API调用
       const inputTokens = requestBody.messages ? 
@@ -160,7 +191,7 @@ class ClaudeRelayService {
   }
 
   // 🔗 发送请求到Claude API
-  async _makeClaudeRequest(body, accessToken, proxyAgent) {
+  async _makeClaudeRequest(body, accessToken, proxyAgent, onRequest) {
     return new Promise((resolve, reject) => {
       const url = new URL(this.claudeApiUrl);
       
@@ -207,6 +238,11 @@ class ClaudeRelayService {
           }
         });
       });
+      
+      // 如果提供了 onRequest 回调，传递请求对象
+      if (onRequest && typeof onRequest === 'function') {
+        onRequest(req);
+      }
 
       req.on('error', (error) => {
         logger.error('❌ Claude API request error:', error);

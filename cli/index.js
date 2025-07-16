@@ -498,12 +498,6 @@ async function createApiKey() {
       message: 'Token 限制 (0=无限制):',
       default: 1000000
     },
-    {
-      type: 'number',
-      name: 'requestLimit',
-      message: '请求限制 (0=无限制):',
-      default: 1000
-    }
   ]);
 
   const spinner = ora('正在创建 API Key...').start();
