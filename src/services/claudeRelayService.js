@@ -281,8 +281,27 @@ class ClaudeRelayService {
       }
 
       req.on('error', (error) => {
-        logger.error('❌ Claude API request error:', error);
-        reject(error);
+        logger.error('❌ Claude API request error:', error.message, {
+          code: error.code,
+          errno: error.errno,
+          syscall: error.syscall,
+          address: error.address,
+          port: error.port
+        });
+        
+        // 根据错误类型提供更具体的错误信息
+        let errorMessage = 'Upstream request failed';
+        if (error.code === 'ECONNRESET') {
+          errorMessage = 'Connection reset by Claude API server';
+        } else if (error.code === 'ENOTFOUND') {
+          errorMessage = 'Unable to resolve Claude API hostname';
+        } else if (error.code === 'ECONNREFUSED') {
+          errorMessage = 'Connection refused by Claude API server';
+        } else if (error.code === 'ETIMEDOUT') {
+          errorMessage = 'Connection timed out to Claude API server';
+        }
+        
+        reject(new Error(errorMessage));
       });
 
       req.on('timeout', () => {
@@ -453,12 +472,46 @@ class ClaudeRelayService {
       });
 
       req.on('error', (error) => {
-        logger.error('❌ Claude stream request error:', error);
-        if (!responseStream.headersSent) {
-          responseStream.writeHead(500, { 'Content-Type': 'application/json' });
+        logger.error('❌ Claude stream request error:', error.message, {
+          code: error.code,
+          errno: error.errno,
+          syscall: error.syscall
+        });
+        
+        // 根据错误类型提供更具体的错误信息
+        let errorMessage = 'Upstream request failed';
+        let statusCode = 500;
+        if (error.code === 'ECONNRESET') {
+          errorMessage = 'Connection reset by Claude API server';
+          statusCode = 502;
+        } else if (error.code === 'ENOTFOUND') {
+          errorMessage = 'Unable to resolve Claude API hostname';
+          statusCode = 502;
+        } else if (error.code === 'ECONNREFUSED') {
+          errorMessage = 'Connection refused by Claude API server';
+          statusCode = 502;
+        } else if (error.code === 'ETIMEDOUT') {
+          errorMessage = 'Connection timed out to Claude API server';
+          statusCode = 504;
         }
+        
+        if (!responseStream.headersSent) {
+          responseStream.writeHead(statusCode, { 
+            'Content-Type': 'text/event-stream',
+            'Cache-Control': 'no-cache',
+            'Connection': 'keep-alive'
+          });
+        }
+        
         if (!responseStream.destroyed) {
-          responseStream.end(JSON.stringify({ error: 'Upstream request failed' }));
+          // 发送 SSE 错误事件
+          responseStream.write(`event: error\n`);
+          responseStream.write(`data: ${JSON.stringify({ 
+            error: errorMessage,
+            code: error.code,
+            timestamp: new Date().toISOString()
+          })}\n\n`);
+          responseStream.end();
         }
         reject(error);
       });
@@ -467,10 +520,21 @@ class ClaudeRelayService {
         req.destroy();
         logger.error('❌ Claude stream request timeout');
         if (!responseStream.headersSent) {
-          responseStream.writeHead(504, { 'Content-Type': 'application/json' });
+          responseStream.writeHead(504, { 
+            'Content-Type': 'text/event-stream',
+            'Cache-Control': 'no-cache',
+            'Connection': 'keep-alive'
+          });
         }
         if (!responseStream.destroyed) {
-          responseStream.end(JSON.stringify({ error: 'Request timeout' }));
+          // 发送 SSE 错误事件
+          responseStream.write(`event: error\n`);
+          responseStream.write(`data: ${JSON.stringify({ 
+            error: 'Request timeout',
+            code: 'TIMEOUT',
+            timestamp: new Date().toISOString()
+          })}\n\n`);
+          responseStream.end();
         }
         reject(new Error('Request timeout'));
       });
@@ -538,12 +602,46 @@ class ClaudeRelayService {
       });
 
       req.on('error', (error) => {
-        logger.error('❌ Claude stream request error:', error);
-        if (!responseStream.headersSent) {
-          responseStream.writeHead(500, { 'Content-Type': 'application/json' });
+        logger.error('❌ Claude stream request error:', error.message, {
+          code: error.code,
+          errno: error.errno,
+          syscall: error.syscall
+        });
+        
+        // 根据错误类型提供更具体的错误信息
+        let errorMessage = 'Upstream request failed';
+        let statusCode = 500;
+        if (error.code === 'ECONNRESET') {
+          errorMessage = 'Connection reset by Claude API server';
+          statusCode = 502;
+        } else if (error.code === 'ENOTFOUND') {
+          errorMessage = 'Unable to resolve Claude API hostname';
+          statusCode = 502;
+        } else if (error.code === 'ECONNREFUSED') {
+          errorMessage = 'Connection refused by Claude API server';
+          statusCode = 502;
+        } else if (error.code === 'ETIMEDOUT') {
+          errorMessage = 'Connection timed out to Claude API server';
+          statusCode = 504;
         }
+        
+        if (!responseStream.headersSent) {
+          responseStream.writeHead(statusCode, { 
+            'Content-Type': 'text/event-stream',
+            'Cache-Control': 'no-cache',
+            'Connection': 'keep-alive'
+          });
+        }
+        
         if (!responseStream.destroyed) {
-          responseStream.end(JSON.stringify({ error: 'Upstream request failed' }));
+          // 发送 SSE 错误事件
+          responseStream.write(`event: error\n`);
+          responseStream.write(`data: ${JSON.stringify({ 
+            error: errorMessage,
+            code: error.code,
+            timestamp: new Date().toISOString()
+          })}\n\n`);
+          responseStream.end();
         }
         reject(error);
       });
@@ -552,10 +650,21 @@ class ClaudeRelayService {
         req.destroy();
         logger.error('❌ Claude stream request timeout');
         if (!responseStream.headersSent) {
-          responseStream.writeHead(504, { 'Content-Type': 'application/json' });
+          responseStream.writeHead(504, { 
+            'Content-Type': 'text/event-stream',
+            'Cache-Control': 'no-cache',
+            'Connection': 'keep-alive'
+          });
         }
         if (!responseStream.destroyed) {
-          responseStream.end(JSON.stringify({ error: 'Request timeout' }));
+          // 发送 SSE 错误事件
+          responseStream.write(`event: error\n`);
+          responseStream.write(`data: ${JSON.stringify({ 
+            error: 'Request timeout',
+            code: 'TIMEOUT',
+            timestamp: new Date().toISOString()
+          })}\n\n`);
+          responseStream.end();
         }
         reject(new Error('Request timeout'));
       });

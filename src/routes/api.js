@@ -145,13 +145,41 @@ router.post('/v1/messages', authenticateApiKey, async (req, res) => {
     logger.api(`✅ Request completed in ${duration}ms for key: ${req.apiKey.name}`);
     
   } catch (error) {
-    logger.error('❌ Claude relay error:', error);
+    logger.error('❌ Claude relay error:', error.message, {
+      code: error.code,
+      stack: error.stack
+    });
     
+    // 确保在任何情况下都能返回有效的JSON响应
     if (!res.headersSent) {
-      res.status(500).json({
-        error: 'Relay service error',
-        message: error.message
+      // 根据错误类型设置适当的状态码
+      let statusCode = 500;
+      let errorType = 'Relay service error';
+      
+      if (error.message.includes('Connection reset') || error.message.includes('socket hang up')) {
+        statusCode = 502;
+        errorType = 'Upstream connection error';
+      } else if (error.message.includes('Connection refused')) {
+        statusCode = 502;
+        errorType = 'Upstream service unavailable';
+      } else if (error.message.includes('timeout')) {
+        statusCode = 504;
+        errorType = 'Upstream timeout';
+      } else if (error.message.includes('resolve') || error.message.includes('ENOTFOUND')) {
+        statusCode = 502;
+        errorType = 'Upstream hostname resolution failed';
+      }
+      
+      res.status(statusCode).json({
+        error: errorType,
+        message: error.message || 'An unexpected error occurred',
+        timestamp: new Date().toISOString()
       });
+    } else {
+      // 如果响应头已经发送，尝试结束响应
+      if (!res.destroyed && !res.finished) {
+        res.end();
+      }
     }
   }
 });
