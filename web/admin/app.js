@@ -186,6 +186,20 @@ const app = createApp({
                 callbackUrl: ''
             },
             
+            // 用户菜单和账户修改相关
+            userMenuOpen: false,
+            currentUser: {
+                username: ''
+            },
+            showChangePasswordModal: false,
+            changePasswordLoading: false,
+            changePasswordForm: {
+                newUsername: '',
+                currentPassword: '',
+                newPassword: '',
+                confirmPassword: ''
+            },
+            
         }
     },
     
@@ -201,6 +215,15 @@ const app = createApp({
         
         // 初始化防抖函数
         this.setTrendPeriod = this.debounce(this._setTrendPeriod, 300);
+        
+        // 添加全局点击事件监听器，用于关闭用户菜单
+        document.addEventListener('click', (event) => {
+            // 检查点击是否在用户菜单外部
+            const userMenuButton = event.target.closest('.relative');
+            if (!userMenuButton || !userMenuButton.querySelector('button[\@click*="userMenuOpen"]')) {
+                this.userMenuOpen = false;
+            }
+        });
         
         if (this.authToken) {
             this.isLoggedIn = true;
@@ -784,6 +807,10 @@ const app = createApp({
                     this.authToken = data.token;
                     localStorage.setItem('authToken', this.authToken);
                     this.isLoggedIn = true;
+                    
+                    // 记录当前用户名
+                    this.currentUser.username = this.loginForm.username;
+                    
                     this.loadDashboard();
                 } else {
                     this.loginError = data.message;
@@ -793,6 +820,75 @@ const app = createApp({
                 this.loginError = '登录失败，请检查网络连接';
             } finally {
                 this.loginLoading = false;
+            }
+        },
+        
+        // 用户菜单相关方法
+        openChangePasswordModal() {
+            this.userMenuOpen = false;
+            this.showChangePasswordModal = true;
+        },
+        
+        closeChangePasswordModal() {
+            this.showChangePasswordModal = false;
+            this.changePasswordForm = {
+                newUsername: '',
+                currentPassword: '',
+                newPassword: '',
+                confirmPassword: ''
+            };
+        },
+        
+        async changePassword() {
+            // 验证表单
+            if (this.changePasswordForm.newPassword !== this.changePasswordForm.confirmPassword) {
+                this.showToast('新密码和确认密码不一致', 'error');
+                return;
+            }
+            
+            if (this.changePasswordForm.newPassword.length < 8) {
+                this.showToast('新密码长度至少8位', 'error');
+                return;
+            }
+            
+            this.changePasswordLoading = true;
+            try {
+                const response = await fetch('/web/auth/change-password', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': 'Bearer ' + this.authToken
+                    },
+                    body: JSON.stringify({
+                        newUsername: this.changePasswordForm.newUsername || undefined,
+                        currentPassword: this.changePasswordForm.currentPassword,
+                        newPassword: this.changePasswordForm.newPassword
+                    })
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    this.showToast('账户信息修改成功，即将退出登录', 'success');
+                    this.closeChangePasswordModal();
+                    
+                    // 将新的用户名更新到本地状态
+                    if (this.changePasswordForm.newUsername) {
+                        this.currentUser.username = this.changePasswordForm.newUsername;
+                    }
+                    
+                    // 延迟2秒后自动退出登录
+                    setTimeout(() => {
+                        this.logout();
+                    }, 2000);
+                } else {
+                    this.showToast(result.message || '修改失败', 'error');
+                }
+            } catch (error) {
+                console.error('Change password error:', error);
+                this.showToast('网络错误，请稍后再试', 'error');
+            } finally {
+                this.changePasswordLoading = false;
             }
         },
         
