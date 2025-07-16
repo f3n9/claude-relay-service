@@ -721,8 +721,10 @@ class RedisClient {
       const key = `concurrency:${apiKeyId}`;
       const count = await this.client.incr(key);
       
-      // 设置过期时间为5分钟，防止计数器永远不清零
-      await this.client.expire(key, 300);
+      // 设置过期时间为180秒（3分钟），防止计数器永远不清零
+      // 正常情况下请求会在完成时主动减少计数，这只是一个安全保障
+      // 180秒足够支持较长的流式请求
+      await this.client.expire(key, 180);
       
       logger.database(`🔢 Incremented concurrency for key ${apiKeyId}: ${count}`);
       return count;

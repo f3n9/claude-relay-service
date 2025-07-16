@@ -45,6 +45,21 @@ router.post('/v1/messages', authenticateApiKey, async (req, res) => {
       res.setHeader('Connection', 'keep-alive');
       res.setHeader('Access-Control-Allow-Origin', '*');
       
+      // 为流式响应添加客户端断开检测，确保并发计数正确减少
+      if (req.concurrencyInfo) {
+        // 添加响应关闭事件监听器
+        res.on('close', () => {
+          logger.api(`🔌 Stream response closed for key: ${req.apiKey.id} (${req.apiKey.name}), triggering concurrency decrement`);
+          req.concurrencyInfo.decrementConcurrency();
+        });
+        
+        // 添加错误事件监听器
+        res.on('error', (error) => {
+          logger.api(`⚠️ Stream response error for key: ${req.apiKey.id} (${req.apiKey.name}): ${error.message}`);
+          req.concurrencyInfo.decrementConcurrency();
+        });
+      }
+      
       let usageDataCaptured = false;
       
       // 使用自定义流处理器来捕获usage数据
