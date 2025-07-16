@@ -65,6 +65,7 @@ const authenticateApiKey = async (req, res, next) => {
     const concurrencyLimit = validation.keyData.concurrencyLimit || 0;
     if (concurrencyLimit > 0) {
       const currentConcurrency = await redis.incrConcurrency(validation.keyData.id);
+      logger.api(`📈 Incremented concurrency for key: ${validation.keyData.id} (${validation.keyData.name}), current: ${currentConcurrency}, limit: ${concurrencyLimit}`);
       
       if (currentConcurrency > concurrencyLimit) {
         // 如果超过限制，立即减少计数
@@ -78,19 +79,38 @@ const authenticateApiKey = async (req, res, next) => {
         });
       }
       
-      // 在响应结束时减少并发计数
-      res.on('finish', () => {
-        redis.decrConcurrency(validation.keyData.id).catch(error => {
-          logger.error('Failed to decrement concurrency:', error);
-        });
+      // 使用标志位确保只减少一次
+      let concurrencyDecremented = false;
+      
+      const decrementConcurrency = async () => {
+        if (!concurrencyDecremented) {
+          concurrencyDecremented = true;
+          try {
+            const newCount = await redis.decrConcurrency(validation.keyData.id);
+            logger.api(`📉 Decremented concurrency for key: ${validation.keyData.id} (${validation.keyData.name}), new count: ${newCount}`);
+          } catch (error) {
+            logger.error(`Failed to decrement concurrency for key ${validation.keyData.id}:`, error);
+          }
+        }
+      };
+      
+      // 监听多个事件以确保在各种情况下都能正确减少计数
+      res.on('finish', decrementConcurrency);
+      res.on('error', decrementConcurrency);
+      req.on('close', () => {
+        logger.api(`🔌 Request closed for key: ${validation.keyData.id} (${validation.keyData.name})`);
+        decrementConcurrency();
+      });
+      req.on('aborted', () => {
+        logger.api(`⚠️ Request aborted for key: ${validation.keyData.id} (${validation.keyData.name})`);
+        decrementConcurrency();
       });
       
-      // 在响应错误时也减少并发计数
-      res.on('error', () => {
-        redis.decrConcurrency(validation.keyData.id).catch(error => {
-          logger.error('Failed to decrement concurrency on error:', error);
-        });
-      });
+      // 存储并发信息到请求对象，便于后续处理
+      req.concurrencyInfo = {
+        apiKeyId: validation.keyData.id,
+        decrementConcurrency
+      };
     }
 
     // 将验证信息添加到请求对象（只包含必要信息）

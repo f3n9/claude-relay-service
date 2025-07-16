@@ -132,12 +132,13 @@ class ApiKeyService {
     try {
       const apiKeys = await redis.getAllApiKeys();
       
-      // 为每个key添加使用统计
+      // 为每个key添加使用统计和当前并发数
       for (const key of apiKeys) {
         key.usage = await redis.getUsageStats(key.id);
         key.tokenLimit = parseInt(key.tokenLimit);
         key.requestLimit = parseInt(key.requestLimit);
         key.concurrencyLimit = parseInt(key.concurrencyLimit || 0);
+        key.currentConcurrency = await redis.getConcurrency(key.id);
         key.isActive = key.isActive === 'true';
         delete key.apiKey; // 不返回哈希后的key
       }

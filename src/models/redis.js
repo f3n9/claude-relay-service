@@ -724,6 +724,7 @@ class RedisClient {
       // 设置过期时间为5分钟，防止计数器永远不清零
       await this.client.expire(key, 300);
       
+      logger.database(`🔢 Incremented concurrency for key ${apiKeyId}: ${count}`);
       return count;
     } catch (error) {
       logger.error('❌ Failed to increment concurrency:', error);
@@ -735,14 +736,28 @@ class RedisClient {
   async decrConcurrency(apiKeyId) {
     try {
       const key = `concurrency:${apiKeyId}`;
-      const count = await this.client.decr(key);
       
-      // 如果计数降到0或以下，删除键
-      if (count <= 0) {
-        await this.client.del(key);
-        return 0;
-      }
+      // 使用Lua脚本确保原子性操作，防止计数器变成负数
+      const luaScript = `
+        local key = KEYS[1]
+        local current = tonumber(redis.call('get', key) or "0")
+        
+        if current <= 0 then
+          redis.call('del', key)
+          return 0
+        else
+          local new_value = redis.call('decr', key)
+          if new_value <= 0 then
+            redis.call('del', key)
+            return 0
+          else
+            return new_value
+          end
+        end
+      `;
       
+      const count = await this.client.eval(luaScript, 1, key);
+      logger.database(`🔢 Decremented concurrency for key ${apiKeyId}: ${count}`);
       return count;
     } catch (error) {
       logger.error('❌ Failed to decrement concurrency:', error);

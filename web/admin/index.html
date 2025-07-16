@@ -430,6 +430,14 @@
                                                         <span class="text-gray-600">并发限制:</span>
                                                         <span class="font-medium text-purple-600">{{ key.concurrencyLimit > 0 ? key.concurrencyLimit : '无限制' }}</span>
                                                     </div>
+                                                    <!-- 当前并发数 -->
+                                                    <div class="flex justify-between text-sm">
+                                                        <span class="text-gray-600">当前并发:</span>
+                                                        <span :class="['font-medium', key.currentConcurrency > 0 ? 'text-orange-600' : 'text-gray-600']">
+                                                            {{ key.currentConcurrency || 0 }}
+                                                            <span v-if="key.concurrencyLimit > 0" class="text-xs text-gray-500">/ {{ key.concurrencyLimit }}</span>
+                                                        </span>
+                                                    </div>
                                                     <!-- 输入/输出Token -->
                                                     <div class="flex justify-between text-xs text-gray-500">
                                                         <span>输入: {{ formatNumber((key.usage && key.usage.total && key.usage.total.inputTokens) || 0) }}</span>
