@@ -61,13 +61,46 @@ const authenticateApiKey = async (req, res, next) => {
     res.setHeader('X-RateLimit-Reset', rateLimitResult.resetTime);
     res.setHeader('X-RateLimit-Policy', `${rateLimitResult.limit};w=60`);
 
+    // 检查并发限制
+    const concurrencyLimit = validation.keyData.concurrencyLimit || 0;
+    if (concurrencyLimit > 0) {
+      const currentConcurrency = await redis.incrConcurrency(validation.keyData.id);
+      
+      if (currentConcurrency > concurrencyLimit) {
+        // 如果超过限制，立即减少计数
+        await redis.decrConcurrency(validation.keyData.id);
+        logger.security(`🚦 Concurrency limit exceeded for key: ${validation.keyData.id} (${validation.keyData.name}), current: ${currentConcurrency - 1}, limit: ${concurrencyLimit}`);
+        return res.status(429).json({
+          error: 'Concurrency limit exceeded',
+          message: `Too many concurrent requests. Limit: ${concurrencyLimit} concurrent requests`,
+          currentConcurrency: currentConcurrency - 1,
+          concurrencyLimit
+        });
+      }
+      
+      // 在响应结束时减少并发计数
+      res.on('finish', () => {
+        redis.decrConcurrency(validation.keyData.id).catch(error => {
+          logger.error('Failed to decrement concurrency:', error);
+        });
+      });
+      
+      // 在响应错误时也减少并发计数
+      res.on('error', () => {
+        redis.decrConcurrency(validation.keyData.id).catch(error => {
+          logger.error('Failed to decrement concurrency on error:', error);
+        });
+      });
+    }
+
     // 将验证信息添加到请求对象（只包含必要信息）
     req.apiKey = {
       id: validation.keyData.id,
       name: validation.keyData.name,
       tokenLimit: validation.keyData.tokenLimit,
       requestLimit: validation.keyData.requestLimit,
-      claudeAccountId: validation.keyData.claudeAccountId
+      claudeAccountId: validation.keyData.claudeAccountId,
+      concurrencyLimit: validation.keyData.concurrencyLimit
     };
     req.usage = validation.keyData.usage;
     

@@ -32,7 +32,8 @@ router.post('/api-keys', authenticateAdmin, async (req, res) => {
       tokenLimit,
       requestLimit,
       expiresAt,
-      claudeAccountId
+      claudeAccountId,
+      concurrencyLimit
     } = req.body;
 
     // 输入验证
@@ -56,13 +57,18 @@ router.post('/api-keys', authenticateAdmin, async (req, res) => {
       return res.status(400).json({ error: 'Request limit must be a non-negative integer' });
     }
 
+    if (concurrencyLimit !== undefined && concurrencyLimit !== null && concurrencyLimit !== '' && (!Number.isInteger(Number(concurrencyLimit)) || Number(concurrencyLimit) < 0)) {
+      return res.status(400).json({ error: 'Concurrency limit must be a non-negative integer' });
+    }
+
     const newKey = await apiKeyService.generateApiKey({
       name,
       description,
       tokenLimit,
       requestLimit,
       expiresAt,
-      claudeAccountId
+      claudeAccountId,
+      concurrencyLimit
     });
 
     logger.success(`🔑 Admin created new API key: ${name}`);
@@ -77,7 +83,24 @@ router.post('/api-keys', authenticateAdmin, async (req, res) => {
 router.put('/api-keys/:keyId', authenticateAdmin, async (req, res) => {
   try {
     const { keyId } = req.params;
-    const updates = req.body;
+    const { tokenLimit, concurrencyLimit } = req.body;
+
+    // 只允许更新tokenLimit和concurrencyLimit
+    const updates = {};
+    
+    if (tokenLimit !== undefined && tokenLimit !== null && tokenLimit !== '') {
+      if (!Number.isInteger(Number(tokenLimit)) || Number(tokenLimit) < 0) {
+        return res.status(400).json({ error: 'Token limit must be a non-negative integer' });
+      }
+      updates.tokenLimit = Number(tokenLimit);
+    }
+
+    if (concurrencyLimit !== undefined && concurrencyLimit !== null && concurrencyLimit !== '') {
+      if (!Number.isInteger(Number(concurrencyLimit)) || Number(concurrencyLimit) < 0) {
+        return res.status(400).json({ error: 'Concurrency limit must be a non-negative integer' });
+      }
+      updates.concurrencyLimit = Number(concurrencyLimit);
+    }
 
     await apiKeyService.updateApiKey(keyId, updates);
     

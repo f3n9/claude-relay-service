@@ -102,7 +102,8 @@ const app = createApp({
             apiKeyForm: {
                 name: '',
                 tokenLimit: '',
-                description: ''
+                description: '',
+                concurrencyLimit: ''
             },
             apiKeyModelStats: {}, // 存储每个key的模型统计数据
             expandedApiKeys: {}, // 跟踪展开的API Keys
@@ -130,6 +131,16 @@ const app = createApp({
                 name: '',
                 description: '',
                 showFullKey: false
+            },
+
+            // 编辑API Key
+            showEditApiKeyModal: false,
+            editApiKeyLoading: false,
+            editApiKeyForm: {
+                id: '',
+                name: '',
+                tokenLimit: '',
+                concurrencyLimit: ''
             },
             
             // 账户
@@ -966,7 +977,8 @@ const app = createApp({
                     body: JSON.stringify({
                         name: this.apiKeyForm.name,
                         tokenLimit: this.apiKeyForm.tokenLimit && this.apiKeyForm.tokenLimit.trim() ? parseInt(this.apiKeyForm.tokenLimit) : null,
-                        description: this.apiKeyForm.description || ''
+                        description: this.apiKeyForm.description || '',
+                        concurrencyLimit: this.apiKeyForm.concurrencyLimit && this.apiKeyForm.concurrencyLimit.trim() ? parseInt(this.apiKeyForm.concurrencyLimit) : 0
                     })
                 });
                 
@@ -984,7 +996,7 @@ const app = createApp({
                     
                     // 关闭创建弹窗并清理表单
                     this.showCreateApiKeyModal = false;
-                    this.apiKeyForm = { name: '', tokenLimit: '', description: '' };
+                    this.apiKeyForm = { name: '', tokenLimit: '', description: '', concurrencyLimit: '' };
                     
                     // 重新加载API Keys列表
                     await this.loadApiKeys();
@@ -1019,6 +1031,58 @@ const app = createApp({
             } catch (error) {
                 console.error('Error deleting API key:', error);
                 this.showToast('删除失败，请检查网络连接', 'error', '网络错误');
+            }
+        },
+
+        openEditApiKeyModal(key) {
+            this.editApiKeyForm = {
+                id: key.id,
+                name: key.name,
+                tokenLimit: key.tokenLimit || '',
+                concurrencyLimit: key.concurrencyLimit || ''
+            };
+            this.showEditApiKeyModal = true;
+        },
+
+        closeEditApiKeyModal() {
+            this.showEditApiKeyModal = false;
+            this.editApiKeyForm = {
+                id: '',
+                name: '',
+                tokenLimit: '',
+                concurrencyLimit: ''
+            };
+        },
+
+        async updateApiKey() {
+            this.editApiKeyLoading = true;
+            try {
+                const response = await fetch('/admin/api-keys/' + this.editApiKeyForm.id, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': 'Bearer ' + this.authToken
+                    },
+                    body: JSON.stringify({
+                        tokenLimit: this.editApiKeyForm.tokenLimit && this.editApiKeyForm.tokenLimit.toString().trim() !== '' ? parseInt(this.editApiKeyForm.tokenLimit) : 0,
+                        concurrencyLimit: this.editApiKeyForm.concurrencyLimit && this.editApiKeyForm.concurrencyLimit.toString().trim() !== '' ? parseInt(this.editApiKeyForm.concurrencyLimit) : 0
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    this.showToast('API Key 更新成功', 'success', '更新成功');
+                    this.closeEditApiKeyModal();
+                    await this.loadApiKeys();
+                } else {
+                    this.showToast(data.message || '更新失败', 'error', '更新失败');
+                }
+            } catch (error) {
+                console.error('Error updating API key:', error);
+                this.showToast('更新失败，请检查网络连接', 'error', '网络错误');
+            } finally {
+                this.editApiKeyLoading = false;
             }
         },
         

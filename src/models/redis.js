@@ -714,6 +714,53 @@ class RedisClient {
       logger.error('❌ Redis cleanup failed:', error);
     }
   }
+
+  // 增加并发计数
+  async incrConcurrency(apiKeyId) {
+    try {
+      const key = `concurrency:${apiKeyId}`;
+      const count = await this.client.incr(key);
+      
+      // 设置过期时间为5分钟，防止计数器永远不清零
+      await this.client.expire(key, 300);
+      
+      return count;
+    } catch (error) {
+      logger.error('❌ Failed to increment concurrency:', error);
+      throw error;
+    }
+  }
+
+  // 减少并发计数
+  async decrConcurrency(apiKeyId) {
+    try {
+      const key = `concurrency:${apiKeyId}`;
+      const count = await this.client.decr(key);
+      
+      // 如果计数降到0或以下，删除键
+      if (count <= 0) {
+        await this.client.del(key);
+        return 0;
+      }
+      
+      return count;
+    } catch (error) {
+      logger.error('❌ Failed to decrement concurrency:', error);
+      throw error;
+    }
+  }
+
+  // 获取当前并发数
+  async getConcurrency(apiKeyId) {
+    try {
+      const key = `concurrency:${apiKeyId}`;
+      const count = await this.client.get(key);
+      return parseInt(count || 0);
+    } catch (error) {
+      logger.error('❌ Failed to get concurrency:', error);
+      return 0;
+    }
+  }
 }
 
 module.exports = new RedisClient();

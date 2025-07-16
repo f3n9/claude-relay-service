@@ -18,7 +18,8 @@ class ApiKeyService {
       requestLimit = config.limits.defaultRequestLimit,
       expiresAt = null,
       claudeAccountId = null,
-      isActive = true
+      isActive = true,
+      concurrencyLimit = 0
     } = options;
 
     // 生成简单的API Key (64字符十六进制)
@@ -33,6 +34,7 @@ class ApiKeyService {
       apiKey: hashedKey,
       tokenLimit: String(tokenLimit ?? 0),
       requestLimit: String(requestLimit ?? 0),
+      concurrencyLimit: String(concurrencyLimit ?? 0),
       isActive: String(isActive),
       claudeAccountId: claudeAccountId || '',
       createdAt: new Date().toISOString(),
@@ -53,6 +55,7 @@ class ApiKeyService {
       description: keyData.description,
       tokenLimit: parseInt(keyData.tokenLimit),
       requestLimit: parseInt(keyData.requestLimit),
+      concurrencyLimit: parseInt(keyData.concurrencyLimit),
       isActive: keyData.isActive === 'true',
       claudeAccountId: keyData.claudeAccountId,
       createdAt: keyData.createdAt,
@@ -114,6 +117,7 @@ class ApiKeyService {
           claudeAccountId: keyData.claudeAccountId,
           tokenLimit: parseInt(keyData.tokenLimit),
           requestLimit: parseInt(keyData.requestLimit),
+          concurrencyLimit: parseInt(keyData.concurrencyLimit || 0),
           usage
         }
       };
@@ -133,6 +137,7 @@ class ApiKeyService {
         key.usage = await redis.getUsageStats(key.id);
         key.tokenLimit = parseInt(key.tokenLimit);
         key.requestLimit = parseInt(key.requestLimit);
+        key.concurrencyLimit = parseInt(key.concurrencyLimit || 0);
         key.isActive = key.isActive === 'true';
         delete key.apiKey; // 不返回哈希后的key
       }
@@ -153,7 +158,7 @@ class ApiKeyService {
       }
 
       // 允许更新的字段
-      const allowedUpdates = ['name', 'description', 'tokenLimit', 'requestLimit', 'isActive', 'claudeAccountId', 'expiresAt'];
+      const allowedUpdates = ['name', 'description', 'tokenLimit', 'requestLimit', 'concurrencyLimit', 'isActive', 'claudeAccountId', 'expiresAt'];
       const updatedData = { ...keyData };
 
       for (const [field, value] of Object.entries(updates)) {
