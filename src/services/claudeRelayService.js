@@ -15,7 +15,7 @@ class ClaudeRelayService {
   }
 
   // 🚀 转发请求到Claude API
-  async relayRequest(requestBody, apiKeyData, clientRequest, clientResponse) {
+  async relayRequest(requestBody, apiKeyData, clientRequest, clientResponse, clientHeaders) {
     let upstreamRequest = null;
     
     try {
@@ -57,6 +57,7 @@ class ClaudeRelayService {
         processedBody, 
         accessToken, 
         proxyAgent,
+        clientHeaders,
         (req) => { upstreamRequest = req; }
       );
       
@@ -190,10 +191,40 @@ class ClaudeRelayService {
     return null;
   }
 
+  // 🔧 过滤客户端请求头
+  _filterClientHeaders(clientHeaders) {
+    // 需要移除的敏感 headers
+    const sensitiveHeaders = [
+      'x-api-key',
+      'authorization',
+      'host',
+      'content-length',
+      'connection',
+      'proxy-authorization',
+      'content-encoding',
+      'transfer-encoding'
+    ];
+    
+    const filteredHeaders = {};
+    
+    // 转发客户端的非敏感 headers
+    Object.keys(clientHeaders || {}).forEach(key => {
+      const lowerKey = key.toLowerCase();
+      if (!sensitiveHeaders.includes(lowerKey)) {
+        filteredHeaders[key] = clientHeaders[key];
+      }
+    });
+    
+    return filteredHeaders;
+  }
+
   // 🔗 发送请求到Claude API
-  async _makeClaudeRequest(body, accessToken, proxyAgent, onRequest) {
+  async _makeClaudeRequest(body, accessToken, proxyAgent, clientHeaders, onRequest) {
     return new Promise((resolve, reject) => {
       const url = new URL(this.claudeApiUrl);
+      
+      // 获取过滤后的客户端 headers
+      const filteredHeaders = this._filterClientHeaders(clientHeaders);
       
       const options = {
         hostname: url.hostname,
@@ -204,11 +235,16 @@ class ClaudeRelayService {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${accessToken}`,
           'anthropic-version': this.apiVersion,
-          'User-Agent': 'claude-relay-service/1.0.0'
+          ...filteredHeaders
         },
         agent: proxyAgent,
         timeout: config.proxy.timeout
       };
+      
+      // 如果客户端没有提供 User-Agent，使用默认值
+      if (!filteredHeaders['User-Agent'] && !filteredHeaders['user-agent']) {
+        options.headers['User-Agent'] = 'claude-cli/1.0.53 (external, cli)';
+      }
 
       if (this.betaHeader) {
         options.headers['anthropic-beta'] = this.betaHeader;
@@ -262,7 +298,7 @@ class ClaudeRelayService {
   }
 
   // 🌊 处理流式响应（带usage数据捕获）
-  async relayStreamRequestWithUsageCapture(requestBody, apiKeyData, responseStream, usageCallback) {
+  async relayStreamRequestWithUsageCapture(requestBody, apiKeyData, responseStream, clientHeaders, usageCallback) {
     try {
       // 生成会话哈希用于sticky会话
       const sessionHash = sessionHelper.generateSessionHash(requestBody);
@@ -282,7 +318,7 @@ class ClaudeRelayService {
       const proxyAgent = await this._getProxyAgent(accountId);
       
       // 发送流式请求并捕获usage数据
-      return await this._makeClaudeStreamRequestWithUsageCapture(processedBody, accessToken, proxyAgent, responseStream, usageCallback);
+      return await this._makeClaudeStreamRequestWithUsageCapture(processedBody, accessToken, proxyAgent, clientHeaders, responseStream, usageCallback);
     } catch (error) {
       logger.error('❌ Claude stream relay with usage capture failed:', error);
       throw error;
@@ -290,9 +326,12 @@ class ClaudeRelayService {
   }
 
   // 🌊 发送流式请求到Claude API（带usage数据捕获）
-  async _makeClaudeStreamRequestWithUsageCapture(body, accessToken, proxyAgent, responseStream, usageCallback) {
+  async _makeClaudeStreamRequestWithUsageCapture(body, accessToken, proxyAgent, clientHeaders, responseStream, usageCallback) {
     return new Promise((resolve, reject) => {
       const url = new URL(this.claudeApiUrl);
+      
+      // 获取过滤后的客户端 headers
+      const filteredHeaders = this._filterClientHeaders(clientHeaders);
       
       const options = {
         hostname: url.hostname,
@@ -303,11 +342,16 @@ class ClaudeRelayService {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${accessToken}`,
           'anthropic-version': this.apiVersion,
-          'User-Agent': 'claude-relay-service/1.0.0'
+          ...filteredHeaders
         },
         agent: proxyAgent,
         timeout: config.proxy.timeout
       };
+      
+      // 如果客户端没有提供 User-Agent，使用默认值
+      if (!filteredHeaders['User-Agent'] && !filteredHeaders['user-agent']) {
+        options.headers['User-Agent'] = 'claude-cli/1.0.53 (external, cli)';
+      }
 
       if (this.betaHeader) {
         options.headers['anthropic-beta'] = this.betaHeader;
@@ -446,9 +490,12 @@ class ClaudeRelayService {
   }
 
   // 🌊 发送流式请求到Claude API
-  async _makeClaudeStreamRequest(body, accessToken, proxyAgent, responseStream) {
+  async _makeClaudeStreamRequest(body, accessToken, proxyAgent, clientHeaders, responseStream) {
     return new Promise((resolve, reject) => {
       const url = new URL(this.claudeApiUrl);
+      
+      // 获取过滤后的客户端 headers
+      const filteredHeaders = this._filterClientHeaders(clientHeaders);
       
       const options = {
         hostname: url.hostname,
@@ -459,11 +506,16 @@ class ClaudeRelayService {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${accessToken}`,
           'anthropic-version': this.apiVersion,
-          'User-Agent': 'claude-relay-service/1.0.0'
+          ...filteredHeaders
         },
         agent: proxyAgent,
         timeout: config.proxy.timeout
       };
+      
+      // 如果客户端没有提供 User-Agent，使用默认值
+      if (!filteredHeaders['User-Agent'] && !filteredHeaders['user-agent']) {
+        options.headers['User-Agent'] = 'claude-cli/1.0.53 (external, cli)';
+      }
 
       if (this.betaHeader) {
         options.headers['anthropic-beta'] = this.betaHeader;

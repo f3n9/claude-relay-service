@@ -50,7 +50,7 @@ router.post('/v1/messages', authenticateApiKey, async (req, res) => {
       let usageDataCaptured = false;
       
       // 使用自定义流处理器来捕获usage数据
-      await claudeRelayService.relayStreamRequestWithUsageCapture(req.body, req.apiKey, res, (usageData) => {
+      await claudeRelayService.relayStreamRequestWithUsageCapture(req.body, req.apiKey, res, req.headers, (usageData) => {
         // 回调函数：当检测到完整usage数据时记录真实token使用量
         logger.info('🎯 Usage callback triggered with complete data:', JSON.stringify(usageData, null, 2));
         
@@ -86,7 +86,7 @@ router.post('/v1/messages', authenticateApiKey, async (req, res) => {
         apiKeyName: req.apiKey.name
       });
       
-      const response = await claudeRelayService.relayRequest(req.body, req.apiKey, req, res);
+      const response = await claudeRelayService.relayRequest(req.body, req.apiKey, req, res, req.headers);
       
       logger.info('📡 Claude API response received', {
         statusCode: response.statusCode,
