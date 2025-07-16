@@ -114,7 +114,8 @@ router.post('/auth/login', async (req, res) => {
     res.json({
       success: true,
       token: sessionId,
-      expiresIn: config.security.adminSessionTimeout
+      expiresIn: config.security.adminSessionTimeout,
+      username: adminData.username // 返回真实用户名
     });
 
   } catch (error) {
@@ -247,6 +248,54 @@ router.post('/auth/change-password', async (req, res) => {
     logger.error('❌ Change password error:', error);
     res.status(500).json({
       error: 'Change password failed',
+      message: 'Internal server error'
+    });
+  }
+});
+
+// 👤 获取当前用户信息
+router.get('/auth/user', async (req, res) => {
+  try {
+    const token = req.headers['authorization']?.replace('Bearer ', '') || req.cookies?.adminToken;
+    
+    if (!token) {
+      return res.status(401).json({
+        error: 'No token provided',
+        message: 'Authentication required'
+      });
+    }
+
+    // 获取当前会话
+    const sessionData = await redis.getSession(token);
+    if (!sessionData) {
+      return res.status(401).json({
+        error: 'Invalid token',
+        message: 'Session expired or invalid'
+      });
+    }
+
+    // 获取管理员信息
+    const adminData = await redis.getSession('admin_credentials');
+    if (!adminData) {
+      return res.status(500).json({
+        error: 'Admin data not found',
+        message: 'Administrator credentials not found'
+      });
+    }
+
+    res.json({
+      success: true,
+      user: {
+        username: adminData.username,
+        loginTime: sessionData.loginTime,
+        lastActivity: sessionData.lastActivity
+      }
+    });
+
+  } catch (error) {
+    logger.error('❌ Get user info error:', error);
+    res.status(500).json({
+      error: 'Get user info failed',
       message: 'Internal server error'
     });
   }

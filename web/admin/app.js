@@ -228,6 +228,9 @@ const app = createApp({
         if (this.authToken) {
             this.isLoggedIn = true;
             
+            // 加载当前用户信息
+            this.loadCurrentUser();
+            
             // 初始化日期筛选器和图表数据
             this.initializeDateFilter();
             
@@ -808,8 +811,8 @@ const app = createApp({
                     localStorage.setItem('authToken', this.authToken);
                     this.isLoggedIn = true;
                     
-                    // 记录当前用户名
-                    this.currentUser.username = this.loginForm.username;
+                    // 记录当前用户名（使用服务器返回的真实用户名）
+                    this.currentUser.username = data.username;
                     
                     this.loadDashboard();
                 } else {
@@ -820,6 +823,26 @@ const app = createApp({
                 this.loginError = '登录失败，请检查网络连接';
             } finally {
                 this.loginLoading = false;
+            }
+        },
+        
+        // 加载当前用户信息
+        async loadCurrentUser() {
+            try {
+                const response = await fetch('/web/auth/user', {
+                    headers: { 'Authorization': 'Bearer ' + this.authToken }
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    this.currentUser.username = data.user.username;
+                    console.log('Loaded current user:', data.user.username);
+                } else {
+                    console.warn('Failed to load current user:', data.message);
+                }
+            } catch (error) {
+                console.error('Error loading current user:', error);
             }
         },
         
