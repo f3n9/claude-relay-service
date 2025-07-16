@@ -31,7 +31,7 @@
                 
                 <form @submit.prevent="login" class="space-y-6">
                     <div>
-                        <label class="block text-sm font-semibold text-white mb-3">用户名</label>
+                        <label class="block text-sm font-semibold text-gray-900 mb-3">用户名</label>
                         <input 
                             v-model="loginForm.username" 
                             type="text" 
@@ -42,7 +42,7 @@
                     </div>
                     
                     <div>
-                        <label class="block text-sm font-semibold text-white mb-3">密码</label>
+                        <label class="block text-sm font-semibold text-gray-900 mb-3">密码</label>
                         <input 
                             v-model="loginForm.password" 
                             type="password" 
@@ -63,7 +63,7 @@
                     </button>
                 </form>
                 
-                <div v-if="loginError" class="mt-6 p-4 bg-red-500/20 border border-red-500/30 rounded-xl text-red-200 text-sm text-center backdrop-blur-sm">
+                <div v-if="loginError" class="mt-6 p-4 bg-red-500/20 border border-red-500/30 rounded-xl text-red-800 text-sm text-center backdrop-blur-sm">
                     <i class="fas fa-exclamation-triangle mr-2"></i>{{ loginError }}
                 </div>
             </div>
@@ -97,8 +97,8 @@
                         <!-- 悬浮菜单 -->
                         <div 
                             v-if="userMenuOpen" 
-                            class="absolute right-0 top-full mt-2 w-48 bg-white rounded-xl shadow-xl border border-gray-200 py-2"
-                            style="z-index: 9999;"
+                            class="fixed right-6 top-20 w-48 bg-white rounded-xl shadow-xl border border-gray-200 py-2"
+                            style="z-index: 99999;"
                             @click.stop
                         >
                             <button 
