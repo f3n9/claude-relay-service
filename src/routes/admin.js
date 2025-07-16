@@ -808,23 +808,91 @@ router.get('/usage-costs', authenticateAdmin, async (req, res) => {
     } else if (period === 'monthly') {
       pattern = `usage:model:monthly:*:${currentMonth}`;
     } else {
-      // 全部时间，使用API Key汇总数据
-      for (const apiKey of apiKeys) {
-        if (apiKey.usage && apiKey.usage.total) {
-          const usage = {
-            input_tokens: apiKey.usage.total.inputTokens || 0,
-            output_tokens: apiKey.usage.total.outputTokens || 0,
-            cache_creation_input_tokens: apiKey.usage.total.cacheCreateTokens || 0,
-            cache_read_input_tokens: apiKey.usage.total.cacheReadTokens || 0
+      // 全部时间，先尝试从Redis获取所有历史模型统计数据
+      const allModelKeys = await client.keys('usage:model:*:*');
+      logger.info(`💰 Total period calculation: found ${allModelKeys.length} model keys`);
+      
+      if (allModelKeys.length > 0) {
+        // 如果有详细的模型统计数据，使用模型级别的计算
+        const modelUsageMap = new Map();
+        
+        for (const key of allModelKeys) {
+          // 解析模型名称
+          let modelMatch = key.match(/usage:model:(?:daily|monthly):(.+):\d{4}-\d{2}(?:-\d{2})?$/);
+          if (!modelMatch) continue;
+          
+          const model = modelMatch[1];
+          const data = await client.hgetall(key);
+          
+          if (data && Object.keys(data).length > 0) {
+            if (!modelUsageMap.has(model)) {
+              modelUsageMap.set(model, {
+                inputTokens: 0,
+                outputTokens: 0,
+                cacheCreateTokens: 0,
+                cacheReadTokens: 0
+              });
+            }
+            
+            const modelUsage = modelUsageMap.get(model);
+            modelUsage.inputTokens += parseInt(data.inputTokens) || 0;
+            modelUsage.outputTokens += parseInt(data.outputTokens) || 0;
+            modelUsage.cacheCreateTokens += parseInt(data.cacheCreateTokens) || 0;
+            modelUsage.cacheReadTokens += parseInt(data.cacheReadTokens) || 0;
+          }
+        }
+        
+        // 使用模型级别的数据计算费用
+        logger.info(`💰 Processing ${modelUsageMap.size} unique models for total cost calculation`);
+        
+        for (const [model, usage] of modelUsageMap) {
+          const usageData = {
+            input_tokens: usage.inputTokens,
+            output_tokens: usage.outputTokens,
+            cache_creation_input_tokens: usage.cacheCreateTokens,
+            cache_read_input_tokens: usage.cacheReadTokens
           };
           
-          // 计算未知模型的费用（汇总数据）
-          const costResult = CostCalculator.calculateCost(usage, 'unknown');
+          const costResult = CostCalculator.calculateCost(usageData, model);
           totalCosts.inputCost += costResult.costs.input;
           totalCosts.outputCost += costResult.costs.output;
           totalCosts.cacheCreateCost += costResult.costs.cacheWrite;
           totalCosts.cacheReadCost += costResult.costs.cacheRead;
           totalCosts.totalCost += costResult.costs.total;
+          
+          logger.info(`💰 Model ${model}: ${usage.inputTokens + usage.outputTokens + usage.cacheCreateTokens + usage.cacheReadTokens} tokens, cost: ${costResult.formatted.total}`);
+          
+          // 记录模型费用
+          modelCosts[model] = {
+            model,
+            requests: 0, // 历史汇总数据没有请求数
+            usage: usageData,
+            costs: costResult.costs,
+            formatted: costResult.formatted,
+            usingDynamicPricing: costResult.usingDynamicPricing
+          };
+        }
+      } else {
+        // 如果没有详细的模型统计数据，回退到API Key汇总数据
+        logger.warn('No detailed model statistics found, falling back to API Key aggregated data');
+        
+        for (const apiKey of apiKeys) {
+          if (apiKey.usage && apiKey.usage.total) {
+            const usage = {
+              input_tokens: apiKey.usage.total.inputTokens || 0,
+              output_tokens: apiKey.usage.total.outputTokens || 0,
+              cache_creation_input_tokens: apiKey.usage.total.cacheCreateTokens || 0,
+              cache_read_input_tokens: apiKey.usage.total.cacheReadTokens || 0
+            };
+            
+            // 使用加权平均价格计算（基于当前活跃模型的价格分布）
+            const costResult = CostCalculator.calculateCost(usage, 'claude-3-5-haiku-20241022');
+            totalCosts.inputCost += costResult.costs.input;
+            totalCosts.outputCost += costResult.costs.output;
+            totalCosts.cacheCreateCost += costResult.costs.cacheWrite;
+            totalCosts.cacheReadCost += costResult.costs.cacheRead;
+            totalCosts.totalCost += costResult.costs.total;
+          }
         }
       }
       
@@ -842,7 +910,7 @@ router.get('/usage-costs', authenticateAdmin, async (req, res) => {
               totalCost: CostCalculator.formatCost(totalCosts.totalCost)
             }
           },
-          modelCosts: [],
+          modelCosts: Object.values(modelCosts).sort((a, b) => b.costs.total - a.costs.total),
           pricingServiceStatus: pricingService.getStatus()
         }
       });
