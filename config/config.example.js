@@ -28,7 +28,8 @@ const config = {
     commandTimeout: 5000,
     retryDelayOnFailover: 100,
     maxRetriesPerRequest: 3,
-    lazyConnect: true
+    lazyConnect: true,
+    enableTLS: process.env.REDIS_ENABLE_TLS || false,
   },
 
   // 🎯 Claude API配置
