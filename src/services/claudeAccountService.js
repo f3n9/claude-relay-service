@@ -121,7 +121,10 @@ class ClaudeAccountService {
         headers: {
           'Content-Type': 'application/json',
           'Accept': 'application/json, text/plain, */*',
-          'User-Agent': 'claude-relay-service/1.0.0'
+          'User-Agent': 'claude-cli/1.0.53 (external, cli)',
+          'Accept-Language': 'en-US,en;q=0.9',
+          'Referer': 'https://claude.ai/',
+          'Origin': 'https://claude.ai'
         },
         httpsAgent: agent,
         timeout: 30000
@@ -182,7 +185,7 @@ class ClaudeAccountService {
       const expiresAt = parseInt(accountData.expiresAt);
       const now = Date.now();
       
-      if (!expiresAt || now >= (expiresAt - 10000)) { // 10秒提前刷新
+      if (!expiresAt || now >= (expiresAt - 60000)) { // 60秒提前刷新
         logger.info(`🔄 Token expired/expiring for account ${accountId}, attempting refresh...`);
         try {
           const refreshResult = await this.refreshAccountToken(accountId);

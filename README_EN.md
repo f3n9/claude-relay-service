@@ -193,7 +193,7 @@ module.exports = {
 
 ```bash
 # Initialize
-npm run setup # Will randomly generate admin account password info, stored in data/Init.json
+npm run setup # Will randomly generate admin account password info, stored in data/init.json
 
 # Start service
 npm run service:start:daemon   # Run in background (recommended)
@@ -210,7 +210,7 @@ npm run service:status
 
 Browser visit: `http://your-server-IP:3000/web`
 
-Default admin account: Look in data/Init.json
+Default admin account: Look in data/init.json
 
 ### 2. Add Claude Account
 
@@ -310,10 +310,16 @@ It's recommended to use nginx reverse proxy and configure SSL certificate: (The 
 **1. Install nginx and obtain SSL certificate**
 ```bash
 # Ubuntu/Debian
-sudo apt install nginx certbot python3-certbot-nginx
+sudo apt install nginx
+
+# Install acme.sh
+curl https://get.acme.sh | sh
+source ~/.bashrc
 
 # Get free SSL certificate (using Let's Encrypt as example)
-sudo certbot --nginx -d your-domain.com
+acme.sh --issue -d your-domain.com --nginx
+# Or use standalone mode
+# acme.sh --issue -d your-domain.com --standalone
 ```
 
 **2. nginx configuration example**

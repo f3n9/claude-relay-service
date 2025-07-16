@@ -194,7 +194,7 @@ module.exports = {
 
 ```bash
 # 初始化
-npm run setup # 会随机生成后台账号密码信息，存储在 data/Init.json
+npm run setup # 会随机生成后台账号密码信息，存储在 data/init.json
 
 # 启动服务
 npm run service:start:daemon   # 后台运行（推荐）
@@ -211,7 +211,7 @@ npm run service:status
 
 浏览器访问：`http://你的服务器IP:3000/web`
 
-默认管理员账号：data/Init.json 中寻找
+默认管理员账号：data/init.json 中寻找
 
 ### 2. 添加Claude账户
 
@@ -312,10 +312,16 @@ redis-cli ping
 **1. 安装nginx和获取SSL证书**
 ```bash
 # Ubuntu/Debian
-sudo apt install nginx certbot python3-certbot-nginx
+sudo apt install nginx
+
+# 安装 acme.sh
+curl https://get.acme.sh | sh
+source ~/.bashrc
 
 # 获取免费SSL证书（以Let's Encrypt为例）
-sudo certbot --nginx -d your-domain.com
+acme.sh --issue -d your-domain.com --nginx
+# 或者使用 standalone 模式
+# acme.sh --issue -d your-domain.com --standalone
 ```
 
 **2. nginx配置示例**
