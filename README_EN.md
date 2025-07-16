@@ -277,6 +277,36 @@ npm run service:stop
 - **Health Check**: `http://your-domain:3000/health` - Confirm service is normal
 - **Log Files**: Various log files in `logs/` directory
 
+### Upgrade Guide
+
+When a new version is released, follow these steps to upgrade the service:
+
+```bash
+# 1. Navigate to project directory
+cd claude-relay-service
+
+# 2. Pull latest code
+git pull origin main
+
+# If you encounter package-lock.json conflicts, use the remote version
+git checkout --theirs package-lock.json
+git add package-lock.json
+
+# 3. Install new dependencies (if any)
+npm install
+
+# 4. Restart service
+npm run service:restart:daemon
+
+# 5. Check service status
+npm run service:status
+```
+
+**Important Notes:**
+- Before upgrading, it's recommended to backup important configuration files (.env, config/config.js)
+- Check the changelog to understand if there are any breaking changes
+- Database structure changes will be migrated automatically if needed
+
 ### Common Issue Resolution
 
 **Can't connect to Redis?**

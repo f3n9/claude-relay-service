@@ -278,6 +278,36 @@ npm run service:stop
 - **健康检查**: `http://你的域名:3000/health` - 确认服务正常
 - **日志文件**: `logs/` 目录下的各种日志文件
 
+### 升级指南
+
+当有新版本发布时，按照以下步骤升级服务：
+
+```bash
+# 1. 进入项目目录
+cd claude-relay-service
+
+# 2. 拉取最新代码
+git pull origin main
+
+# 如果遇到 package-lock.json 冲突，使用远程版本
+git checkout --theirs package-lock.json
+git add package-lock.json
+
+# 3. 安装新的依赖（如果有）
+npm install
+
+# 4. 重启服务
+npm run service:restart:daemon
+
+# 5. 检查服务状态
+npm run service:status
+```
+
+**注意事项：**
+- 升级前建议备份重要配置文件（.env, config/config.js）
+- 查看更新日志了解是否有破坏性变更
+- 如果有数据库结构变更，会自动迁移
+
 ### 常见问题处理
 
 **Redis连不上？**
