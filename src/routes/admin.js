@@ -78,9 +78,9 @@ router.post('/api-keys', authenticateAdmin, async (req, res) => {
 router.put('/api-keys/:keyId', authenticateAdmin, async (req, res) => {
   try {
     const { keyId } = req.params;
-    const { tokenLimit, concurrencyLimit } = req.body;
+    const { tokenLimit, concurrencyLimit, claudeAccountId } = req.body;
 
-    // 只允许更新tokenLimit和concurrencyLimit
+    // 只允许更新tokenLimit、concurrencyLimit和claudeAccountId
     const updates = {};
     
     if (tokenLimit !== undefined && tokenLimit !== null && tokenLimit !== '') {
@@ -95,6 +95,11 @@ router.put('/api-keys/:keyId', authenticateAdmin, async (req, res) => {
         return res.status(400).json({ error: 'Concurrency limit must be a non-negative integer' });
       }
       updates.concurrencyLimit = Number(concurrencyLimit);
+    }
+
+    if (claudeAccountId !== undefined) {
+      // 空字符串表示解绑，null或空字符串都设置为空字符串
+      updates.claudeAccountId = claudeAccountId || '';
     }
 
     await apiKeyService.updateApiKey(keyId, updates);
@@ -244,11 +249,17 @@ router.post('/claude-accounts', authenticateAdmin, async (req, res) => {
       password,
       refreshToken,
       claudeAiOauth,
-      proxy
+      proxy,
+      accountType
     } = req.body;
 
     if (!name) {
       return res.status(400).json({ error: 'Name is required' });
+    }
+
+    // 验证accountType的有效性
+    if (accountType && !['shared', 'dedicated'].includes(accountType)) {
+      return res.status(400).json({ error: 'Invalid account type. Must be "shared" or "dedicated"' });
     }
 
     const newAccount = await claudeAccountService.createAccount({
@@ -258,10 +269,11 @@ router.post('/claude-accounts', authenticateAdmin, async (req, res) => {
       password,
       refreshToken,
       claudeAiOauth,
-      proxy
+      proxy,
+      accountType: accountType || 'shared' // 默认为共享类型
     });
 
-    logger.success(`🏢 Admin created new Claude account: ${name}`);
+    logger.success(`🏢 Admin created new Claude account: ${name} (${accountType || 'shared'})`);
     res.json({ success: true, data: newAccount });
   } catch (error) {
     logger.error('❌ Failed to create Claude account:', error);

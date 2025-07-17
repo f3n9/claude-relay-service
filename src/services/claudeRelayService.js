@@ -25,8 +25,8 @@ class ClaudeRelayService {
       // 生成会话哈希用于sticky会话
       const sessionHash = sessionHelper.generateSessionHash(requestBody);
       
-      // 选择可用的Claude账户（支持sticky会话）
-      const accountId = apiKeyData.claudeAccountId || await claudeAccountService.selectAvailableAccount(sessionHash);
+      // 选择可用的Claude账户（支持专属绑定和sticky会话）
+      const accountId = await claudeAccountService.selectAccountForApiKey(apiKeyData, sessionHash);
       
       logger.info(`📤 Processing API request for key: ${apiKeyData.name || apiKeyData.id}, account: ${accountId}${sessionHash ? `, session: ${sessionHash}` : ''}`);
       
@@ -393,8 +393,8 @@ class ClaudeRelayService {
       // 生成会话哈希用于sticky会话
       const sessionHash = sessionHelper.generateSessionHash(requestBody);
       
-      // 选择可用的Claude账户（支持sticky会话）
-      const accountId = apiKeyData.claudeAccountId || await claudeAccountService.selectAvailableAccount(sessionHash);
+      // 选择可用的Claude账户（支持专属绑定和sticky会话）
+      const accountId = await claudeAccountService.selectAccountForApiKey(apiKeyData, sessionHash);
       
       logger.info(`📡 Processing streaming API request with usage capture for key: ${apiKeyData.name || apiKeyData.id}, account: ${accountId}${sessionHash ? `, session: ${sessionHash}` : ''}`);
       
