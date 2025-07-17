@@ -230,9 +230,10 @@ const app = createApp({
         
         // 添加全局点击事件监听器，用于关闭用户菜单
         document.addEventListener('click', (event) => {
-            // 检查点击是否在用户菜单外部
-            const userMenuButton = event.target.closest('.relative');
-            if (!userMenuButton || !userMenuButton.querySelector('button[\@click*="userMenuOpen"]')) {
+            // 检查点击是否在用户菜单区域外部
+            const isClickInsideUserMenu = event.target.closest('.user-menu-container');
+            
+            if (!isClickInsideUserMenu) {
                 this.userMenuOpen = false;
             }
         });
