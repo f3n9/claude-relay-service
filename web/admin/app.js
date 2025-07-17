@@ -103,7 +103,8 @@ const app = createApp({
                 name: '',
                 tokenLimit: '',
                 description: '',
-                concurrencyLimit: ''
+                concurrencyLimit: '',
+                claudeAccountId: ''
             },
             apiKeyModelStats: {}, // 存储每个key的模型统计数据
             expandedApiKeys: {}, // 跟踪展开的API Keys
@@ -140,7 +141,8 @@ const app = createApp({
                 id: '',
                 name: '',
                 tokenLimit: '',
-                concurrencyLimit: ''
+                concurrencyLimit: '',
+                claudeAccountId: ''
             },
             
             // 账户
@@ -152,6 +154,7 @@ const app = createApp({
                 name: '',
                 description: '',
                 addType: 'oauth', // 'oauth' 或 'manual'
+                accountType: 'shared', // 'shared' 或 'dedicated'
                 accessToken: '',
                 refreshToken: '',
                 proxyType: '',
@@ -168,6 +171,8 @@ const app = createApp({
                 id: '',
                 name: '',
                 description: '',
+                accountType: 'shared',
+                originalAccountType: 'shared',
                 accessToken: '',
                 refreshToken: '',
                 proxyType: '',
@@ -207,6 +212,13 @@ const app = createApp({
         // 动态计算BASE_URL
         currentBaseUrl() {
             return `${window.location.protocol}//${window.location.host}/api/`;
+        },
+        
+        // 获取专属账号列表
+        dedicatedAccounts() {
+            return this.accounts.filter(account => 
+                account.accountType === 'dedicated' && account.isActive === true
+            );
         }
     },
     
@@ -269,6 +281,17 @@ const app = createApp({
     },
     
     methods: {
+        // 获取绑定账号名称
+        getBoundAccountName(accountId) {
+            const account = this.accounts.find(acc => acc.id === accountId);
+            return account ? account.name : '未知账号';
+        },
+        
+        // 获取绑定到特定账号的API Key数量
+        getBoundApiKeysCount(accountId) {
+            return this.apiKeys.filter(key => key.claudeAccountId === accountId).length;
+        },
+        
         // Toast 通知方法
         showToast(message, type = 'info', title = null, duration = 5000) {
             const id = ++this.toastIdCounter;
@@ -356,6 +379,8 @@ const app = createApp({
                 id: account.id,
                 name: account.name,
                 description: account.description || '',
+                accountType: account.accountType || 'shared',
+                originalAccountType: account.accountType || 'shared',
                 accessToken: '',
                 refreshToken: '',
                 proxyType: account.proxy ? account.proxy.type : '',
@@ -374,6 +399,8 @@ const app = createApp({
                 id: '',
                 name: '',
                 description: '',
+                accountType: 'shared',
+                originalAccountType: 'shared',
                 accessToken: '',
                 refreshToken: '',
                 proxyType: '',
@@ -388,10 +415,21 @@ const app = createApp({
         async updateAccount() {
             this.editAccountLoading = true;
             try {
+                // 验证账户类型切换
+                if (this.editAccountForm.accountType === 'shared' && 
+                    this.editAccountForm.originalAccountType === 'dedicated') {
+                    const boundKeysCount = this.getBoundApiKeysCount(this.editAccountForm.id);
+                    if (boundKeysCount > 0) {
+                        this.showToast(`无法切换到共享账户，该账户绑定了 ${boundKeysCount} 个API Key，请先解绑所有API Key`, 'error', '切换失败');
+                        return;
+                    }
+                }
+
                 // 构建更新数据
                 let updateData = {
                     name: this.editAccountForm.name,
-                    description: this.editAccountForm.description
+                    description: this.editAccountForm.description,
+                    accountType: this.editAccountForm.accountType
                 };
                 
                 // 只在有值时才更新 token
@@ -465,6 +503,7 @@ const app = createApp({
                 name: '',
                 description: '',
                 addType: 'oauth',
+                accountType: 'shared',
                 accessToken: '',
                 refreshToken: '',
                 proxyType: '',
@@ -593,7 +632,8 @@ const app = createApp({
                         name: this.accountForm.name,
                         description: this.accountForm.description,
                         claudeAiOauth: exchangeData.data.claudeAiOauth,
-                        proxy: proxy
+                        proxy: proxy,
+                        accountType: this.accountForm.accountType
                     })
                 });
                 
@@ -665,7 +705,8 @@ const app = createApp({
                         name: this.accountForm.name,
                         description: this.accountForm.description,
                         claudeAiOauth: manualOauthData,
-                        proxy: proxy
+                        proxy: proxy,
+                        accountType: this.accountForm.accountType
                     })
                 });
                 
@@ -1054,6 +1095,10 @@ const app = createApp({
                 
                 if (data.success) {
                     this.accounts = data.data || [];
+                    // 为每个账号计算绑定的API Key数量
+                    this.accounts.forEach(account => {
+                        account.boundApiKeysCount = this.apiKeys.filter(key => key.claudeAccountId === account.id).length;
+                    });
                 }
             } catch (error) {
                 console.error('Failed to load accounts:', error);
@@ -1097,7 +1142,8 @@ const app = createApp({
                         name: this.apiKeyForm.name,
                         tokenLimit: this.apiKeyForm.tokenLimit && this.apiKeyForm.tokenLimit.trim() ? parseInt(this.apiKeyForm.tokenLimit) : null,
                         description: this.apiKeyForm.description || '',
-                        concurrencyLimit: this.apiKeyForm.concurrencyLimit && this.apiKeyForm.concurrencyLimit.trim() ? parseInt(this.apiKeyForm.concurrencyLimit) : 0
+                        concurrencyLimit: this.apiKeyForm.concurrencyLimit && this.apiKeyForm.concurrencyLimit.trim() ? parseInt(this.apiKeyForm.concurrencyLimit) : 0,
+                        claudeAccountId: this.apiKeyForm.claudeAccountId || null
                     })
                 });
                 
@@ -1115,7 +1161,7 @@ const app = createApp({
                     
                     // 关闭创建弹窗并清理表单
                     this.showCreateApiKeyModal = false;
-                    this.apiKeyForm = { name: '', tokenLimit: '', description: '', concurrencyLimit: '' };
+                    this.apiKeyForm = { name: '', tokenLimit: '', description: '', concurrencyLimit: '', claudeAccountId: '' };
                     
                     // 重新加载API Keys列表
                     await this.loadApiKeys();
@@ -1158,7 +1204,8 @@ const app = createApp({
                 id: key.id,
                 name: key.name,
                 tokenLimit: key.tokenLimit || '',
-                concurrencyLimit: key.concurrencyLimit || ''
+                concurrencyLimit: key.concurrencyLimit || '',
+                claudeAccountId: key.claudeAccountId || ''
             };
             this.showEditApiKeyModal = true;
         },
@@ -1169,7 +1216,8 @@ const app = createApp({
                 id: '',
                 name: '',
                 tokenLimit: '',
-                concurrencyLimit: ''
+                concurrencyLimit: '',
+                claudeAccountId: ''
             };
         },
 
@@ -1184,7 +1232,8 @@ const app = createApp({
                     },
                     body: JSON.stringify({
                         tokenLimit: this.editApiKeyForm.tokenLimit && this.editApiKeyForm.tokenLimit.toString().trim() !== '' ? parseInt(this.editApiKeyForm.tokenLimit) : 0,
-                        concurrencyLimit: this.editApiKeyForm.concurrencyLimit && this.editApiKeyForm.concurrencyLimit.toString().trim() !== '' ? parseInt(this.editApiKeyForm.concurrencyLimit) : 0
+                        concurrencyLimit: this.editApiKeyForm.concurrencyLimit && this.editApiKeyForm.concurrencyLimit.toString().trim() !== '' ? parseInt(this.editApiKeyForm.concurrencyLimit) : 0,
+                        claudeAccountId: this.editApiKeyForm.claudeAccountId || null
                     })
                 });
                 
@@ -1206,6 +1255,13 @@ const app = createApp({
         },
         
         async deleteAccount(accountId) {
+            // 检查是否有API Key绑定到此账号
+            const boundKeysCount = this.getBoundApiKeysCount(accountId);
+            if (boundKeysCount > 0) {
+                this.showToast(`无法删除此账号，有 ${boundKeysCount} 个API Key绑定到此账号，请先解绑所有API Key`, 'error', '删除失败');
+                return;
+            }
+            
             if (!confirm('确定要删除这个 Claude 账户吗？')) return;
             
             try {
