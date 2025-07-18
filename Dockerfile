@@ -34,10 +34,10 @@ COPY --chown=claude:nodejs . .
 COPY --chown=claude:nodejs docker-entrypoint.sh /usr/local/bin/
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
-# 📁 创建必要目录并设置权限 - 先创建目录，再设置所有者
+# 📁 创建必要目录并设置权限 - 一次性解决所有权限问题
 RUN mkdir -p logs data temp && \
-    chown -R claude:nodejs /app/logs /app/data /app/temp /app/config && \
-    chmod 755 /app && \
+    chown -R claude:nodejs /app && \
+    chmod 775 /app && \
     chmod 775 /app/logs /app/data /app/temp /app/config
 
 # 🔧 预先创建配置文件避免权限问题

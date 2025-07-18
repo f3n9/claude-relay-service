@@ -44,12 +44,32 @@ if [ -f "/app/.env" ]; then
     fi
   fi
   
-  # 更新 .env 文件中的密钥
-  sed -i "s/JWT_SECRET=.*/JWT_SECRET=${JWT_SECRET}/" /app/.env
-  sed -i "s/ENCRYPTION_KEY=.*/ENCRYPTION_KEY=${ENCRYPTION_KEY}/" /app/.env
+  # 使用更安全的方式更新 .env 文件 - 创建临时文件避免sed权限问题
+  ENV_TEMP="/tmp/env_temp_$$"
   
-  # 设置 Redis 配置以连接到容器内的 Redis
-  sed -i "s/REDIS_HOST=.*/REDIS_HOST=redis/" /app/.env
+  # 替换JWT_SECRET
+  awk -v new_secret="$JWT_SECRET" '
+    /^JWT_SECRET=/ { print "JWT_SECRET=" new_secret; next }
+    { print }
+  ' /app/.env > "$ENV_TEMP"
+  
+  # 替换ENCRYPTION_KEY
+  awk -v new_key="$ENCRYPTION_KEY" '
+    /^ENCRYPTION_KEY=/ { print "ENCRYPTION_KEY=" new_key; next }
+    { print }
+  ' "$ENV_TEMP" > "$ENV_TEMP.2"
+  
+  # 替换REDIS_HOST
+  awk '
+    /^REDIS_HOST=/ { print "REDIS_HOST=redis"; next }
+    { print }
+  ' "$ENV_TEMP.2" > "$ENV_TEMP.3"
+  
+  # 复制回原文件
+  cp "$ENV_TEMP.3" /app/.env
+  
+  # 清理临时文件
+  rm -f "$ENV_TEMP" "$ENV_TEMP.2" "$ENV_TEMP.3"
   
   echo "✅ .env 已配置"
 else
