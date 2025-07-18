@@ -44,32 +44,10 @@ if [ -f "/app/.env" ]; then
     fi
   fi
   
-  # 使用更安全的方式更新 .env 文件 - 创建临时文件避免sed权限问题
-  ENV_TEMP="/tmp/env_temp_$$"
-  
-  # 替换JWT_SECRET
-  awk -v new_secret="$JWT_SECRET" '
-    /^JWT_SECRET=/ { print "JWT_SECRET=" new_secret; next }
-    { print }
-  ' /app/.env > "$ENV_TEMP"
-  
-  # 替换ENCRYPTION_KEY
-  awk -v new_key="$ENCRYPTION_KEY" '
-    /^ENCRYPTION_KEY=/ { print "ENCRYPTION_KEY=" new_key; next }
-    { print }
-  ' "$ENV_TEMP" > "$ENV_TEMP.2"
-  
-  # 替换REDIS_HOST
-  awk '
-    /^REDIS_HOST=/ { print "REDIS_HOST=redis"; next }
-    { print }
-  ' "$ENV_TEMP.2" > "$ENV_TEMP.3"
-  
-  # 复制回原文件
-  cp "$ENV_TEMP.3" /app/.env
-  
-  # 清理临时文件
-  rm -f "$ENV_TEMP" "$ENV_TEMP.2" "$ENV_TEMP.3"
+  # 直接使用sed修改.env文件 - root用户无权限问题
+  sed -i "s/JWT_SECRET=.*/JWT_SECRET=${JWT_SECRET}/" /app/.env
+  sed -i "s/ENCRYPTION_KEY=.*/ENCRYPTION_KEY=${ENCRYPTION_KEY}/" /app/.env
+  sed -i "s/REDIS_HOST=.*/REDIS_HOST=redis/" /app/.env
   
   echo "✅ .env 已配置"
 else
@@ -85,10 +63,6 @@ export ENCRYPTION_KEY
 if [ ! -f "/app/data/init.json" ]; then
   echo "📋 首次启动，执行初始化设置..."
   
-  # 调试权限信息
-  echo "🔍 当前用户: $(whoami)"
-  echo "🔍 data 目录权限: $(ls -ld /app/data 2>/dev/null || echo 'directory not found')"
-  echo "🔍 data 目录内容: $(ls -la /app/data 2>/dev/null || echo 'directory empty or not accessible')"
   
   # 如果设置了环境变量，显示提示
   if [ -n "$ADMIN_USERNAME" ] || [ -n "$ADMIN_PASSWORD" ]; then

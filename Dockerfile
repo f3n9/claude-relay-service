@@ -13,10 +13,6 @@ RUN apk add --no-cache \
     sed \
     && rm -rf /var/cache/apk/*
 
-# 👤 创建应用用户
-RUN addgroup -g 1001 -S nodejs && \
-    adduser -S claude -u 1001 -G nodejs
-
 # 📁 设置工作目录
 WORKDIR /app
 
@@ -28,30 +24,22 @@ RUN npm ci --only=production && \
     npm cache clean --force
 
 # 📋 复制应用代码
-COPY --chown=claude:nodejs . .
+COPY . .
 
 # 🔧 复制并设置启动脚本权限
-COPY --chown=claude:nodejs docker-entrypoint.sh /usr/local/bin/
+COPY docker-entrypoint.sh /usr/local/bin/
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
-# 📁 创建必要目录并设置权限 - 一次性解决所有权限问题
-RUN mkdir -p logs data temp && \
-    chown -R claude:nodejs /app && \
-    chmod 775 /app && \
-    chmod 775 /app/logs /app/data /app/temp /app/config
+# 📁 创建必要目录
+RUN mkdir -p logs data temp
 
-# 🔧 预先创建配置文件避免权限问题
+# 🔧 预先创建配置文件
 RUN if [ ! -f "/app/config/config.js" ] && [ -f "/app/config/config.example.js" ]; then \
         cp /app/config/config.example.js /app/config/config.js; \
     fi && \
     if [ ! -f "/app/.env" ] && [ -f "/app/.env.example" ]; then \
         cp /app/.env.example /app/.env; \
-    fi && \
-    chown claude:nodejs /app/config/config.js /app/.env 2>/dev/null || true && \
-    chmod 664 /app/config/config.js /app/.env 2>/dev/null || true
-
-# 🔐 切换到非 root 用户
-USER claude
+    fi
 
 # 🌐 暴露端口
 EXPOSE 3000
