@@ -34,9 +34,20 @@ COPY --chown=claude:nodejs . .
 COPY --chown=claude:nodejs docker-entrypoint.sh /usr/local/bin/
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
-# 📁 创建必要目录
+# 📁 创建必要目录并设置权限
 RUN mkdir -p logs data temp && \
-    chown -R claude:nodejs logs data temp
+    chown -R claude:nodejs /app logs data temp && \
+    chmod -R 755 /app && \
+    chmod -R 775 logs data temp
+
+# 🔧 预先创建配置文件避免权限问题
+RUN if [ ! -f "/app/config/config.js" ] && [ -f "/app/config/config.example.js" ]; then \
+        cp /app/config/config.example.js /app/config/config.js; \
+    fi && \
+    if [ ! -f "/app/.env" ] && [ -f "/app/.env.example" ]; then \
+        cp /app/.env.example /app/.env; \
+    fi && \
+    chown claude:nodejs /app/config/config.js /app/.env 2>/dev/null || true
 
 # 🔐 切换到非 root 用户
 USER claude

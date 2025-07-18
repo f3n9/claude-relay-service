@@ -22,59 +22,39 @@ if [ ! -f "/app/config/config.js" ]; then
   fi
 fi
 
-# 检查并创建 .env 文件
-if [ ! -f "/app/.env" ]; then
-  echo "📋 检测到 .env 不存在，从模板创建..."
-  if [ -f "/app/.env.example" ]; then
-    cp /app/.env.example /app/.env
-    
-    # 生成随机的 JWT_SECRET (64字符)
-    if [ -z "$JWT_SECRET" ]; then
-      JWT_SECRET=$(generate_random_string 64)
-      echo "🔑 生成 JWT_SECRET"
-    fi
-    
-    # 生成随机的 ENCRYPTION_KEY (32字符)
-    if [ -z "$ENCRYPTION_KEY" ]; then
-      ENCRYPTION_KEY=$(generate_random_string 32)
-      echo "🔑 生成 ENCRYPTION_KEY"
-    fi
-    
-    # 更新 .env 文件中的密钥
-    sed -i "s/JWT_SECRET=.*/JWT_SECRET=${JWT_SECRET}/" /app/.env
-    sed -i "s/ENCRYPTION_KEY=.*/ENCRYPTION_KEY=${ENCRYPTION_KEY}/" /app/.env
-    
-    # 设置 Redis 配置以连接到容器内的 Redis
-    sed -i "s/REDIS_HOST=.*/REDIS_HOST=redis/" /app/.env
-    
-    echo "✅ .env 已创建并配置"
-  else
-    echo "❌ 错误: .env.example 不存在"
-    exit 1
-  fi
-else
-  echo "✅ 检测到已有 .env 文件"
+# 检查并配置 .env 文件（文件已在构建时创建）
+if [ -f "/app/.env" ]; then
+  echo "📋 配置 .env 文件..."
   
-  # 确保环境变量中有必要的密钥
+  # 生成随机的 JWT_SECRET (64字符)
   if [ -z "$JWT_SECRET" ]; then
-    # 从 .env 文件读取
     JWT_SECRET=$(grep "^JWT_SECRET=" /app/.env | cut -d'=' -f2)
     if [ -z "$JWT_SECRET" ] || [ "$JWT_SECRET" = "your-jwt-secret-here" ]; then
       JWT_SECRET=$(generate_random_string 64)
-      sed -i "s/JWT_SECRET=.*/JWT_SECRET=${JWT_SECRET}/" /app/.env
-      echo "🔑 更新 JWT_SECRET"
+      echo "🔑 生成 JWT_SECRET"
     fi
   fi
   
+  # 生成随机的 ENCRYPTION_KEY (32字符)
   if [ -z "$ENCRYPTION_KEY" ]; then
-    # 从 .env 文件读取
     ENCRYPTION_KEY=$(grep "^ENCRYPTION_KEY=" /app/.env | cut -d'=' -f2)
     if [ -z "$ENCRYPTION_KEY" ] || [ "$ENCRYPTION_KEY" = "your-encryption-key-here" ]; then
       ENCRYPTION_KEY=$(generate_random_string 32)
-      sed -i "s/ENCRYPTION_KEY=.*/ENCRYPTION_KEY=${ENCRYPTION_KEY}/" /app/.env
-      echo "🔑 更新 ENCRYPTION_KEY"
+      echo "🔑 生成 ENCRYPTION_KEY"
     fi
   fi
+  
+  # 更新 .env 文件中的密钥
+  sed -i "s/JWT_SECRET=.*/JWT_SECRET=${JWT_SECRET}/" /app/.env
+  sed -i "s/ENCRYPTION_KEY=.*/ENCRYPTION_KEY=${ENCRYPTION_KEY}/" /app/.env
+  
+  # 设置 Redis 配置以连接到容器内的 Redis
+  sed -i "s/REDIS_HOST=.*/REDIS_HOST=redis/" /app/.env
+  
+  echo "✅ .env 已配置"
+else
+  echo "❌ 错误: .env 文件不存在"
+  exit 1
 fi
 
 # 导出环境变量
