@@ -6,8 +6,8 @@
 [![Node.js](https://img.shields.io/badge/Node.js-18+-green.svg)](https://nodejs.org/)
 [![Redis](https://img.shields.io/badge/Redis-6+-red.svg)](https://redis.io/)
 [![Docker](https://img.shields.io/badge/Docker-Ready-blue.svg)](https://www.docker.com/)
-[![Docker Build](https://github.com/your-repo/claude-relay-service/actions/workflows/docker-publish.yml/badge.svg)](https://github.com/your-repo/claude-relay-service/actions/workflows/docker-publish.yml)
-[![Docker Pulls](https://img.shields.io/docker/pulls/yourusername/claude-relay-service)](https://hub.docker.com/r/yourusername/claude-relay-service)
+[![Docker Build](https://github.com/Wei-Shaw/claude-relay-service/actions/workflows/docker-publish.yml/badge.svg)](https://github.com/Wei-Shaw/claude-relay-service/actions/workflows/docker-publish.yml)
+[![Docker Pulls](https://img.shields.io/docker/pulls/weishaw/claude-relay-service)](https://hub.docker.com/r/weishaw/claude-relay-service)
 
 **🔐 自行搭建Claude API中转服务，支持多账户管理** 
 
@@ -152,7 +152,7 @@ sudo systemctl start redis
 
 ```bash
 # 下载项目
-git clone https://github.com/Wei-Shaw/claude-relay-service.git
+git clone https://github.com/Wei-Shaw//claude-relay-service.git
 cd claude-relay-service
 
 # 安装依赖
@@ -214,9 +214,11 @@ npm run service:status
 
 ### 使用 Docker Hub 镜像（最简单）
 
+> 🚀 推荐使用官方镜像，自动构建，始终保持最新版本
+
 ```bash
 # 拉取镜像（支持 amd64 和 arm64）
-docker pull yourusername/claude-relay-service:latest
+docker pull weishaw/claude-relay-service:latest
 
 # 使用 docker run 运行
 docker run -d \
@@ -226,7 +228,7 @@ docker run -d \
   -v $(pwd)/logs:/app/logs \
   -e ADMIN_USERNAME=my_admin \
   -e ADMIN_PASSWORD=my_secure_password \
-  yourusername/claude-relay-service:latest
+  weishaw/claude-relay-service:latest
 
 # 或使用 docker-compose（推荐）
 # 创建 docker-compose.yml 文件：
@@ -234,7 +236,7 @@ cat > docker-compose.yml << 'EOF'
 version: '3.8'
 services:
   claude-relay:
-    image: yourusername/claude-relay-service:latest
+    image: weishaw/claude-relay-service:latest
     container_name: claude-relay-service
     restart: unless-stopped
     ports:
@@ -268,7 +270,7 @@ docker-compose up -d
 
 ```bash
 # 1. 克隆项目
-git clone https://github.com/your-repo/claude-relay-service.git
+git clone https://github.com/Wei-Shaw//claude-relay-service.git
 cd claude-relay-service
 
 # 2. 设置管理员账号密码（可选）
