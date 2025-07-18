@@ -65,6 +65,11 @@ export ENCRYPTION_KEY
 if [ ! -f "/app/data/init.json" ]; then
   echo "📋 首次启动，执行初始化设置..."
   
+  # 调试权限信息
+  echo "🔍 当前用户: $(whoami)"
+  echo "🔍 data 目录权限: $(ls -ld /app/data 2>/dev/null || echo 'directory not found')"
+  echo "🔍 data 目录内容: $(ls -la /app/data 2>/dev/null || echo 'directory empty or not accessible')"
+  
   # 如果设置了环境变量，显示提示
   if [ -n "$ADMIN_USERNAME" ] || [ -n "$ADMIN_PASSWORD" ]; then
     echo "📌 检测到预设的管理员凭据"

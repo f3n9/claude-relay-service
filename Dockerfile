@@ -36,9 +36,9 @@ RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
 # 📁 创建必要目录并设置权限
 RUN mkdir -p logs data temp && \
-    chown -R claude:nodejs /app logs data temp && \
-    chmod -R 755 /app && \
-    chmod -R 775 logs data temp
+    chown -R claude:nodejs /app && \
+    chmod 755 /app && \
+    chmod 775 logs data temp config
 
 # 🔧 预先创建配置文件避免权限问题
 RUN if [ ! -f "/app/config/config.js" ] && [ -f "/app/config/config.example.js" ]; then \
@@ -47,7 +47,8 @@ RUN if [ ! -f "/app/config/config.js" ] && [ -f "/app/config/config.example.js" 
     if [ ! -f "/app/.env" ] && [ -f "/app/.env.example" ]; then \
         cp /app/.env.example /app/.env; \
     fi && \
-    chown claude:nodejs /app/config/config.js /app/.env 2>/dev/null || true
+    chown claude:nodejs /app/config/config.js /app/.env 2>/dev/null || true && \
+    chmod 664 /app/config/config.js /app/.env 2>/dev/null || true
 
 # 🔐 切换到非 root 用户
 USER claude
