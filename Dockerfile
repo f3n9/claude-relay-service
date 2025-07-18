@@ -10,6 +10,7 @@ LABEL version="1.0.0"
 RUN apk add --no-cache \
     curl \
     dumb-init \
+    sed \
     && rm -rf /var/cache/apk/*
 
 # 👤 创建应用用户
