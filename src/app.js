@@ -270,6 +270,13 @@ class Application {
         logger.info(`📊 Metrics: http://${config.server.host}:${config.server.port}/metrics`);
       });
 
+      // 设置服务器超时时间，与代理超时时间一致
+      const serverTimeout = config.proxy.timeout || 300000; // 默认5分钟
+      this.server.timeout = serverTimeout;
+      this.server.keepAliveTimeout = serverTimeout + 5000; // keepAlive 稍长一点
+      logger.info(`⏱️  Server timeout set to ${serverTimeout}ms (${serverTimeout/1000}s)`);
+      
+
       // 🔄 定期清理任务
       this.startCleanupTasks();
       
