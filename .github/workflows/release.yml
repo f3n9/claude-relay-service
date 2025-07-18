@@ -1,0 +1,48 @@
+name: Create Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Generate changelog
+      id: changelog
+      uses: orhun/git-cliff-action@v3
+      with:
+        config: .github/cliff.toml
+        args: --latest --strip header
+
+    - name: Create Release
+      uses: softprops/action-gh-release@v1
+      with:
+        body: |
+          ## 🐳 Docker 镜像
+          
+          ```bash
+          docker pull ${{ secrets.DOCKERHUB_USERNAME }}/claude-relay-service:${{ github.ref_name }}
+          docker pull ${{ secrets.DOCKERHUB_USERNAME }}/claude-relay-service:latest
+          ```
+          
+          ## 📦 主要更新
+          
+          ${{ steps.changelog.outputs.content }}
+          
+          ## 📋 完整更新日志
+          
+          查看 [CHANGELOG.md](https://github.com/${{ github.repository }}/blob/main/CHANGELOG.md)
+          
+        draft: false
+        prerelease: false
+        generate_release_notes: true

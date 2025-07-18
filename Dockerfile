@@ -29,6 +29,10 @@ RUN npm ci --only=production && \
 # 📋 复制应用代码
 COPY --chown=claude:nodejs . .
 
+# 🔧 复制并设置启动脚本权限
+COPY --chown=claude:nodejs docker-entrypoint.sh /usr/local/bin/
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh
+
 # 📁 创建必要目录
 RUN mkdir -p logs data temp && \
     chown -R claude:nodejs logs data temp
@@ -44,5 +48,5 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
     CMD curl -f http://localhost:3000/health || exit 1
 
 # 🚀 启动应用
-ENTRYPOINT ["dumb-init", "--"]
+ENTRYPOINT ["dumb-init", "--", "/usr/local/bin/docker-entrypoint.sh"]
 CMD ["node", "src/app.js"]
