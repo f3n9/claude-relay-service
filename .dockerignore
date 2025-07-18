@@ -68,7 +68,7 @@ build/
 azure-pipelines.yml
 
 # Package manager files
-package-lock.json
+# package-lock.json  # 需要保留此文件以支持 npm ci
 yarn.lock
 pnpm-lock.yaml
 
