@@ -6,8 +6,8 @@ on:
       - main
     paths-ignore:
       - '**.md'
-      - '.github/**'
       - 'docs/**'
+  workflow_dispatch:
 
 permissions:
   contents: write
