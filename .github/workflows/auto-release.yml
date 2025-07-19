@@ -66,7 +66,10 @@ jobs:
     - name: Generate changelog
       id: changelog
       run: |
+        # 获取自上次标签以来的提交，如果 git-cliff 输出包含 [unreleased]，则移除它
         CHANGELOG=$(git-cliff --config .github/cliff.toml --unreleased --strip header || echo "- 代码优化和改进")
+        # 移除 [unreleased] 标记
+        CHANGELOG=$(echo "$CHANGELOG" | sed 's/\[unreleased\]//g' | sed '/^$/d')
         echo "content<<EOF" >> $GITHUB_OUTPUT
         echo "$CHANGELOG" >> $GITHUB_OUTPUT
         echo "EOF" >> $GITHUB_OUTPUT
