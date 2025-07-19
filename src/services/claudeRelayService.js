@@ -550,12 +550,6 @@ class ClaudeRelayService {
         res.on('data', (chunk) => {
           const chunkStr = chunk.toString();
           
-          // 记录原始SSE数据块
-          logger.info('📡 Raw SSE chunk received:', {
-            length: chunkStr.length,
-            content: chunkStr
-          });
-          
           buffer += chunkStr;
           
           // 处理完整的SSE行
@@ -569,11 +563,6 @@ class ClaudeRelayService {
           }
           
           for (const line of lines) {
-            // 记录每个SSE行
-            if (line.trim()) {
-              logger.info('📄 SSE Line:', line);
-            }
-            
             // 解析SSE数据寻找usage信息
             if (line.startsWith('data: ') && line.length > 6) {
               try {
