@@ -1842,6 +1842,62 @@
                         <p class="text-xs text-gray-500 mt-2">选择专属账号后，此API Key将只使用该账号，不选择则使用共享账号池</p>
                     </div>
                     
+                    <div>
+                        <div class="flex items-center mb-3">
+                            <input 
+                                type="checkbox" 
+                                v-model="apiKeyForm.enableModelRestriction" 
+                                id="enableModelRestriction"
+                                class="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500"
+                            >
+                            <label for="enableModelRestriction" class="ml-2 text-sm font-semibold text-gray-700 cursor-pointer">
+                                启用模型限制
+                            </label>
+                        </div>
+                        
+                        <div v-if="apiKeyForm.enableModelRestriction" class="space-y-3">
+                            <div>
+                                <label class="block text-sm font-medium text-gray-600 mb-2">限制的模型列表</label>
+                                <div class="flex flex-wrap gap-2 mb-3 min-h-[32px] p-2 bg-gray-50 rounded-lg border border-gray-200">
+                                    <span 
+                                        v-for="(model, index) in apiKeyForm.restrictedModels" 
+                                        :key="index"
+                                        class="inline-flex items-center px-3 py-1 rounded-full text-sm bg-red-100 text-red-800"
+                                    >
+                                        {{ model }}
+                                        <button 
+                                            type="button"
+                                            @click="removeRestrictedModel(apiKeyForm, index)"
+                                            class="ml-2 text-red-600 hover:text-red-800"
+                                        >
+                                            <i class="fas fa-times text-xs"></i>
+                                        </button>
+                                    </span>
+                                    <span v-if="apiKeyForm.restrictedModels.length === 0" class="text-gray-400 text-sm">
+                                        暂无限制的模型
+                                    </span>
+                                </div>
+                                <div class="flex gap-2">
+                                    <input 
+                                        v-model="apiKeyForm.modelInput"
+                                        @keydown.enter.prevent="addRestrictedModel(apiKeyForm)"
+                                        type="text"
+                                        placeholder="输入模型名称，按回车添加"
+                                        class="form-input flex-1"
+                                    >
+                                    <button 
+                                        type="button"
+                                        @click="addRestrictedModel(apiKeyForm)"
+                                        class="px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors"
+                                    >
+                                        <i class="fas fa-plus"></i>
+                                    </button>
+                                </div>
+                                <p class="text-xs text-gray-500 mt-2">设置此API Key无法访问的模型，例如：claude-opus-4-20250514</p>
+                            </div>
+                        </div>
+                    </div>
+                    
                     <div class="flex gap-3 pt-4">
                         <button 
                             type="button" 
@@ -1934,6 +1990,62 @@
                             </option>
                         </select>
                         <p class="text-xs text-gray-500 mt-2">修改绑定账号将影响此API Key的请求路由</p>
+                    </div>
+                    
+                    <div>
+                        <div class="flex items-center mb-3">
+                            <input 
+                                type="checkbox" 
+                                v-model="editApiKeyForm.enableModelRestriction" 
+                                id="editEnableModelRestriction"
+                                class="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500"
+                            >
+                            <label for="editEnableModelRestriction" class="ml-2 text-sm font-semibold text-gray-700 cursor-pointer">
+                                启用模型限制
+                            </label>
+                        </div>
+                        
+                        <div v-if="editApiKeyForm.enableModelRestriction" class="space-y-3">
+                            <div>
+                                <label class="block text-sm font-medium text-gray-600 mb-2">限制的模型列表</label>
+                                <div class="flex flex-wrap gap-2 mb-3 min-h-[32px] p-2 bg-gray-50 rounded-lg border border-gray-200">
+                                    <span 
+                                        v-for="(model, index) in editApiKeyForm.restrictedModels" 
+                                        :key="index"
+                                        class="inline-flex items-center px-3 py-1 rounded-full text-sm bg-red-100 text-red-800"
+                                    >
+                                        {{ model }}
+                                        <button 
+                                            type="button"
+                                            @click="removeRestrictedModel(editApiKeyForm, index)"
+                                            class="ml-2 text-red-600 hover:text-red-800"
+                                        >
+                                            <i class="fas fa-times text-xs"></i>
+                                        </button>
+                                    </span>
+                                    <span v-if="editApiKeyForm.restrictedModels.length === 0" class="text-gray-400 text-sm">
+                                        暂无限制的模型
+                                    </span>
+                                </div>
+                                <div class="flex gap-2">
+                                    <input 
+                                        v-model="editApiKeyForm.modelInput"
+                                        @keydown.enter.prevent="addRestrictedModel(editApiKeyForm)"
+                                        type="text"
+                                        placeholder="输入模型名称，按回车添加"
+                                        class="form-input flex-1"
+                                    >
+                                    <button 
+                                        type="button"
+                                        @click="addRestrictedModel(editApiKeyForm)"
+                                        class="px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors"
+                                    >
+                                        <i class="fas fa-plus"></i>
+                                    </button>
+                                </div>
+                                <p class="text-xs text-gray-500 mt-2">设置此API Key无法访问的模型，例如：claude-opus-4-20250514</p>
+                            </div>
+                        </div>
                     </div>
                     
                     <div class="flex gap-3 pt-4">

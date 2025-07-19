@@ -32,7 +32,9 @@ router.post('/api-keys', authenticateAdmin, async (req, res) => {
       tokenLimit,
       expiresAt,
       claudeAccountId,
-      concurrencyLimit
+      concurrencyLimit,
+      enableModelRestriction,
+      restrictedModels
     } = req.body;
 
     // 输入验证
@@ -57,13 +59,24 @@ router.post('/api-keys', authenticateAdmin, async (req, res) => {
       return res.status(400).json({ error: 'Concurrency limit must be a non-negative integer' });
     }
 
+    // 验证模型限制字段
+    if (enableModelRestriction !== undefined && typeof enableModelRestriction !== 'boolean') {
+      return res.status(400).json({ error: 'Enable model restriction must be a boolean' });
+    }
+
+    if (restrictedModels !== undefined && !Array.isArray(restrictedModels)) {
+      return res.status(400).json({ error: 'Restricted models must be an array' });
+    }
+
     const newKey = await apiKeyService.generateApiKey({
       name,
       description,
       tokenLimit,
       expiresAt,
       claudeAccountId,
-      concurrencyLimit
+      concurrencyLimit,
+      enableModelRestriction,
+      restrictedModels
     });
 
     logger.success(`🔑 Admin created new API key: ${name}`);
@@ -78,9 +91,9 @@ router.post('/api-keys', authenticateAdmin, async (req, res) => {
 router.put('/api-keys/:keyId', authenticateAdmin, async (req, res) => {
   try {
     const { keyId } = req.params;
-    const { tokenLimit, concurrencyLimit, claudeAccountId } = req.body;
+    const { tokenLimit, concurrencyLimit, claudeAccountId, enableModelRestriction, restrictedModels } = req.body;
 
-    // 只允许更新tokenLimit、concurrencyLimit和claudeAccountId
+    // 只允许更新指定字段
     const updates = {};
     
     if (tokenLimit !== undefined && tokenLimit !== null && tokenLimit !== '') {
@@ -100,6 +113,21 @@ router.put('/api-keys/:keyId', authenticateAdmin, async (req, res) => {
     if (claudeAccountId !== undefined) {
       // 空字符串表示解绑，null或空字符串都设置为空字符串
       updates.claudeAccountId = claudeAccountId || '';
+    }
+
+    // 处理模型限制字段
+    if (enableModelRestriction !== undefined) {
+      if (typeof enableModelRestriction !== 'boolean') {
+        return res.status(400).json({ error: 'Enable model restriction must be a boolean' });
+      }
+      updates.enableModelRestriction = enableModelRestriction;
+    }
+
+    if (restrictedModels !== undefined) {
+      if (!Array.isArray(restrictedModels)) {
+        return res.status(400).json({ error: 'Restricted models must be an array' });
+      }
+      updates.restrictedModels = restrictedModels;
     }
 
     await apiKeyService.updateApiKey(keyId, updates);
