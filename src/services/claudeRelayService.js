@@ -22,9 +22,19 @@ class ClaudeRelayService {
     let upstreamRequest = null;
     
     try {
+      // 调试日志：查看API Key数据
+      logger.info(`🔍 API Key data received:`, {
+        apiKeyName: apiKeyData.name,
+        enableModelRestriction: apiKeyData.enableModelRestriction,
+        restrictedModels: apiKeyData.restrictedModels,
+        requestedModel: requestBody.model
+      });
+
       // 检查模型限制
       if (apiKeyData.enableModelRestriction && apiKeyData.restrictedModels && apiKeyData.restrictedModels.length > 0) {
         const requestedModel = requestBody.model;
+        logger.info(`🔒 Model restriction check - Requested model: ${requestedModel}, Restricted models: ${JSON.stringify(apiKeyData.restrictedModels)}`);
+        
         if (requestedModel && apiKeyData.restrictedModels.includes(requestedModel)) {
           logger.warn(`🚫 Model restriction violation for key ${apiKeyData.name}: Attempted to use restricted model ${requestedModel}`);
           return {
@@ -437,9 +447,19 @@ class ClaudeRelayService {
   // 🌊 处理流式响应（带usage数据捕获）
   async relayStreamRequestWithUsageCapture(requestBody, apiKeyData, responseStream, clientHeaders, usageCallback) {
     try {
+      // 调试日志：查看API Key数据（流式请求）
+      logger.info(`🔍 [Stream] API Key data received:`, {
+        apiKeyName: apiKeyData.name,
+        enableModelRestriction: apiKeyData.enableModelRestriction,
+        restrictedModels: apiKeyData.restrictedModels,
+        requestedModel: requestBody.model
+      });
+
       // 检查模型限制
       if (apiKeyData.enableModelRestriction && apiKeyData.restrictedModels && apiKeyData.restrictedModels.length > 0) {
         const requestedModel = requestBody.model;
+        logger.info(`🔒 [Stream] Model restriction check - Requested model: ${requestedModel}, Restricted models: ${JSON.stringify(apiKeyData.restrictedModels)}`);
+        
         if (requestedModel && apiKeyData.restrictedModels.includes(requestedModel)) {
           logger.warn(`🚫 Model restriction violation for key ${apiKeyData.name}: Attempted to use restricted model ${requestedModel}`);
           

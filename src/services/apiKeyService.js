@@ -108,6 +108,14 @@ class ApiKeyService {
 
       logger.api(`🔓 API key validated successfully: ${keyData.id}`);
 
+      // 解析限制模型数据
+      let restrictedModels = [];
+      try {
+        restrictedModels = keyData.restrictedModels ? JSON.parse(keyData.restrictedModels) : [];
+      } catch (e) {
+        restrictedModels = [];
+      }
+
       return {
         valid: true,
         keyData: {
@@ -115,7 +123,9 @@ class ApiKeyService {
           name: keyData.name,
           claudeAccountId: keyData.claudeAccountId,
           tokenLimit: parseInt(keyData.tokenLimit),
-              concurrencyLimit: parseInt(keyData.concurrencyLimit || 0),
+          concurrencyLimit: parseInt(keyData.concurrencyLimit || 0),
+          enableModelRestriction: keyData.enableModelRestriction === 'true',
+          restrictedModels: restrictedModels,
           usage
         }
       };
