@@ -73,6 +73,7 @@ git push origin v1.1.0
   - 生成 changelog
   - 创建 GitHub Release
   - 更新 CHANGELOG.md 文件
+  - 发送 Telegram 通知（可选）
 
 ### Changelog 生成
 
@@ -140,8 +141,24 @@ NEW_MINOR=$((MINOR + 1))
 NEW_PATCH=0
 ```
 
+## 📱 Telegram 通知（可选）
+
+自动发布系统支持发送通知到 Telegram 频道。配置后，每次发布新版本都会自动发送通知。
+
+### 快速设置
+
+1. 创建 Telegram Bot（通过 @BotFather）
+2. 将 Bot 添加到频道作为管理员
+3. 获取频道的 Chat ID
+4. 在 GitHub 仓库添加 Secrets：
+   - `TELEGRAM_BOT_TOKEN`
+   - `TELEGRAM_CHAT_ID`
+
+详细设置步骤请参考 [Telegram 通知设置指南](./TELEGRAM_SETUP.md)
+
 ## 🔗 相关链接
 
 - [GitHub Actions 工作流使用指南](./WORKFLOW_USAGE.md)
+- [Telegram 通知设置指南](./TELEGRAM_SETUP.md)
 - [Docker Hub 设置指南](./DOCKER_HUB_SETUP.md)
 - [Git Cliff 配置文档](https://git-cliff.org/docs/configuration)

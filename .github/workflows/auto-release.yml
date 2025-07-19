@@ -141,3 +141,56 @@ jobs:
           git commit -m "chore: update CHANGELOG.md for ${{ steps.next_version.outputs.new_tag }} [skip ci]"
           git push origin main
         fi
+
+    - name: Send Telegram Notification
+      if: steps.check_changes.outputs.has_changes == 'true' && env.TELEGRAM_BOT_TOKEN != '' && env.TELEGRAM_CHAT_ID != ''
+      env:
+        TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+        TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+      continue-on-error: true
+      run: |
+        # 准备 Telegram 消息内容
+        VERSION="${{ steps.next_version.outputs.new_version }}"
+        TAG="${{ steps.next_version.outputs.new_tag }}"
+        REPO="${{ github.repository }}"
+        
+        # 获取更新内容（限制长度）
+        CHANGELOG="${{ steps.changelog.outputs.content }}"
+        # 截取前 1000 个字符避免消息过长
+        CHANGELOG_TRUNCATED=$(echo "$CHANGELOG" | head -c 1000)
+        if [ ${#CHANGELOG} -gt 1000 ]; then
+          CHANGELOG_TRUNCATED="${CHANGELOG_TRUNCATED}..."
+        fi
+        
+        # 构建消息
+        MESSAGE="🚀 *Claude Relay Service 新版本发布！*
+
+📦 版本号: \`${VERSION}\`
+
+📝 *更新内容:*
+${CHANGELOG_TRUNCATED}
+
+🐳 *Docker 部署:*
+\`\`\`bash
+docker pull weishaw/claude-relay-service:${TAG}
+docker pull weishaw/claude-relay-service:latest
+\`\`\`
+
+🔗 *相关链接:*
+• [GitHub Release](https://github.com/${REPO}/releases/tag/${TAG})
+• [完整更新日志](https://github.com/${REPO}/blob/main/CHANGELOG.md)
+• [Docker Hub](https://hub.docker.com/r/weishaw/claude-relay-service)
+
+#ClaudeRelay #Update #v${VERSION//./_}"
+        
+        # 发送消息到 Telegram
+        curl -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+          -H "Content-Type: application/json" \
+          -d @- << EOF
+        {
+          "chat_id": "${TELEGRAM_CHAT_ID}",
+          "text": "${MESSAGE}",
+          "parse_mode": "Markdown",
+          "disable_web_page_preview": false
+        }
+        EOF
