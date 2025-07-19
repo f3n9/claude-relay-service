@@ -117,7 +117,10 @@ const app = createApp({
                 tokenLimit: '',
                 description: '',
                 concurrencyLimit: '',
-                claudeAccountId: ''
+                claudeAccountId: '',
+                enableModelRestriction: false,
+                restrictedModels: [],
+                modelInput: ''
             },
             apiKeyModelStats: {}, // 存储每个key的模型统计数据
             expandedApiKeys: {}, // 跟踪展开的API Keys
@@ -155,7 +158,10 @@ const app = createApp({
                 name: '',
                 tokenLimit: '',
                 concurrencyLimit: '',
-                claudeAccountId: ''
+                claudeAccountId: '',
+                enableModelRestriction: false,
+                restrictedModels: [],
+                modelInput: ''
             },
             
             // 账户
@@ -311,6 +317,20 @@ const app = createApp({
         // 获取绑定到特定账号的API Key数量
         getBoundApiKeysCount(accountId) {
             return this.apiKeys.filter(key => key.claudeAccountId === accountId).length;
+        },
+        
+        // 添加限制模型
+        addRestrictedModel(form) {
+            const model = form.modelInput.trim();
+            if (model && !form.restrictedModels.includes(model)) {
+                form.restrictedModels.push(model);
+                form.modelInput = '';
+            }
+        },
+        
+        // 移除限制模型
+        removeRestrictedModel(form, index) {
+            form.restrictedModels.splice(index, 1);
         },
         
         // Toast 通知方法
@@ -1191,7 +1211,9 @@ const app = createApp({
                         tokenLimit: this.apiKeyForm.tokenLimit && this.apiKeyForm.tokenLimit.trim() ? parseInt(this.apiKeyForm.tokenLimit) : null,
                         description: this.apiKeyForm.description || '',
                         concurrencyLimit: this.apiKeyForm.concurrencyLimit && this.apiKeyForm.concurrencyLimit.trim() ? parseInt(this.apiKeyForm.concurrencyLimit) : 0,
-                        claudeAccountId: this.apiKeyForm.claudeAccountId || null
+                        claudeAccountId: this.apiKeyForm.claudeAccountId || null,
+                        enableModelRestriction: this.apiKeyForm.enableModelRestriction,
+                        restrictedModels: this.apiKeyForm.restrictedModels
                     })
                 });
                 
@@ -1209,7 +1231,7 @@ const app = createApp({
                     
                     // 关闭创建弹窗并清理表单
                     this.showCreateApiKeyModal = false;
-                    this.apiKeyForm = { name: '', tokenLimit: '', description: '', concurrencyLimit: '', claudeAccountId: '' };
+                    this.apiKeyForm = { name: '', tokenLimit: '', description: '', concurrencyLimit: '', claudeAccountId: '', enableModelRestriction: false, restrictedModels: [], modelInput: '' };
                     
                     // 重新加载API Keys列表
                     await this.loadApiKeys();
@@ -1253,7 +1275,10 @@ const app = createApp({
                 name: key.name,
                 tokenLimit: key.tokenLimit || '',
                 concurrencyLimit: key.concurrencyLimit || '',
-                claudeAccountId: key.claudeAccountId || ''
+                claudeAccountId: key.claudeAccountId || '',
+                enableModelRestriction: key.enableModelRestriction || false,
+                restrictedModels: key.restrictedModels ? [...key.restrictedModels] : [],
+                modelInput: ''
             };
             this.showEditApiKeyModal = true;
         },
@@ -1265,7 +1290,10 @@ const app = createApp({
                 name: '',
                 tokenLimit: '',
                 concurrencyLimit: '',
-                claudeAccountId: ''
+                claudeAccountId: '',
+                enableModelRestriction: false,
+                restrictedModels: [],
+                modelInput: ''
             };
         },
 
@@ -1281,7 +1309,9 @@ const app = createApp({
                     body: JSON.stringify({
                         tokenLimit: this.editApiKeyForm.tokenLimit && this.editApiKeyForm.tokenLimit.toString().trim() !== '' ? parseInt(this.editApiKeyForm.tokenLimit) : 0,
                         concurrencyLimit: this.editApiKeyForm.concurrencyLimit && this.editApiKeyForm.concurrencyLimit.toString().trim() !== '' ? parseInt(this.editApiKeyForm.concurrencyLimit) : 0,
-                        claudeAccountId: this.editApiKeyForm.claudeAccountId || null
+                        claudeAccountId: this.editApiKeyForm.claudeAccountId || null,
+                        enableModelRestriction: this.editApiKeyForm.enableModelRestriction,
+                        restrictedModels: this.editApiKeyForm.restrictedModels
                     })
                 });
                 

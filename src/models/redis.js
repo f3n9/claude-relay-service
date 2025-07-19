@@ -2,6 +2,26 @@ const Redis = require('ioredis');
 const config = require('../../config/config');
 const logger = require('../utils/logger');
 
+// 时区辅助函数
+function getDateInTimezone(date = new Date()) {
+  const offset = config.system.timezoneOffset || 8; // 默认UTC+8
+  const utcTime = date.getTime() + (date.getTimezoneOffset() * 60000);
+  const targetTime = new Date(utcTime + (offset * 3600000));
+  return targetTime;
+}
+
+// 获取配置时区的日期字符串 (YYYY-MM-DD)
+function getDateStringInTimezone(date = new Date()) {
+  const tzDate = getDateInTimezone(date);
+  return `${tzDate.getFullYear()}-${String(tzDate.getMonth() + 1).padStart(2, '0')}-${String(tzDate.getDate()).padStart(2, '0')}`;
+}
+
+// 获取配置时区的小时 (0-23)
+function getHourInTimezone(date = new Date()) {
+  const tzDate = getDateInTimezone(date);
+  return tzDate.getHours();
+}
+
 class RedisClient {
   constructor() {
     this.client = null;
@@ -140,9 +160,10 @@ class RedisClient {
   async incrementTokenUsage(keyId, tokens, inputTokens = 0, outputTokens = 0, cacheCreateTokens = 0, cacheReadTokens = 0, model = 'unknown') {
     const key = `usage:${keyId}`;
     const now = new Date();
-    const today = now.toISOString().split('T')[0];
-    const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-    const currentHour = `${today}:${String(now.getHours()).padStart(2, '0')}`; // 新增小时级别
+    const today = getDateStringInTimezone(now);
+    const tzDate = getDateInTimezone(now);
+    const currentMonth = `${tzDate.getFullYear()}-${String(tzDate.getMonth() + 1).padStart(2, '0')}`;
+    const currentHour = `${today}:${String(getHourInTimezone(now)).padStart(2, '0')}`; // 新增小时级别
     
     const daily = `usage:daily:${keyId}:${today}`;
     const monthly = `usage:monthly:${keyId}:${currentMonth}`;
@@ -263,9 +284,10 @@ class RedisClient {
 
   async getUsageStats(keyId) {
     const totalKey = `usage:${keyId}`;
-    const today = new Date().toISOString().split('T')[0];
+    const today = getDateStringInTimezone();
     const dailyKey = `usage:daily:${keyId}:${today}`;
-    const currentMonth = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`;
+    const tzDate = getDateInTimezone();
+    const currentMonth = `${tzDate.getFullYear()}-${String(tzDate.getMonth() + 1).padStart(2, '0')}`;
     const monthlyKey = `usage:monthly:${keyId}:${currentMonth}`;
 
     const [total, daily, monthly] = await Promise.all([
@@ -534,7 +556,7 @@ class RedisClient {
   // 📊 获取今日系统统计
   async getTodayStats() {
     try {
-      const today = new Date().toISOString().split('T')[0];
+      const today = getDateStringInTimezone();
       const dailyKeys = await this.client.keys(`usage:daily:*:${today}`);
 
       let totalRequestsToday = 0;
