@@ -1191,7 +1191,7 @@ router.get('/usage-costs', authenticateAdmin, async (req, res) => {
       pattern = `usage:model:monthly:*:${currentMonth}`;
     } else {
       // 全部时间，先尝试从Redis获取所有历史模型统计数据
-      const allModelKeys = await client.keys('usage:model:*:*');
+      const allModelKeys = await client.keys('usage:model:*:*:*');
       logger.info(`💰 Total period calculation: found ${allModelKeys.length} model keys`);
       
       if (allModelKeys.length > 0) {
@@ -1200,7 +1200,7 @@ router.get('/usage-costs', authenticateAdmin, async (req, res) => {
         
         for (const key of allModelKeys) {
           // 解析模型名称
-          let modelMatch = key.match(/usage:model:(?:daily|monthly):(.+):\d{4}-\d{2}(?:-\d{2})?$/);
+          let modelMatch = key.match(/usage:model:(?:daily|monthly|hourly):(.+):(\d{4}-\d{2}(?:-\d{2})?(?::\d{2})?)$/);
           if (!modelMatch) continue;
           
           const model = modelMatch[1];
