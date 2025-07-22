@@ -12,6 +12,9 @@ const { authenticateApiKey } = require('../middleware/auth');
 const claudeRelayService = require('../services/claudeRelayService');
 const openaiToClaude = require('../services/openaiToClaude');
 const apiKeyService = require('../services/apiKeyService');
+const claudeAccountService = require('../services/claudeAccountService');
+const claudeCodeHeadersService = require('../services/claudeCodeHeadersService');
+const sessionHelper = require('../utils/sessionHelper');
 
 // 加载模型定价数据
 let modelPricingData = {};
@@ -199,6 +202,19 @@ async function handleChatCompletion(req, res, apiKeyData) {
       }
     }
     
+    // 生成会话哈希用于sticky会话
+    const sessionHash = sessionHelper.generateSessionHash(claudeRequest);
+    
+    // 选择可用的Claude账户
+    const accountId = await claudeAccountService.selectAccountForApiKey(apiKeyData, sessionHash);
+    
+    // 获取该账号存储的 Claude Code headers
+    const claudeCodeHeaders = await claudeCodeHeadersService.getAccountHeaders(accountId);
+    
+    logger.debug(`📋 Using Claude Code headers for account ${accountId}:`, {
+      userAgent: claudeCodeHeaders['user-agent']
+    });
+    
     // 处理流式请求
     if (claudeRequest.stream) {
       logger.info(`🌊 Processing OpenAI stream request for model: ${req.body.model}`);
@@ -221,12 +237,12 @@ async function handleChatCompletion(req, res, apiKeyData) {
         }
       });
       
-      // 使用转换后的响应流 (使用 OAuth-only beta header，不传递客户端 headers)
+      // 使用转换后的响应流 (使用 OAuth-only beta header，添加 Claude Code 必需的 headers)
       await claudeRelayService.relayStreamRequestWithUsageCapture(
         claudeRequest, 
         apiKeyData, 
         res, 
-        {},
+        claudeCodeHeaders,
         (usage) => {
           // 记录使用统计
           if (usage && usage.input_tokens !== undefined && usage.output_tokens !== undefined) {
@@ -252,20 +268,20 @@ async function handleChatCompletion(req, res, apiKeyData) {
         (chunk) => {
           return openaiToClaude.convertStreamChunk(chunk, req.body.model);
         },
-        { betaHeader: 'oauth-2025-04-20' }
+        { betaHeader: 'oauth-2025-04-20,claude-code-20250219,interleaved-thinking-2025-05-14,fine-grained-tool-streaming-2025-05-14' }
       );
       
     } else {
       // 非流式请求
       logger.info(`📄 Processing OpenAI non-stream request for model: ${req.body.model}`);
       
-      // 发送请求到 Claude (使用 OAuth-only beta header，不传递客户端 headers)
+      // 发送请求到 Claude (使用 OAuth-only beta header，添加 Claude Code 必需的 headers)
       const claudeResponse = await claudeRelayService.relayRequest(
         claudeRequest, 
         apiKeyData, 
         req, 
         res, 
-        {},
+        claudeCodeHeaders,
         { betaHeader: 'oauth-2025-04-20' }
       );
       

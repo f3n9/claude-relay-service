@@ -8,6 +8,7 @@ const claudeAccountService = require('./claudeAccountService');
 const sessionHelper = require('../utils/sessionHelper');
 const logger = require('../utils/logger');
 const config = require('../../config/config');
+const claudeCodeHeadersService = require('./claudeCodeHeadersService');
 
 class ClaudeRelayService {
   constructor() {
@@ -127,6 +128,11 @@ class ClaudeRelayService {
         const isRateLimited = await claudeAccountService.isAccountRateLimited(accountId);
         if (isRateLimited) {
           await claudeAccountService.removeAccountRateLimit(accountId);
+        }
+        
+        // 存储成功请求的 Claude Code headers
+        if (clientHeaders && Object.keys(clientHeaders).length > 0) {
+          await claudeCodeHeadersService.storeAccountHeaders(accountId, clientHeaders);
         }
       }
       
@@ -650,6 +656,11 @@ class ClaudeRelayService {
             const isRateLimited = await claudeAccountService.isAccountRateLimited(accountId);
             if (isRateLimited) {
               await claudeAccountService.removeAccountRateLimit(accountId);
+            }
+            
+            // 存储成功请求的 Claude Code headers（流式请求）
+            if (clientHeaders && Object.keys(clientHeaders).length > 0) {
+              await claudeCodeHeadersService.storeAccountHeaders(accountId, clientHeaders);
             }
           }
           
