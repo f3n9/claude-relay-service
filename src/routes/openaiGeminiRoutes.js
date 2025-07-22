@@ -29,7 +29,7 @@ router.post('/v1/chat/completions', authenticateApiKey, async (req, res) => {
   let abortController = null;
   
   try {
-    const apiKeyData = req.apiKeyData;
+    const apiKeyData = req.apiKey;
     
     // 检查权限
     if (!checkPermissions(apiKeyData, 'gemini')) {
@@ -159,7 +159,7 @@ router.post('/v1/chat/completions', authenticateApiKey, async (req, res) => {
     
     // 处理速率限制
     if (error.status === 429) {
-      if (req.apiKeyData && req.account) {
+      if (apiKeyData && req.account) {
         await geminiAccountService.setAccountRateLimited(req.account.id, true);
       }
     }
@@ -186,7 +186,7 @@ router.post('/v1/chat/completions', authenticateApiKey, async (req, res) => {
 // OpenAI 兼容的模型列表端点
 router.get('/v1/models', authenticateApiKey, async (req, res) => {
   try {
-    const apiKeyData = req.apiKeyData;
+    const apiKeyData = req.apiKey;
     
     // 检查权限
     if (!checkPermissions(apiKeyData, 'gemini')) {
@@ -244,7 +244,7 @@ router.get('/v1/models', authenticateApiKey, async (req, res) => {
 // OpenAI 兼容的模型详情端点
 router.get('/v1/models/:model', authenticateApiKey, async (req, res) => {
   try {
-    const apiKeyData = req.apiKeyData;
+    const apiKeyData = req.apiKey;
     const modelId = req.params.model;
     
     // 检查权限

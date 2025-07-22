@@ -198,11 +198,14 @@ const authenticateApiKey = async (req, res, next) => {
       name: validation.keyData.name,
       tokenLimit: validation.keyData.tokenLimit,
       claudeAccountId: validation.keyData.claudeAccountId,
+      geminiAccountId: validation.keyData.geminiAccountId,
+      permissions: validation.keyData.permissions,
       concurrencyLimit: validation.keyData.concurrencyLimit,
       rateLimitWindow: validation.keyData.rateLimitWindow,
       rateLimitRequests: validation.keyData.rateLimitRequests,
       enableModelRestriction: validation.keyData.enableModelRestriction,
-      restrictedModels: validation.keyData.restrictedModels
+      restrictedModels: validation.keyData.restrictedModels,
+      usage: validation.keyData.usage
     };
     req.usage = validation.keyData.usage;
     

@@ -29,7 +29,7 @@ router.post('/messages', authenticateApiKey, async (req, res) => {
   let abortController = null;
   
   try {
-    const apiKeyData = req.apiKeyData;
+    const apiKeyData = req.apiKey;
     
     // 检查权限
     if (!checkPermissions(apiKeyData, 'gemini')) {
@@ -137,7 +137,7 @@ router.post('/messages', authenticateApiKey, async (req, res) => {
     
     // 处理速率限制
     if (error.status === 429) {
-      if (req.apiKeyData && req.account) {
+      if (apiKeyData && req.account) {
         await geminiAccountService.setAccountRateLimited(req.account.id, true);
       }
     }
@@ -163,7 +163,7 @@ router.post('/messages', authenticateApiKey, async (req, res) => {
 // 获取可用模型列表
 router.get('/models', authenticateApiKey, async (req, res) => {
   try {
-    const apiKeyData = req.apiKeyData;
+    const apiKeyData = req.apiKey;
     
     // 检查权限
     if (!checkPermissions(apiKeyData, 'gemini')) {
@@ -215,7 +215,7 @@ router.get('/models', authenticateApiKey, async (req, res) => {
 // 使用情况统计（与 Claude 共用）
 router.get('/usage', authenticateApiKey, async (req, res) => {
   try {
-    const usage = req.apiKeyData.usage;
+    const usage = req.apiKey.usage;
     
     res.json({
       object: 'usage',
@@ -240,7 +240,7 @@ router.get('/usage', authenticateApiKey, async (req, res) => {
 // API Key 信息（与 Claude 共用）
 router.get('/key-info', authenticateApiKey, async (req, res) => {
   try {
-    const keyData = req.apiKeyData;
+    const keyData = req.apiKey;
     
     res.json({
       id: keyData.id,
