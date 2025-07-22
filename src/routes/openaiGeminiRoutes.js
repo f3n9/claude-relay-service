@@ -48,13 +48,7 @@ router.post('/v1/chat/completions', authenticateApiKey, async (req, res) => {
       model = 'gemini-2.0-flash-exp',
       temperature = 0.7,
       max_tokens = 4096,
-      stream = false,
-      n = 1,
-      stop = null,
-      presence_penalty = 0,
-      frequency_penalty = 0,
-      logit_bias = null,
-      user = null
+      stream = false
     } = req.body;
     
     // 验证必需参数
@@ -159,7 +153,7 @@ router.post('/v1/chat/completions', authenticateApiKey, async (req, res) => {
     
     // 处理速率限制
     if (error.status === 429) {
-      if (apiKeyData && req.account) {
+      if (req.apiKey && req.account) {
         await geminiAccountService.setAccountRateLimited(req.account.id, true);
       }
     }

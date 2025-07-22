@@ -1,9 +1,6 @@
 const redis = require('../models/redis');
 const logger = require('../utils/logger');
 const { v4: uuidv4 } = require('uuid');
-const {
-  logRefreshSkipped
-} = require('../utils/tokenRefreshLogger');
 
 /**
  * Token 刷新锁服务

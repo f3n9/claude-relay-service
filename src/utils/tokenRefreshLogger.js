@@ -1,7 +1,7 @@
 const winston = require('winston');
 const path = require('path');
 const fs = require('fs');
-const { maskToken, formatTokenRefreshLog } = require('./tokenMask');
+const { maskToken } = require('./tokenMask');
 
 // 确保日志目录存在
 const logDir = path.join(process.cwd(), 'logs');

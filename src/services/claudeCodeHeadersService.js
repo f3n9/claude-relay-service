@@ -118,7 +118,7 @@ class ClaudeCodeHeadersService {
       
       // 获取当前存储的 headers
       const key = `claude_code_headers:${accountId}`;
-      const currentData = await redis.get(key);
+      const currentData = await redis.getClient().get(key);
       
       if (currentData) {
         const current = JSON.parse(currentData);
@@ -137,7 +137,7 @@ class ClaudeCodeHeadersService {
         updatedAt: new Date().toISOString()
       };
       
-      await redis.setex(key, 86400 * 7, JSON.stringify(data)); // 7天过期
+      await redis.getClient().setex(key, 86400 * 7, JSON.stringify(data)); // 7天过期
       
       logger.info(`✅ Stored Claude Code headers for account ${accountId}, version: ${version}`);
       
@@ -152,7 +152,7 @@ class ClaudeCodeHeadersService {
   async getAccountHeaders(accountId) {
     try {
       const key = `claude_code_headers:${accountId}`;
-      const data = await redis.get(key);
+      const data = await redis.getClient().get(key);
       
       if (data) {
         const parsed = JSON.parse(data);
@@ -176,7 +176,7 @@ class ClaudeCodeHeadersService {
   async clearAccountHeaders(accountId) {
     try {
       const key = `claude_code_headers:${accountId}`;
-      await redis.del(key);
+      await redis.getClient().del(key);
       logger.info(`🗑️ Cleared Claude Code headers for account ${accountId}`);
     } catch (error) {
       logger.error(`❌ Failed to clear Claude Code headers for account ${accountId}:`, error);
@@ -189,12 +189,12 @@ class ClaudeCodeHeadersService {
   async getAllAccountHeaders() {
     try {
       const pattern = 'claude_code_headers:*';
-      const keys = await redis.keys(pattern);
+      const keys = await redis.getClient().keys(pattern);
       
       const results = {};
       for (const key of keys) {
         const accountId = key.replace('claude_code_headers:', '');
-        const data = await redis.get(key);
+        const data = await redis.getClient().get(key);
         if (data) {
           results[accountId] = JSON.parse(data);
         }

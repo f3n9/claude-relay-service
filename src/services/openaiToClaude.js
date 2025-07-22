@@ -99,14 +99,16 @@ class OpenAIToClaudeConverter {
    * 转换流式响应的单个数据块
    * @param {String} chunk - Claude SSE 数据块
    * @param {String} requestModel - 原始请求的模型名
+   * @param {String} sessionId - 会话ID
    * @returns {String} OpenAI 格式的 SSE 数据块
    */
-  convertStreamChunk(chunk, requestModel) {
+  convertStreamChunk(chunk, requestModel, sessionId) {
     if (!chunk || chunk.trim() === '') return '';
     
     // 解析 SSE 数据
     const lines = chunk.split('\n');
     let convertedChunks = [];
+    let hasMessageStop = false;
 
     for (const line of lines) {
       if (line.startsWith('data: ')) {
@@ -118,18 +120,27 @@ class OpenAIToClaudeConverter {
 
         try {
           const claudeEvent = JSON.parse(data);
-          const openaiChunk = this._convertStreamEvent(claudeEvent, requestModel);
+          
+          // 检查是否是 message_stop 事件
+          if (claudeEvent.type === 'message_stop') {
+            hasMessageStop = true;
+          }
+          
+          const openaiChunk = this._convertStreamEvent(claudeEvent, requestModel, sessionId);
           if (openaiChunk) {
             convertedChunks.push(`data: ${JSON.stringify(openaiChunk)}\n\n`);
           }
         } catch (e) {
-          // 如果不是 JSON，原样传递
-          convertedChunks.push(line + '\n');
+          // 跳过无法解析的数据，不传递非JSON格式的行
+          continue;
         }
-      } else if (line.startsWith('event:') || line === '') {
-        // 保留事件类型行和空行
-        convertedChunks.push(line + '\n');
       }
+      // 忽略 event: 行和空行，OpenAI 格式不包含这些
+    }
+
+    // 如果收到 message_stop 事件，添加 [DONE] 标记
+    if (hasMessageStop) {
+      convertedChunks.push('data: [DONE]\n\n');
     }
 
     return convertedChunks.join('');
@@ -331,10 +342,10 @@ class OpenAIToClaudeConverter {
   /**
    * 转换流式事件
    */
-  _convertStreamEvent(event, requestModel) {
+  _convertStreamEvent(event, requestModel, sessionId) {
     const timestamp = Math.floor(Date.now() / 1000);
     const baseChunk = {
-      id: `chatcmpl-${this._generateId()}`,
+      id: sessionId,
       object: 'chat.completion.chunk',
       created: timestamp,
       model: requestModel || 'gpt-4',
@@ -346,7 +357,11 @@ class OpenAIToClaudeConverter {
     };
 
     // 根据事件类型处理
-    if (event.type === 'content_block_start' && event.content_block) {
+    if (event.type === 'message_start') {
+      // 处理消息开始事件，发送角色信息
+      baseChunk.choices[0].delta.role = 'assistant';
+      return baseChunk;
+    } else if (event.type === 'content_block_start' && event.content_block) {
       if (event.content_block.type === 'text') {
         baseChunk.choices[0].delta.content = event.content_block.text || '';
       } else if (event.content_block.type === 'tool_use') {
@@ -381,7 +396,11 @@ class OpenAIToClaudeConverter {
         baseChunk.usage = this._convertUsage(event.usage);
       }
     } else if (event.type === 'message_stop') {
-      baseChunk.choices[0].finish_reason = 'stop';
+      // message_stop 事件不需要返回 chunk，[DONE] 标记会在 convertStreamChunk 中添加
+      return null;
+    } else {
+      // 忽略其他类型的事件
+      return null;
     }
 
     return baseChunk;

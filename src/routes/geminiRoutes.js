@@ -137,7 +137,7 @@ router.post('/messages', authenticateApiKey, async (req, res) => {
     
     // 处理速率限制
     if (error.status === 429) {
-      if (apiKeyData && req.account) {
+      if (req.apiKey && req.account) {
         await geminiAccountService.setAccountRateLimited(req.account.id, true);
       }
     }

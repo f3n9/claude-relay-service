@@ -265,9 +265,13 @@ async function handleChatCompletion(req, res, apiKeyData) {
           }
         },
         // 流转换器
-        (chunk) => {
-          return openaiToClaude.convertStreamChunk(chunk, req.body.model);
-        },
+        (() => {
+          // 为每个请求创建独立的会话ID
+          const sessionId = `chatcmpl-${Math.random().toString(36).substring(2, 15)}${Math.random().toString(36).substring(2, 15)}`;
+          return (chunk) => {
+            return openaiToClaude.convertStreamChunk(chunk, req.body.model, sessionId);
+          };
+        })(),
         { betaHeader: 'oauth-2025-04-20,claude-code-20250219,interleaved-thinking-2025-05-14,fine-grained-tool-streaming-2025-05-14' }
       );
       
