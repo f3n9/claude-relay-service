@@ -336,6 +336,13 @@ const app = createApp({
                 this.loadCurrentTabData();
             },
             immediate: false
+        },
+        'geminiOauthData.code': {
+            handler(newValue) {
+                if (newValue) {
+                    this.handleGeminiAuthCodeInput(newValue);
+                }
+            }
         }
     },
     
@@ -1110,6 +1117,47 @@ const app = createApp({
             }
         },
         
+        // 处理 Gemini OAuth 授权码输入
+        handleGeminiAuthCodeInput(value, isUserTyping = false) {
+            if (!value || typeof value !== 'string') return;
+            
+            const trimmedValue = value.trim();
+            
+            // 如果内容为空，不处理
+            if (!trimmedValue) return;
+            
+            // 检查是否是 URL 格式（包含 http:// 或 https://）
+            const isUrl = trimmedValue.startsWith('http://') || trimmedValue.startsWith('https://');
+            
+            // 如果是 URL 格式
+            if (isUrl) {
+                // 检查是否是正确的 localhost:45462 开头的 URL
+                if (trimmedValue.startsWith('http://localhost:45462')) {
+                    try {
+                        const url = new URL(trimmedValue);
+                        const code = url.searchParams.get('code');
+                        
+                        if (code) {
+                            // 成功提取授权码
+                            this.geminiOauthData.code = code;
+                            this.showToast('成功提取授权码！', 'success', '提取成功');
+                            console.log('Successfully extracted authorization code from URL');
+                        } else {
+                            // URL 中没有 code 参数
+                            this.showToast('URL 中未找到授权码参数，请检查链接是否正确', 'error', '提取失败');
+                        }
+                    } catch (error) {
+                        // URL 解析失败
+                        console.error('Failed to parse URL:', error);
+                        this.showToast('链接格式错误，请检查是否为完整的 URL', 'error', '解析失败');
+                    }
+                } else {
+                    // 错误的 URL（不是 localhost:45462 开头）
+                    this.showToast('请粘贴以 http://localhost:45462 开头的链接', 'error', '链接错误');
+                }
+            }
+            // 如果不是 URL，保持原值（兼容直接输入授权码）
+        },
         
         // 根据当前标签页加载数据
         loadCurrentTabData() {

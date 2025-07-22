@@ -2855,10 +2855,15 @@
                                         <h5 class="font-semibold text-green-900 mb-2">操作说明</h5>
                                         <ol class="text-sm text-green-800 space-y-1 list-decimal list-inside">
                                             <li>点击下方的授权链接，在新页面中完成Google账号登录</li>
-                                            <li>查看并授权所请求的权限</li>
-                                            <li>授权完成后，页面会显示授权码</li>
-                                            <li>复制授权码并粘贴到下方输入框中</li>
+                                            <li>点击"登录"按钮后可能会加载很慢（这是正常的）</li>
+                                            <li>如果超过1分钟还在加载，请按 F5 刷新页面</li>
+                                            <li>授权完成后会跳转到 http://localhost:45462 (可能显示无法访问)</li>
+                                            <li>复制浏览器地址栏的完整链接并粘贴到下方输入框</li>
                                         </ol>
+                                        <div class="mt-3 text-xs text-green-700 bg-green-100 rounded-lg p-3">
+                                            <i class="fas fa-lightbulb mr-1"></i>
+                                            <strong>提示：</strong>如果页面一直无法跳转，可以打开浏览器开发者工具（F12），F5刷新一下授权页再点击页面的登录按钮，在"网络"标签中找到以 localhost:45462 开头的请求，复制其完整URL。
+                                        </div>
                                     </div>
                                 </div>
                             </div>
@@ -2891,18 +2896,24 @@
                                 <!-- 授权码输入框 -->
                                 <div>
                                     <label class="block text-sm font-semibold text-gray-700 mb-3">
-                                        <i class="fas fa-key text-green-500 mr-2"></i>授权码
+                                        <i class="fas fa-key text-green-500 mr-2"></i>复制oauth后的链接
                                     </label>
                                     <textarea 
                                         v-model="geminiOauthData.code" 
                                         rows="3" 
                                         class="form-input w-full resize-none font-mono text-sm"
-                                        placeholder="粘贴从授权页面复制的授权码..."
+                                        placeholder="粘贴以 http://localhost:45462 开头的完整链接..."
                                     ></textarea>
-                                    <p class="text-xs text-gray-500 mt-2">
-                                        <i class="fas fa-info-circle mr-1"></i>
-                                        授权完成后，从回调页面复制授权码并粘贴到此处
-                                    </p>
+                                    <div class="mt-2 space-y-1">
+                                        <p class="text-xs text-gray-600">
+                                            <i class="fas fa-check-circle text-green-500 mr-1"></i>
+                                            支持粘贴完整链接，系统会自动提取授权码
+                                        </p>
+                                        <p class="text-xs text-gray-600">
+                                            <i class="fas fa-check-circle text-green-500 mr-1"></i>
+                                            也可以直接粘贴授权码（code参数的值）
+                                        </p>
+                                    </div>
                                 </div>
                             </div>
                         </div>

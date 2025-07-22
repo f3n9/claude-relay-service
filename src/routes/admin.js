@@ -406,10 +406,8 @@ router.post('/gemini-accounts/generate-auth-url', authenticateAdmin, async (req,
   try {
     const { state } = req.body;
     
-    // 构建 redirect_uri，使用当前服务的地址
-    const protocol = req.protocol;
-    const host = req.get('host');
-    const redirectUri = `${protocol}://${host}/web/auth_gemini`;
+    // 使用固定的 localhost:45462 作为回调地址
+    const redirectUri = 'http://localhost:45462';
     
     logger.info(`Generating Gemini OAuth URL with redirect_uri: ${redirectUri}`);
     
@@ -420,7 +418,7 @@ router.post('/gemini-accounts/generate-auth-url', authenticateAdmin, async (req,
     await redis.setOAuthSession(sessionId, {
       state: authState,
       type: 'gemini',
-      redirectUri, // 保存 redirect_uri 用于 token 交换
+      redirectUri: redirectUri, // 保存固定的 redirect_uri 用于 token 交换
       createdAt: new Date().toISOString()
     });
     
@@ -470,15 +468,9 @@ router.post('/gemini-accounts/exchange-code', authenticateAdmin, async (req, res
       return res.status(400).json({ error: 'Authorization code is required' });
     }
     
-    // 如果提供了 sessionId，从会话中获取 redirect_uri
-    let redirectUri = null;
-    if (sessionId) {
-      const oauthSession = await redis.getOAuthSession(sessionId);
-      if (oauthSession && oauthSession.redirectUri) {
-        redirectUri = oauthSession.redirectUri;
-        logger.info(`Using redirect_uri from session: ${redirectUri}`);
-      }
-    }
+    // 使用固定的 localhost:45462 作为 redirect_uri
+    const redirectUri = 'http://localhost:45462';
+    logger.info(`Using fixed redirect_uri: ${redirectUri}`);
     
     const tokens = await geminiAccountService.exchangeCodeForTokens(code, redirectUri);
     
