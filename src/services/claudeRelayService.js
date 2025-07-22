@@ -318,12 +318,22 @@ class ClaudeRelayService {
       'transfer-encoding'
     ];
     
+    // 应该保留的 headers（用于会话一致性和追踪）
+    const allowedHeaders = [
+      'x-request-id'
+    ];
+    
     const filteredHeaders = {};
     
     // 转发客户端的非敏感 headers
     Object.keys(clientHeaders || {}).forEach(key => {
       const lowerKey = key.toLowerCase();
-      if (!sensitiveHeaders.includes(lowerKey)) {
+      // 如果在允许列表中，直接保留
+      if (allowedHeaders.includes(lowerKey)) {
+        filteredHeaders[key] = clientHeaders[key];
+      } 
+      // 如果不在敏感列表中，也保留
+      else if (!sensitiveHeaders.includes(lowerKey)) {
         filteredHeaders[key] = clientHeaders[key];
       }
     });

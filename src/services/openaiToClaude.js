@@ -219,14 +219,41 @@ class OpenAIToClaudeConverter {
           text: item.text
         };
       } else if (item.type === 'image_url') {
-        return {
-          type: 'image',
-          source: {
-            type: 'base64',
-            media_type: 'image/jpeg', // 默认类型
-            data: item.image_url.url.split(',')[1] // 假设是 base64
+        const imageUrl = item.image_url.url;
+        
+        // 检查是否是 base64 格式的图片
+        if (imageUrl.startsWith('data:')) {
+          // 解析 data URL: data:image/jpeg;base64,/9j/4AAQ...
+          const matches = imageUrl.match(/^data:([^;]+);base64,(.+)$/);
+          if (matches) {
+            const mediaType = matches[1]; // e.g., 'image/jpeg', 'image/png'
+            const base64Data = matches[2];
+            
+            return {
+              type: 'image',
+              source: {
+                type: 'base64',
+                media_type: mediaType,
+                data: base64Data
+              }
+            };
+          } else {
+            // 如果格式不正确，尝试使用默认处理
+            logger.warn('⚠️ Invalid base64 image format, using default parsing');
+            return {
+              type: 'image',
+              source: {
+                type: 'base64',
+                media_type: 'image/jpeg',
+                data: imageUrl.split(',')[1] || ''
+              }
+            };
           }
-        };
+        } else {
+          // 如果是 URL 格式的图片，Claude 不支持直接 URL，需要报错
+          logger.error('❌ URL images are not supported by Claude API, only base64 format is accepted');
+          throw new Error('Claude API only supports base64 encoded images, not URLs. Please convert the image to base64 format.');
+        }
       }
       return item;
     });
