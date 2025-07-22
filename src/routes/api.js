@@ -7,8 +7,8 @@ const redis = require('../models/redis');
 
 const router = express.Router();
 
-// 🚀 Claude API messages 端点
-router.post('/v1/messages', authenticateApiKey, async (req, res) => {
+// 🔧 共享的消息处理函数
+async function handleMessagesRequest(req, res) {
   try {
     const startTime = Date.now();
     
@@ -199,7 +199,13 @@ router.post('/v1/messages', authenticateApiKey, async (req, res) => {
       }
     }
   }
-});
+}
+
+// 🚀 Claude API messages 端点 - /api/v1/messages
+router.post('/v1/messages', authenticateApiKey, handleMessagesRequest);
+
+// 🚀 Claude API messages 端点 - /claude/v1/messages (别名)
+router.post('/claude/v1/messages', authenticateApiKey, handleMessagesRequest);
 
 // 🏥 健康检查端点
 router.get('/health', async (req, res) => {
@@ -223,7 +229,7 @@ router.get('/health', async (req, res) => {
   }
 });
 
-// 📊 API Key状态检查端点
+// 📊 API Key状态检查端点 - /api/v1/key-info
 router.get('/v1/key-info', authenticateApiKey, async (req, res) => {
   try {
     const usage = await apiKeyService.getUsageStats(req.apiKey.id);
@@ -246,7 +252,7 @@ router.get('/v1/key-info', authenticateApiKey, async (req, res) => {
   }
 });
 
-// 📈 使用统计端点
+// 📈 使用统计端点 - /api/v1/usage
 router.get('/v1/usage', authenticateApiKey, async (req, res) => {
   try {
     const usage = await apiKeyService.getUsageStats(req.apiKey.id);

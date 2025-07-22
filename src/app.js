@@ -98,6 +98,7 @@ class Application {
 
       // 🛣️ 路由
       this.app.use('/api', apiRoutes);
+      this.app.use('/claude', apiRoutes); // /claude 路由别名，与 /api 功能相同
       this.app.use('/admin', adminRoutes);
       this.app.use('/web', webRoutes);
       this.app.use('/gemini', geminiRoutes);
