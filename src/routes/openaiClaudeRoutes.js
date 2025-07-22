@@ -221,12 +221,12 @@ async function handleChatCompletion(req, res, apiKeyData) {
         }
       });
       
-      // 使用转换后的响应流
+      // 使用转换后的响应流 (使用 OAuth-only beta header，不传递客户端 headers)
       await claudeRelayService.relayStreamRequestWithUsageCapture(
         claudeRequest, 
         apiKeyData, 
         res, 
-        req.headers,
+        {},
         (usage) => {
           // 记录使用统计
           if (usage && usage.input_tokens !== undefined && usage.output_tokens !== undefined) {
@@ -251,20 +251,22 @@ async function handleChatCompletion(req, res, apiKeyData) {
         // 流转换器
         (chunk) => {
           return openaiToClaude.convertStreamChunk(chunk, req.body.model);
-        }
+        },
+        { betaHeader: 'oauth-2025-04-20' }
       );
       
     } else {
       // 非流式请求
       logger.info(`📄 Processing OpenAI non-stream request for model: ${req.body.model}`);
       
-      // 发送请求到 Claude
+      // 发送请求到 Claude (使用 OAuth-only beta header，不传递客户端 headers)
       const claudeResponse = await claudeRelayService.relayRequest(
         claudeRequest, 
         apiKeyData, 
         req, 
         res, 
-        req.headers
+        {},
+        { betaHeader: 'oauth-2025-04-20' }
       );
       
       // 解析 Claude 响应

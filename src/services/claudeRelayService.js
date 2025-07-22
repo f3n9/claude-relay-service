@@ -18,7 +18,7 @@ class ClaudeRelayService {
   }
 
   // 🚀 转发请求到Claude API
-  async relayRequest(requestBody, apiKeyData, clientRequest, clientResponse, clientHeaders) {
+  async relayRequest(requestBody, apiKeyData, clientRequest, clientResponse, clientHeaders, options = {}) {
     let upstreamRequest = null;
     
     try {
@@ -89,7 +89,8 @@ class ClaudeRelayService {
         accessToken, 
         proxyAgent,
         clientHeaders,
-        (req) => { upstreamRequest = req; }
+        (req) => { upstreamRequest = req; },
+        options
       );
       
       // 移除监听器（请求成功完成）
@@ -325,7 +326,7 @@ class ClaudeRelayService {
   }
 
   // 🔗 发送请求到Claude API
-  async _makeClaudeRequest(body, accessToken, proxyAgent, clientHeaders, onRequest) {
+  async _makeClaudeRequest(body, accessToken, proxyAgent, clientHeaders, onRequest, requestOptions = {}) {
     return new Promise((resolve, reject) => {
       const url = new URL(this.claudeApiUrl);
       
@@ -352,8 +353,10 @@ class ClaudeRelayService {
         options.headers['User-Agent'] = 'claude-cli/1.0.53 (external, cli)';
       }
 
-      if (this.betaHeader) {
-        options.headers['anthropic-beta'] = this.betaHeader;
+      // 使用自定义的 betaHeader 或默认值
+      const betaHeader = requestOptions?.betaHeader !== undefined ? requestOptions.betaHeader : this.betaHeader;
+      if (betaHeader) {
+        options.headers['anthropic-beta'] = betaHeader;
       }
 
       const req = https.request(options, (res) => {
@@ -445,7 +448,7 @@ class ClaudeRelayService {
   }
 
   // 🌊 处理流式响应（带usage数据捕获）
-  async relayStreamRequestWithUsageCapture(requestBody, apiKeyData, responseStream, clientHeaders, usageCallback, streamTransformer = null) {
+  async relayStreamRequestWithUsageCapture(requestBody, apiKeyData, responseStream, clientHeaders, usageCallback, streamTransformer = null, options = {}) {
     try {
       // 调试日志：查看API Key数据（流式请求）
       logger.info('🔍 [Stream] API Key data received:', {
@@ -495,7 +498,7 @@ class ClaudeRelayService {
       const proxyAgent = await this._getProxyAgent(accountId);
       
       // 发送流式请求并捕获usage数据
-      return await this._makeClaudeStreamRequestWithUsageCapture(processedBody, accessToken, proxyAgent, clientHeaders, responseStream, usageCallback, accountId, sessionHash, streamTransformer);
+      return await this._makeClaudeStreamRequestWithUsageCapture(processedBody, accessToken, proxyAgent, clientHeaders, responseStream, usageCallback, accountId, sessionHash, streamTransformer, options);
     } catch (error) {
       logger.error('❌ Claude stream relay with usage capture failed:', error);
       throw error;
@@ -503,7 +506,7 @@ class ClaudeRelayService {
   }
 
   // 🌊 发送流式请求到Claude API（带usage数据捕获）
-  async _makeClaudeStreamRequestWithUsageCapture(body, accessToken, proxyAgent, clientHeaders, responseStream, usageCallback, accountId, sessionHash, streamTransformer = null) {
+  async _makeClaudeStreamRequestWithUsageCapture(body, accessToken, proxyAgent, clientHeaders, responseStream, usageCallback, accountId, sessionHash, streamTransformer = null, requestOptions = {}) {
     return new Promise((resolve, reject) => {
       const url = new URL(this.claudeApiUrl);
       
@@ -530,8 +533,10 @@ class ClaudeRelayService {
         options.headers['User-Agent'] = 'claude-cli/1.0.53 (external, cli)';
       }
 
-      if (this.betaHeader) {
-        options.headers['anthropic-beta'] = this.betaHeader;
+      // 使用自定义的 betaHeader 或默认值
+      const betaHeader = requestOptions?.betaHeader !== undefined ? requestOptions.betaHeader : this.betaHeader;
+      if (betaHeader) {
+        options.headers['anthropic-beta'] = betaHeader;
       }
 
       const req = https.request(options, (res) => {
@@ -736,7 +741,7 @@ class ClaudeRelayService {
   }
 
   // 🌊 发送流式请求到Claude API
-  async _makeClaudeStreamRequest(body, accessToken, proxyAgent, clientHeaders, responseStream) {
+  async _makeClaudeStreamRequest(body, accessToken, proxyAgent, clientHeaders, responseStream, requestOptions = {}) {
     return new Promise((resolve, reject) => {
       const url = new URL(this.claudeApiUrl);
       
@@ -763,8 +768,10 @@ class ClaudeRelayService {
         options.headers['User-Agent'] = 'claude-cli/1.0.53 (external, cli)';
       }
 
-      if (this.betaHeader) {
-        options.headers['anthropic-beta'] = this.betaHeader;
+      // 使用自定义的 betaHeader 或默认值
+      const betaHeader = requestOptions?.betaHeader !== undefined ? requestOptions.betaHeader : this.betaHeader;
+      if (betaHeader) {
+        options.headers['anthropic-beta'] = betaHeader;
       }
 
       const req = https.request(options, (res) => {

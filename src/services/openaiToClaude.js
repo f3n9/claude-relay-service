@@ -358,10 +358,29 @@ class OpenAIToClaudeConverter {
     if (event.type === 'content_block_start' && event.content_block) {
       if (event.content_block.type === 'text') {
         baseChunk.choices[0].delta.content = event.content_block.text || '';
+      } else if (event.content_block.type === 'tool_use') {
+        // 开始工具调用
+        baseChunk.choices[0].delta.tool_calls = [{
+          index: event.index || 0,
+          id: event.content_block.id,
+          type: 'function',
+          function: {
+            name: event.content_block.name,
+            arguments: ''
+          }
+        }];
       }
     } else if (event.type === 'content_block_delta' && event.delta) {
       if (event.delta.type === 'text_delta') {
         baseChunk.choices[0].delta.content = event.delta.text || '';
+      } else if (event.delta.type === 'input_json_delta') {
+        // 工具调用参数的增量更新
+        baseChunk.choices[0].delta.tool_calls = [{
+          index: event.index || 0,
+          function: {
+            arguments: event.delta.partial_json || ''
+          }
+        }];
       }
     } else if (event.type === 'message_delta' && event.delta) {
       if (event.delta.stop_reason) {
