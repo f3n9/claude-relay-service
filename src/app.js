@@ -16,6 +16,9 @@ const pricingService = require('./services/pricingService');
 const apiRoutes = require('./routes/api');
 const adminRoutes = require('./routes/admin');
 const webRoutes = require('./routes/web');
+const geminiRoutes = require('./routes/geminiRoutes');
+const openaiGeminiRoutes = require('./routes/openaiGeminiRoutes');
+const openaiClaudeRoutes = require('./routes/openaiClaudeRoutes');
 
 // Import middleware
 const { 
@@ -97,6 +100,9 @@ class Application {
       this.app.use('/api', apiRoutes);
       this.app.use('/admin', adminRoutes);
       this.app.use('/web', webRoutes);
+      this.app.use('/gemini', geminiRoutes);
+      this.app.use('/openai/gemini', openaiGeminiRoutes);
+      this.app.use('/openai/claude', openaiClaudeRoutes);
       
       // 🏠 根路径重定向到管理界面
       this.app.get('/', (req, res) => {

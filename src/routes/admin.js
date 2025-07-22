@@ -1,6 +1,7 @@
 const express = require('express');
 const apiKeyService = require('../services/apiKeyService');
 const claudeAccountService = require('../services/claudeAccountService');
+const geminiAccountService = require('../services/geminiAccountService');
 const redis = require('../models/redis');
 const { authenticateAdmin } = require('../middleware/auth');
 const logger = require('../utils/logger');
@@ -32,6 +33,8 @@ router.post('/api-keys', authenticateAdmin, async (req, res) => {
       tokenLimit,
       expiresAt,
       claudeAccountId,
+      geminiAccountId,
+      permissions,
       concurrencyLimit,
       rateLimitWindow,
       rateLimitRequests,
@@ -84,6 +87,8 @@ router.post('/api-keys', authenticateAdmin, async (req, res) => {
       tokenLimit,
       expiresAt,
       claudeAccountId,
+      geminiAccountId,
+      permissions,
       concurrencyLimit,
       rateLimitWindow,
       rateLimitRequests,
@@ -103,7 +108,7 @@ router.post('/api-keys', authenticateAdmin, async (req, res) => {
 router.put('/api-keys/:keyId', authenticateAdmin, async (req, res) => {
   try {
     const { keyId } = req.params;
-    const { tokenLimit, concurrencyLimit, rateLimitWindow, rateLimitRequests, claudeAccountId, enableModelRestriction, restrictedModels } = req.body;
+    const { tokenLimit, concurrencyLimit, rateLimitWindow, rateLimitRequests, claudeAccountId, geminiAccountId, permissions, enableModelRestriction, restrictedModels } = req.body;
 
     // 只允许更新指定字段
     const updates = {};
@@ -139,6 +144,19 @@ router.put('/api-keys/:keyId', authenticateAdmin, async (req, res) => {
     if (claudeAccountId !== undefined) {
       // 空字符串表示解绑，null或空字符串都设置为空字符串
       updates.claudeAccountId = claudeAccountId || '';
+    }
+
+    if (geminiAccountId !== undefined) {
+      // 空字符串表示解绑，null或空字符串都设置为空字符串
+      updates.geminiAccountId = geminiAccountId || '';
+    }
+
+    if (permissions !== undefined) {
+      // 验证权限值
+      if (!['claude', 'gemini', 'all'].includes(permissions)) {
+        return res.status(400).json({ error: 'Invalid permissions value. Must be claude, gemini, or all' });
+      }
+      updates.permissions = permissions;
     }
 
     // 处理模型限制字段
@@ -381,15 +399,189 @@ router.post('/claude-accounts/:accountId/refresh', authenticateAdmin, async (req
   }
 });
 
+// 🤖 Gemini 账户管理
+
+// 生成 Gemini OAuth 授权 URL
+router.post('/gemini-accounts/generate-auth-url', authenticateAdmin, async (req, res) => {
+  try {
+    const { state } = req.body;
+    
+    // 构建 redirect_uri，使用当前服务的地址
+    const protocol = req.protocol;
+    const host = req.get('host');
+    const redirectUri = `${protocol}://${host}/web/auth_gemini`;
+    
+    logger.info(`Generating Gemini OAuth URL with redirect_uri: ${redirectUri}`);
+    
+    const { authUrl, state: authState } = await geminiAccountService.generateAuthUrl(state, redirectUri);
+    
+    // 创建 OAuth 会话
+    const sessionId = authState;
+    await redis.setOAuthSession(sessionId, {
+      state: authState,
+      type: 'gemini',
+      redirectUri, // 保存 redirect_uri 用于 token 交换
+      createdAt: new Date().toISOString()
+    });
+    
+    logger.info(`Generated Gemini OAuth URL with session: ${sessionId}`);
+    res.json({ 
+      success: true, 
+      data: { 
+        authUrl,
+        sessionId
+      } 
+    });
+  } catch (error) {
+    logger.error('❌ Failed to generate Gemini auth URL:', error);
+    res.status(500).json({ error: 'Failed to generate auth URL', message: error.message });
+  }
+});
+
+// 轮询 Gemini OAuth 授权状态
+router.post('/gemini-accounts/poll-auth-status', authenticateAdmin, async (req, res) => {
+  try {
+    const { sessionId } = req.body;
+    
+    if (!sessionId) {
+      return res.status(400).json({ error: 'Session ID is required' });
+    }
+    
+    const result = await geminiAccountService.pollAuthorizationStatus(sessionId);
+    
+    if (result.success) {
+      logger.success(`✅ Gemini OAuth authorization successful for session: ${sessionId}`);
+      res.json({ success: true, data: { tokens: result.tokens } });
+    } else {
+      res.json({ success: false, error: result.error });
+    }
+  } catch (error) {
+    logger.error('❌ Failed to poll Gemini auth status:', error);
+    res.status(500).json({ error: 'Failed to poll auth status', message: error.message });
+  }
+});
+
+// 交换 Gemini 授权码
+router.post('/gemini-accounts/exchange-code', authenticateAdmin, async (req, res) => {
+  try {
+    const { code, sessionId } = req.body;
+    
+    if (!code) {
+      return res.status(400).json({ error: 'Authorization code is required' });
+    }
+    
+    // 如果提供了 sessionId，从会话中获取 redirect_uri
+    let redirectUri = null;
+    if (sessionId) {
+      const oauthSession = await redis.getOAuthSession(sessionId);
+      if (oauthSession && oauthSession.redirectUri) {
+        redirectUri = oauthSession.redirectUri;
+        logger.info(`Using redirect_uri from session: ${redirectUri}`);
+      }
+    }
+    
+    const tokens = await geminiAccountService.exchangeCodeForTokens(code, redirectUri);
+    
+    // 清理 OAuth 会话
+    if (sessionId) {
+      await redis.deleteOAuthSession(sessionId);
+    }
+    
+    logger.success('✅ Successfully exchanged Gemini authorization code');
+    res.json({ success: true, data: { tokens } });
+  } catch (error) {
+    logger.error('❌ Failed to exchange Gemini authorization code:', error);
+    res.status(500).json({ error: 'Failed to exchange code', message: error.message });
+  }
+});
+
+// 获取所有 Gemini 账户
+router.get('/gemini-accounts', authenticateAdmin, async (req, res) => {
+  try {
+    const accounts = await geminiAccountService.getAllAccounts();
+    res.json({ success: true, data: accounts });
+  } catch (error) {
+    logger.error('❌ Failed to get Gemini accounts:', error);
+    res.status(500).json({ error: 'Failed to get accounts', message: error.message });
+  }
+});
+
+// 创建新的 Gemini 账户
+router.post('/gemini-accounts', authenticateAdmin, async (req, res) => {
+  try {
+    const accountData = req.body;
+    
+    // 输入验证
+    if (!accountData.name) {
+      return res.status(400).json({ error: 'Account name is required' });
+    }
+    
+    const newAccount = await geminiAccountService.createAccount(accountData);
+    
+    logger.success(`🏢 Admin created new Gemini account: ${accountData.name}`);
+    res.json({ success: true, data: newAccount });
+  } catch (error) {
+    logger.error('❌ Failed to create Gemini account:', error);
+    res.status(500).json({ error: 'Failed to create account', message: error.message });
+  }
+});
+
+// 更新 Gemini 账户
+router.put('/gemini-accounts/:accountId', authenticateAdmin, async (req, res) => {
+  try {
+    const { accountId } = req.params;
+    const updates = req.body;
+    
+    const updatedAccount = await geminiAccountService.updateAccount(accountId, updates);
+    
+    logger.success(`📝 Admin updated Gemini account: ${accountId}`);
+    res.json({ success: true, data: updatedAccount });
+  } catch (error) {
+    logger.error('❌ Failed to update Gemini account:', error);
+    res.status(500).json({ error: 'Failed to update account', message: error.message });
+  }
+});
+
+// 删除 Gemini 账户
+router.delete('/gemini-accounts/:accountId', authenticateAdmin, async (req, res) => {
+  try {
+    const { accountId } = req.params;
+    
+    await geminiAccountService.deleteAccount(accountId);
+    
+    logger.success(`🗑️ Admin deleted Gemini account: ${accountId}`);
+    res.json({ success: true, message: 'Gemini account deleted successfully' });
+  } catch (error) {
+    logger.error('❌ Failed to delete Gemini account:', error);
+    res.status(500).json({ error: 'Failed to delete account', message: error.message });
+  }
+});
+
+// 刷新 Gemini 账户 token
+router.post('/gemini-accounts/:accountId/refresh', authenticateAdmin, async (req, res) => {
+  try {
+    const { accountId } = req.params;
+    
+    const result = await geminiAccountService.refreshAccountToken(accountId);
+    
+    logger.success(`🔄 Admin refreshed token for Gemini account: ${accountId}`);
+    res.json({ success: true, data: result });
+  } catch (error) {
+    logger.error('❌ Failed to refresh Gemini account token:', error);
+    res.status(500).json({ error: 'Failed to refresh token', message: error.message });
+  }
+});
+
 // 📊 系统统计
 
 // 获取系统概览
 router.get('/dashboard', authenticateAdmin, async (req, res) => {
   try {
-    const [, apiKeys, accounts, todayStats, systemAverages] = await Promise.all([
+    const [, apiKeys, claudeAccounts, geminiAccounts, todayStats, systemAverages] = await Promise.all([
       redis.getSystemStats(),
       apiKeyService.getAllApiKeys(),
       claudeAccountService.getAllAccounts(),
+      geminiAccountService.getAllAccounts(),
       redis.getTodayStats(),
       redis.getSystemAverages()
     ]);
@@ -404,16 +596,21 @@ router.get('/dashboard', authenticateAdmin, async (req, res) => {
     const totalAllTokensUsed = apiKeys.reduce((sum, key) => sum + (key.usage?.total?.allTokens || 0), 0);
     
     const activeApiKeys = apiKeys.filter(key => key.isActive).length;
-    const activeAccounts = accounts.filter(acc => acc.isActive && acc.status === 'active').length;
-    const rateLimitedAccounts = accounts.filter(acc => acc.rateLimitStatus && acc.rateLimitStatus.isRateLimited).length;
+    const activeClaudeAccounts = claudeAccounts.filter(acc => acc.isActive && acc.status === 'active').length;
+    const rateLimitedClaudeAccounts = claudeAccounts.filter(acc => acc.rateLimitStatus && acc.rateLimitStatus.isRateLimited).length;
+    const activeGeminiAccounts = geminiAccounts.filter(acc => acc.isActive && acc.status === 'active').length;
+    const rateLimitedGeminiAccounts = geminiAccounts.filter(acc => acc.rateLimitStatus === 'limited').length;
 
     const dashboard = {
       overview: {
         totalApiKeys: apiKeys.length,
         activeApiKeys,
-        totalClaudeAccounts: accounts.length,
-        activeClaudeAccounts: activeAccounts,
-        rateLimitedClaudeAccounts: rateLimitedAccounts,
+        totalClaudeAccounts: claudeAccounts.length,
+        activeClaudeAccounts: activeClaudeAccounts,
+        rateLimitedClaudeAccounts: rateLimitedClaudeAccounts,
+        totalGeminiAccounts: geminiAccounts.length,
+        activeGeminiAccounts: activeGeminiAccounts,
+        rateLimitedGeminiAccounts: rateLimitedGeminiAccounts,
         totalTokensUsed,
         totalRequestsUsed,
         totalInputTokensUsed,
@@ -437,7 +634,8 @@ router.get('/dashboard', authenticateAdmin, async (req, res) => {
       },
       systemHealth: {
         redisConnected: redis.isConnected,
-        claudeAccountsHealthy: activeAccounts > 0,
+        claudeAccountsHealthy: activeClaudeAccounts > 0,
+        geminiAccountsHealthy: activeGeminiAccounts > 0,
         uptime: process.uptime()
       }
     };
@@ -1072,7 +1270,8 @@ router.get('/api-keys-usage-trend', authenticateAdmin, async (req, res) => {
             
             hourData.apiKeys[apiKeyId] = {
               name: apiKeyMap.get(apiKeyId).name,
-              tokens: totalTokens
+              tokens: totalTokens,
+              requests: parseInt(data.requests) || 0
             };
           }
         }
@@ -1116,7 +1315,8 @@ router.get('/api-keys-usage-trend', authenticateAdmin, async (req, res) => {
             
             dayData.apiKeys[apiKeyId] = {
               name: apiKeyMap.get(apiKeyId).name,
-              tokens: totalTokens
+              tokens: totalTokens,
+              requests: parseInt(data.requests) || 0
             };
           }
         }

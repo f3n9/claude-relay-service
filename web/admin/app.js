@@ -23,7 +23,7 @@ const app = createApp({
             tabs: [
                 { key: 'dashboard', name: '仪表板', icon: 'fas fa-tachometer-alt' },
                 { key: 'apiKeys', name: 'API Keys', icon: 'fas fa-key' },
-                { key: 'accounts', name: 'Claude账户', icon: 'fas fa-user-circle' },
+                { key: 'accounts', name: '账户管理', icon: 'fas fa-user-circle' },
                 { key: 'tutorial', name: '使用教程', icon: 'fas fa-graduation-cap' }
             ],
             
@@ -86,6 +86,7 @@ const app = createApp({
                 topApiKeys: [],
                 totalApiKeys: 0
             },
+            apiKeysTrendMetric: 'requests', // 'requests' 或 'tokens' - 默认显示请求次数
             
             // 统一的日期筛选
             dateFilter: {
@@ -120,6 +121,8 @@ const app = createApp({
                 rateLimitWindow: '',
                 rateLimitRequests: '',
                 claudeAccountId: '',
+                geminiAccountId: '',
+                permissions: 'all', // 'claude', 'gemini', 'all'
                 enableModelRestriction: false,
                 restrictedModels: [],
                 modelInput: ''
@@ -163,6 +166,8 @@ const app = createApp({
                 rateLimitWindow: '',
                 rateLimitRequests: '',
                 claudeAccountId: '',
+                geminiAccountId: '',
+                permissions: 'all',
                 enableModelRestriction: false,
                 restrictedModels: [],
                 modelInput: ''
@@ -174,6 +179,7 @@ const app = createApp({
             showCreateAccountModal: false,
             createAccountLoading: false,
             accountForm: {
+                platform: 'claude', // 'claude' 或 'gemini'
                 name: '',
                 description: '',
                 addType: 'oauth', // 'oauth' 或 'manual'
@@ -184,7 +190,8 @@ const app = createApp({
                 proxyHost: '',
                 proxyPort: '',
                 proxyUsername: '',
-                proxyPassword: ''
+                proxyPassword: '',
+                projectId: '' // Gemini 项目编号
             },
             
             // 编辑账户相关
@@ -192,6 +199,7 @@ const app = createApp({
             editAccountLoading: false,
             editAccountForm: {
                 id: '',
+                platform: 'claude',
                 name: '',
                 description: '',
                 accountType: 'shared',
@@ -202,7 +210,8 @@ const app = createApp({
                 proxyHost: '',
                 proxyPort: '',
                 proxyUsername: '',
-                proxyPassword: ''
+                proxyPassword: '',
+                projectId: '' // Gemini 项目编号
             },
             
             // OAuth 相关
@@ -212,6 +221,15 @@ const app = createApp({
                 sessionId: '',
                 authUrl: '',
                 callbackUrl: ''
+            },
+            
+            // Gemini OAuth 相关
+            geminiOauthPolling: false,
+            geminiOauthInterval: null,
+            geminiOauthData: {
+                sessionId: '',
+                authUrl: '',
+                code: ''
             },
             
             // 用户菜单和账户修改相关
@@ -228,6 +246,16 @@ const app = createApp({
                 confirmPassword: ''
             },
             
+            // 确认弹窗相关
+            showConfirmModal: false,
+            confirmModal: {
+                title: '',
+                message: '',
+                confirmText: '继续',
+                cancelText: '取消',
+                onConfirm: null,
+                onCancel: null
+            }
         }
     },
     
@@ -312,6 +340,41 @@ const app = createApp({
     },
     
     methods: {
+        // 显示确认弹窗
+        showConfirm(title, message, confirmText = '继续', cancelText = '取消') {
+            return new Promise((resolve) => {
+                this.confirmModal = {
+                    title,
+                    message,
+                    confirmText,
+                    cancelText,
+                    onConfirm: () => {
+                        this.showConfirmModal = false;
+                        resolve(true);
+                    },
+                    onCancel: () => {
+                        this.showConfirmModal = false;
+                        resolve(false);
+                    }
+                };
+                this.showConfirmModal = true;
+            });
+        },
+        
+        // 处理确认弹窗确定按钮
+        handleConfirmOk() {
+            if (this.confirmModal.onConfirm) {
+                this.confirmModal.onConfirm();
+            }
+        },
+        
+        // 处理确认弹窗取消按钮
+        handleConfirmCancel() {
+            if (this.confirmModal.onCancel) {
+                this.confirmModal.onCancel();
+            }
+        },
+        
         // 获取绑定账号名称
         getBoundAccountName(accountId) {
             const account = this.accounts.find(acc => acc.id === accountId);
@@ -320,7 +383,9 @@ const app = createApp({
         
         // 获取绑定到特定账号的API Key数量
         getBoundApiKeysCount(accountId) {
-            return this.apiKeys.filter(key => key.claudeAccountId === accountId).length;
+            return this.apiKeys.filter(key => 
+                key.claudeAccountId === accountId || key.geminiAccountId === accountId
+            ).length;
         },
         
         // 添加限制模型
@@ -422,6 +487,7 @@ const app = createApp({
         openEditAccountModal(account) {
             this.editAccountForm = {
                 id: account.id,
+                platform: account.platform || 'claude',
                 name: account.name,
                 description: account.description || '',
                 accountType: account.accountType || 'shared',
@@ -432,7 +498,8 @@ const app = createApp({
                 proxyHost: account.proxy ? account.proxy.host : '',
                 proxyPort: account.proxy ? account.proxy.port : '',
                 proxyUsername: account.proxy ? account.proxy.username : '',
-                proxyPassword: account.proxy ? account.proxy.password : ''
+                proxyPassword: account.proxy ? account.proxy.password : '',
+                projectId: account.projectId || '' // 添加项目编号
             };
             this.showEditAccountModal = true;
         },
@@ -442,6 +509,7 @@ const app = createApp({
             this.showEditAccountModal = false;
             this.editAccountForm = {
                 id: '',
+                platform: 'claude',
                 name: '',
                 description: '',
                 accountType: 'shared',
@@ -452,12 +520,29 @@ const app = createApp({
                 proxyHost: '',
                 proxyPort: '',
                 proxyUsername: '',
-                proxyPassword: ''
+                proxyPassword: '',
+                projectId: '' // 重置项目编号
             };
         },
         
         // 更新账户
         async updateAccount() {
+            // 对于Gemini账户，检查项目编号
+            if (this.editAccountForm.platform === 'gemini') {
+                if (!this.editAccountForm.projectId || this.editAccountForm.projectId.trim() === '') {
+                    // 使用自定义确认弹窗
+                    const confirmed = await this.showConfirm(
+                        '项目编号未填写',
+                        '您尚未填写项目编号。\n\n如果您的Google账号绑定了Google Cloud或被识别为Workspace账号，需要提供项目编号。\n如果您使用的是普通个人账号，可以继续不填写。',
+                        '继续保存',
+                        '返回填写'
+                    );
+                    if (!confirmed) {
+                        return;
+                    }
+                }
+            }
+            
             this.editAccountLoading = true;
             try {
                 // 验证账户类型切换
@@ -478,19 +563,42 @@ const app = createApp({
                 let updateData = {
                     name: this.editAccountForm.name,
                     description: this.editAccountForm.description,
-                    accountType: this.editAccountForm.accountType
+                    accountType: this.editAccountForm.accountType,
+                    projectId: this.editAccountForm.projectId || '' // 添加项目编号
                 };
                 
                 // 只在有值时才更新 token
                 if (this.editAccountForm.accessToken.trim()) {
-                    // 构建新的 OAuth 数据
-                    const newOauthData = {
-                        accessToken: this.editAccountForm.accessToken,
-                        refreshToken: this.editAccountForm.refreshToken || '',
-                        expiresAt: Date.now() + (365 * 24 * 60 * 60 * 1000), // 默认设置1年后过期
-                        scopes: ['user:inference']
-                    };
-                    updateData.claudeAiOauth = newOauthData;
+                    if (this.editAccountForm.platform === 'gemini') {
+                        // Gemini OAuth 数据格式
+                        // 如果有 Refresh Token，设置10分钟过期；否则设置1年
+                        const expiresInMs = this.editAccountForm.refreshToken 
+                            ? (10 * 60 * 1000) // 10分钟
+                            : (365 * 24 * 60 * 60 * 1000); // 1年
+                        
+                        const newOauthData = {
+                            access_token: this.editAccountForm.accessToken,
+                            refresh_token: this.editAccountForm.refreshToken || '',
+                            scope: 'https://www.googleapis.com/auth/cloud-platform',
+                            token_type: 'Bearer',
+                            expiry_date: Date.now() + expiresInMs
+                        };
+                        updateData.geminiOauth = newOauthData;
+                    } else {
+                        // Claude OAuth 数据格式
+                        // 如果有 Refresh Token，设置10分钟过期；否则设置1年
+                        const expiresInMs = this.editAccountForm.refreshToken 
+                            ? (10 * 60 * 1000) // 10分钟
+                            : (365 * 24 * 60 * 60 * 1000); // 1年
+                        
+                        const newOauthData = {
+                            accessToken: this.editAccountForm.accessToken,
+                            refreshToken: this.editAccountForm.refreshToken || '',
+                            expiresAt: Date.now() + expiresInMs,
+                            scopes: ['user:inference']
+                        };
+                        updateData.claudeAiOauth = newOauthData;
+                    }
                 }
                 
                 // 更新代理配置
@@ -506,7 +614,12 @@ const app = createApp({
                     updateData.proxy = null;
                 }
                 
-                const response = await fetch(`/admin/claude-accounts/${this.editAccountForm.id}`, {
+                // 根据平台选择端点
+                const endpoint = this.editAccountForm.platform === 'gemini' 
+                    ? `/admin/gemini-accounts/${this.editAccountForm.id}`
+                    : `/admin/claude-accounts/${this.editAccountForm.id}`;
+                
+                const response = await fetch(endpoint, {
                     method: 'PUT',
                     headers: {
                         'Content-Type': 'application/json',
@@ -549,6 +662,7 @@ const app = createApp({
         // 重置账户表单
         resetAccountForm() {
             this.accountForm = {
+                platform: 'claude',
                 name: '',
                 description: '',
                 addType: 'oauth',
@@ -559,7 +673,8 @@ const app = createApp({
                 proxyHost: '',
                 proxyPort: '',
                 proxyUsername: '',
-                proxyPassword: ''
+                proxyPassword: '',
+                projectId: '' // 重置项目编号
             };
             this.oauthStep = 1;
             this.oauthData = {
@@ -567,10 +682,37 @@ const app = createApp({
                 authUrl: '',
                 callbackUrl: ''
             };
+            this.geminiOauthData = {
+                sessionId: '',
+                authUrl: '',
+                code: ''
+            };
+            // 停止 Gemini OAuth 轮询
+            if (this.geminiOauthInterval) {
+                clearInterval(this.geminiOauthInterval);
+                this.geminiOauthInterval = null;
+            }
+            this.geminiOauthPolling = false;
         },
         
         // OAuth步骤前进
-        nextOAuthStep() {
+        async nextOAuthStep() {
+            // 对于Gemini账户，检查项目编号
+            if (this.accountForm.platform === 'gemini' && this.oauthStep === 1 && this.accountForm.addType === 'oauth') {
+                if (!this.accountForm.projectId || this.accountForm.projectId.trim() === '') {
+                    // 使用自定义确认弹窗
+                    const confirmed = await this.showConfirm(
+                        '项目编号未填写',
+                        '您尚未填写项目编号。\n\n如果您的Google账号绑定了Google Cloud或被识别为Workspace账号，需要提供项目编号。\n如果您使用的是普通个人账号，可以继续不填写。',
+                        '继续',
+                        '返回填写'
+                    );
+                    if (!confirmed) {
+                        return;
+                    }
+                }
+            }
+            
             if (this.oauthStep < 3) {
                 this.oauthStep++;
             }
@@ -592,7 +734,11 @@ const app = createApp({
                     };
                 }
 
-                const response = await fetch('/admin/claude-accounts/generate-auth-url', {
+                const endpoint = this.accountForm.platform === 'gemini' 
+                    ? '/admin/gemini-accounts/generate-auth-url'
+                    : '/admin/claude-accounts/generate-auth-url';
+
+                const response = await fetch(endpoint, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
@@ -606,8 +752,14 @@ const app = createApp({
                 const data = await response.json();
                 
                 if (data.success) {
-                    this.oauthData.authUrl = data.data.authUrl;
-                    this.oauthData.sessionId = data.data.sessionId;
+                    if (this.accountForm.platform === 'gemini') {
+                        this.geminiOauthData.authUrl = data.data.authUrl;
+                        this.geminiOauthData.sessionId = data.data.sessionId;
+                        // 不再自动开始轮询，改为手动输入授权码
+                    } else {
+                        this.oauthData.authUrl = data.data.authUrl;
+                        this.oauthData.sessionId = data.data.sessionId;
+                    }
                     this.showToast('授权链接生成成功！', 'success', '生成成功');
                 } else {
                     this.showToast(data.message || '生成失败', 'error', '生成失败');
@@ -633,6 +785,12 @@ const app = createApp({
         
         // 创建OAuth账户
         async createOAuthAccount() {
+            // 如果是 Gemini，不应该调用这个方法
+            if (this.accountForm.platform === 'gemini') {
+                console.error('createOAuthAccount should not be called for Gemini');
+                return;
+            }
+            
             this.createAccountLoading = true;
             try {
                 // 首先交换authorization code获取token
@@ -735,28 +893,65 @@ const app = createApp({
                     };
                 }
                 
-                // 构建手动 OAuth 数据
-                const manualOauthData = {
-                    accessToken: this.accountForm.accessToken,
-                    refreshToken: this.accountForm.refreshToken || '',
-                    expiresAt: Date.now() + (365 * 24 * 60 * 60 * 1000), // 默认设置1年后过期
-                    scopes: ['user:inference'] // 默认权限
-                };
+                // 根据平台构建 OAuth 数据
+                let endpoint, bodyData;
                 
-                // 创建账户
-                const createResponse = await fetch('/admin/claude-accounts', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': 'Bearer ' + this.authToken
-                    },
-                    body: JSON.stringify({
+                if (this.accountForm.platform === 'gemini') {
+                    // Gemini 账户
+                    // 如果有 Refresh Token，设置10分钟过期；否则设置1年
+                    const expiresInMs = this.accountForm.refreshToken 
+                        ? (10 * 60 * 1000) // 10分钟
+                        : (365 * 24 * 60 * 60 * 1000); // 1年
+                    
+                    const geminiOauthData = {
+                        access_token: this.accountForm.accessToken,
+                        refresh_token: this.accountForm.refreshToken || '',
+                        scope: 'https://www.googleapis.com/auth/cloud-platform',
+                        token_type: 'Bearer',
+                        expiry_date: Date.now() + expiresInMs
+                    };
+                    
+                    endpoint = '/admin/gemini-accounts';
+                    bodyData = {
+                        name: this.accountForm.name,
+                        description: this.accountForm.description,
+                        geminiOauth: geminiOauthData,
+                        proxy: proxy,
+                        accountType: this.accountForm.accountType,
+                        projectId: this.accountForm.projectId || '' // 添加项目编号
+                    };
+                } else {
+                    // Claude 账户
+                    // 如果有 Refresh Token，设置10分钟过期；否则设置1年
+                    const expiresInMs = this.accountForm.refreshToken 
+                        ? (10 * 60 * 1000) // 10分钟
+                        : (365 * 24 * 60 * 60 * 1000); // 1年
+                    
+                    const manualOauthData = {
+                        accessToken: this.accountForm.accessToken,
+                        refreshToken: this.accountForm.refreshToken || '',
+                        expiresAt: Date.now() + expiresInMs,
+                        scopes: ['user:inference'] // 默认权限
+                    };
+                    
+                    endpoint = '/admin/claude-accounts';
+                    bodyData = {
                         name: this.accountForm.name,
                         description: this.accountForm.description,
                         claudeAiOauth: manualOauthData,
                         proxy: proxy,
                         accountType: this.accountForm.accountType
-                    })
+                    };
+                }
+                
+                // 创建账户
+                const createResponse = await fetch(endpoint, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': 'Bearer ' + this.authToken
+                    },
+                    body: JSON.stringify(bodyData)
                 });
                 
                 const createData = await createResponse.json();
@@ -785,6 +980,131 @@ const app = createApp({
                 }
                 
                 this.showToast(errorMessage, 'error', '网络错误', 8000);
+            } finally {
+                this.createAccountLoading = false;
+            }
+        },
+        
+        // Gemini OAuth 轮询
+        async startGeminiOAuthPolling() {
+            if (this.geminiOauthPolling) return;
+            
+            this.geminiOauthPolling = true;
+            let attempts = 0;
+            const maxAttempts = 30; // 最多轮询 30 次（60秒）
+            
+            this.geminiOauthInterval = setInterval(async () => {
+                attempts++;
+                
+                try {
+                    const response = await fetch('/admin/gemini-accounts/poll-auth-status', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': 'Bearer ' + this.authToken
+                        },
+                        body: JSON.stringify({
+                            sessionId: this.geminiOauthData.sessionId
+                        })
+                    });
+                    
+                    const data = await response.json();
+                    
+                    if (data.success) {
+                        // 授权成功
+                        this.stopGeminiOAuthPolling();
+                        this.geminiOauthData.code = 'authorized';
+                        
+                        // 自动创建账户
+                        await this.createGeminiOAuthAccount(data.data.tokens);
+                    } else if (data.error === 'Authorization timeout' || attempts >= maxAttempts) {
+                        // 超时
+                        this.stopGeminiOAuthPolling();
+                        this.showToast('授权超时，请重试', 'error', '授权超时');
+                    }
+                } catch (error) {
+                    console.error('Polling error:', error);
+                    if (attempts >= maxAttempts) {
+                        this.stopGeminiOAuthPolling();
+                        this.showToast('轮询失败，请检查网络连接', 'error', '网络错误');
+                    }
+                }
+            }, 2000); // 每2秒轮询一次
+        },
+        
+        stopGeminiOAuthPolling() {
+            if (this.geminiOauthInterval) {
+                clearInterval(this.geminiOauthInterval);
+                this.geminiOauthInterval = null;
+            }
+            this.geminiOauthPolling = false;
+        },
+        
+        // 创建 Gemini OAuth 账户
+        async createGeminiOAuthAccount() {
+            this.createAccountLoading = true;
+            try {
+                // 首先交换授权码获取 tokens
+                const tokenResponse = await fetch('/admin/gemini-accounts/exchange-code', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': 'Bearer ' + this.authToken
+                    },
+                    body: JSON.stringify({
+                        code: this.geminiOauthData.code,
+                        sessionId: this.geminiOauthData.sessionId
+                    })
+                });
+                
+                const tokenData = await tokenResponse.json();
+                
+                if (!tokenData.success) {
+                    this.showToast(tokenData.message || '授权码交换失败', 'error', '交换失败');
+                    return;
+                }
+                
+                // 构建代理配置
+                let proxy = null;
+                if (this.accountForm.proxyType) {
+                    proxy = {
+                        type: this.accountForm.proxyType,
+                        host: this.accountForm.proxyHost,
+                        port: parseInt(this.accountForm.proxyPort),
+                        username: this.accountForm.proxyUsername || null,
+                        password: this.accountForm.proxyPassword || null
+                    };
+                }
+                
+                // 创建账户
+                const response = await fetch('/admin/gemini-accounts', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': 'Bearer ' + this.authToken
+                    },
+                    body: JSON.stringify({
+                        name: this.accountForm.name,
+                        description: this.accountForm.description,
+                        geminiOauth: tokenData.data.tokens,
+                        proxy: proxy,
+                        accountType: this.accountForm.accountType,
+                        projectId: this.accountForm.projectId || '' // 添加项目编号
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    this.showToast('Gemini OAuth账户创建成功！', 'success', '账户创建成功');
+                    this.closeCreateAccountModal();
+                    await this.loadAccounts();
+                } else {
+                    this.showToast(data.message || 'Account creation failed', 'error', 'Creation Failed');
+                }
+            } catch (error) {
+                console.error('Error creating Gemini OAuth account:', error);
+                this.showToast('创建失败，请检查网络连接', 'error', '网络错误', 8000);
             } finally {
                 this.createAccountLoading = false;
             }
@@ -1160,18 +1480,50 @@ const app = createApp({
         async loadAccounts() {
             this.accountsLoading = true;
             try {
-                const response = await fetch('/admin/claude-accounts', {
-                    headers: { 'Authorization': 'Bearer ' + this.authToken }
-                });
-                const data = await response.json();
+                // 并行加载 Claude 和 Gemini 账户
+                const [claudeResponse, geminiResponse] = await Promise.all([
+                    fetch('/admin/claude-accounts', {
+                        headers: { 'Authorization': 'Bearer ' + this.authToken }
+                    }),
+                    fetch('/admin/gemini-accounts', {
+                        headers: { 'Authorization': 'Bearer ' + this.authToken }
+                    })
+                ]);
                 
-                if (data.success) {
-                    this.accounts = data.data || [];
-                    // 为每个账号计算绑定的API Key数量
-                    this.accounts.forEach(account => {
-                        account.boundApiKeysCount = this.apiKeys.filter(key => key.claudeAccountId === account.id).length;
-                    });
+                const [claudeData, geminiData] = await Promise.all([
+                    claudeResponse.json(),
+                    geminiResponse.json()
+                ]);
+                
+                // 合并账户数据
+                const allAccounts = [];
+                
+                if (claudeData.success) {
+                    const claudeAccounts = (claudeData.data || []).map(acc => ({
+                        ...acc,
+                        platform: 'claude'
+                    }));
+                    allAccounts.push(...claudeAccounts);
                 }
+                
+                if (geminiData.success) {
+                    const geminiAccounts = (geminiData.data || []).map(acc => ({
+                        ...acc,
+                        platform: 'gemini'
+                    }));
+                    allAccounts.push(...geminiAccounts);
+                }
+                
+                this.accounts = allAccounts;
+                
+                // 为每个账号计算绑定的API Key数量
+                this.accounts.forEach(account => {
+                    if (account.platform === 'claude') {
+                        account.boundApiKeysCount = this.apiKeys.filter(key => key.claudeAccountId === account.id).length;
+                    } else {
+                        account.boundApiKeysCount = this.apiKeys.filter(key => key.geminiAccountId === account.id).length;
+                    }
+                });
             } catch (error) {
                 console.error('Failed to load accounts:', error);
             } finally {
@@ -1253,7 +1605,13 @@ const app = createApp({
         },
         
         async deleteApiKey(keyId) {
-            if (!confirm('确定要删除这个 API Key 吗？')) return;
+            const confirmed = await this.showConfirm(
+                '删除 API Key',
+                '确定要删除这个 API Key 吗？\n\n此操作不可撤销，删除后将无法恢复。',
+                '确认删除',
+                '取消'
+            );
+            if (!confirmed) return;
             
             try {
                 const response = await fetch('/admin/api-keys/' + keyId, {
@@ -1350,6 +1708,13 @@ const app = createApp({
                 await this.loadApiKeys();
             }
             
+            // 查找账户以确定平台类型
+            const account = this.accounts.find(acc => acc.id === accountId);
+            if (!account) {
+                this.showToast('账户不存在', 'error', '删除失败');
+                return;
+            }
+            
             // 检查是否有API Key绑定到此账号
             const boundKeysCount = this.getBoundApiKeysCount(accountId);
             if (boundKeysCount > 0) {
@@ -1357,10 +1722,22 @@ const app = createApp({
                 return;
             }
             
-            if (!confirm('确定要删除这个 Claude 账户吗？')) return;
+            const platformName = account.platform === 'gemini' ? 'Gemini' : 'Claude';
+            const confirmed = await this.showConfirm(
+                `删除 ${platformName} 账户`,
+                `确定要删除这个 ${platformName} 账户吗？\n\n账户名称：${account.name}\n此操作不可撤销，删除后将无法恢复。`,
+                '确认删除',
+                '取消'
+            );
+            if (!confirmed) return;
+            
+            // 根据平台选择端点
+            const endpoint = account.platform === 'gemini' 
+                ? `/admin/gemini-accounts/${accountId}`
+                : `/admin/claude-accounts/${accountId}`;
             
             try {
-                const response = await fetch('/admin/claude-accounts/' + accountId, {
+                const response = await fetch(endpoint, {
                     method: 'DELETE',
                     headers: { 'Authorization': 'Bearer ' + this.authToken }
                 });
@@ -1376,6 +1753,40 @@ const app = createApp({
             } catch (error) {
                 console.error('Error deleting account:', error);
                 this.showToast('删除失败，请检查网络连接', 'error', '网络错误');
+            }
+        },
+        
+        // 刷新账户 Token
+        async refreshAccountToken(accountId) {
+            const account = this.accounts.find(acc => acc.id === accountId);
+            if (!account) {
+                this.showToast('账户不存在', 'error', '刷新失败');
+                return;
+            }
+            
+            // 根据平台选择端点
+            const endpoint = account.platform === 'gemini' 
+                ? `/admin/gemini-accounts/${accountId}/refresh`
+                : `/admin/claude-accounts/${accountId}/refresh`;
+            
+            try {
+                const response = await fetch(endpoint, {
+                    method: 'POST',
+                    headers: { 'Authorization': 'Bearer ' + this.authToken }
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    const platformName = account.platform === 'gemini' ? 'Gemini' : 'Claude';
+                    this.showToast(`${platformName} Token 刷新成功`, 'success', '刷新成功');
+                    await this.loadAccounts();
+                } else {
+                    this.showToast(data.message || '刷新失败', 'error', '刷新失败');
+                }
+            } catch (error) {
+                console.error('Error refreshing token:', error);
+                this.showToast('刷新失败，请检查网络连接', 'error', '网络错误');
             }
         },
         
@@ -1416,9 +1827,15 @@ const app = createApp({
             }
         },
         
-        closeNewApiKeyModal() {
+        async closeNewApiKeyModal() {
             // 显示确认提示
-            if (confirm('关闭后将无法再次查看完整的API Key，请确保已经妥善保存。确定要关闭吗？')) {
+            const confirmed = await this.showConfirm(
+                '关闭 API Key',
+                '关闭后将无法再次查看完整的API Key，请确保已经妥善保存。\n\n确定要关闭吗？',
+                '我已保存',
+                '取消'
+            );
+            if (confirmed) {
                 this.showNewApiKeyModal = false;
                 this.newApiKey = { key: '', name: '', description: '', showFullKey: false };
             }
@@ -1991,7 +2408,10 @@ const app = createApp({
             // 只显示前10个使用量最多的API Key
             this.apiKeysTrendData.topApiKeys.forEach((apiKeyId, index) => {
                 const data = this.apiKeysTrendData.data.map(item => {
-                    return item.apiKeys[apiKeyId] ? item.apiKeys[apiKeyId].tokens : 0;
+                    if (!item.apiKeys[apiKeyId]) return 0;
+                    return this.apiKeysTrendMetric === 'tokens' 
+                        ? item.apiKeys[apiKeyId].tokens 
+                        : item.apiKeys[apiKeyId].requests || 0;
                 });
                 
                 // 获取API Key名称
@@ -2049,7 +2469,7 @@ const app = createApp({
                                 position: 'left',
                                 title: {
                                     display: true,
-                                    text: 'Token 数量'
+                                    text: this.apiKeysTrendMetric === 'tokens' ? 'Token 数量' : '请求次数'
                                 },
                                 ticks: {
                                     callback: function(value) {
@@ -2087,10 +2507,11 @@ const app = createApp({
                                         }
                                         return tooltipItems[0].label;
                                     },
-                                    label: function(context) {
+                                    label: (context) => {
                                         const label = context.dataset.label || '';
                                         const value = context.parsed.y;
-                                        return label + ': ' + value.toLocaleString() + ' tokens';
+                                        const unit = this.apiKeysTrendMetric === 'tokens' ? ' tokens' : ' 次';
+                                        return label + ': ' + value.toLocaleString() + unit;
                                     }
                                 }
                             }

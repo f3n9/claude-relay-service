@@ -445,7 +445,7 @@ class ClaudeRelayService {
   }
 
   // 🌊 处理流式响应（带usage数据捕获）
-  async relayStreamRequestWithUsageCapture(requestBody, apiKeyData, responseStream, clientHeaders, usageCallback) {
+  async relayStreamRequestWithUsageCapture(requestBody, apiKeyData, responseStream, clientHeaders, usageCallback, streamTransformer = null) {
     try {
       // 调试日志：查看API Key数据（流式请求）
       logger.info('🔍 [Stream] API Key data received:', {
@@ -495,7 +495,7 @@ class ClaudeRelayService {
       const proxyAgent = await this._getProxyAgent(accountId);
       
       // 发送流式请求并捕获usage数据
-      return await this._makeClaudeStreamRequestWithUsageCapture(processedBody, accessToken, proxyAgent, clientHeaders, responseStream, usageCallback, accountId, sessionHash);
+      return await this._makeClaudeStreamRequestWithUsageCapture(processedBody, accessToken, proxyAgent, clientHeaders, responseStream, usageCallback, accountId, sessionHash, streamTransformer);
     } catch (error) {
       logger.error('❌ Claude stream relay with usage capture failed:', error);
       throw error;
@@ -503,7 +503,7 @@ class ClaudeRelayService {
   }
 
   // 🌊 发送流式请求到Claude API（带usage数据捕获）
-  async _makeClaudeStreamRequestWithUsageCapture(body, accessToken, proxyAgent, clientHeaders, responseStream, usageCallback, accountId, sessionHash) {
+  async _makeClaudeStreamRequestWithUsageCapture(body, accessToken, proxyAgent, clientHeaders, responseStream, usageCallback, accountId, sessionHash, streamTransformer = null) {
     return new Promise((resolve, reject) => {
       const url = new URL(this.claudeApiUrl);
       
@@ -559,7 +559,15 @@ class ClaudeRelayService {
           // 转发已处理的完整行到客户端
           if (lines.length > 0) {
             const linesToForward = lines.join('\n') + (lines.length > 0 ? '\n' : '');
-            responseStream.write(linesToForward);
+            // 如果有流转换器，应用转换
+            if (streamTransformer) {
+              const transformed = streamTransformer(linesToForward);
+              if (transformed) {
+                responseStream.write(transformed);
+              }
+            } else {
+              responseStream.write(linesToForward);
+            }
           }
           
           for (const line of lines) {
@@ -612,7 +620,14 @@ class ClaudeRelayService {
         res.on('end', async () => {
           // 处理缓冲区中剩余的数据
           if (buffer.trim()) {
-            responseStream.write(buffer);
+            if (streamTransformer) {
+              const transformed = streamTransformer(buffer);
+              if (transformed) {
+                responseStream.write(transformed);
+              }
+            } else {
+              responseStream.write(buffer);
+            }
           }
           responseStream.end();
           
