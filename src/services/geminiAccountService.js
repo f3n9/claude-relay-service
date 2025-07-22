@@ -59,7 +59,7 @@ function decrypt(text) {
 // 创建 OAuth2 客户端
 function createOAuth2Client(redirectUri = null) {
   // 如果没有提供 redirectUri，使用默认值
-  const uri = redirectUri || 'http://localhost:8085';
+  const uri = redirectUri || 'http://localhost:45462';
   return new OAuth2Client(
     OAUTH_CLIENT_ID,
     OAUTH_CLIENT_SECRET,
