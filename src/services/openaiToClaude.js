@@ -31,19 +31,10 @@ class OpenAIToClaudeConverter {
       stream: openaiRequest.stream || false
     };
 
-    // 处理系统消息
-    const systemMessage = this._extractSystemMessage(openaiRequest.messages);
-    
     // Claude Code 必需的系统消息
     const claudeCodeSystemMessage = 'You are Claude Code, Anthropic\'s official CLI for Claude.';
     
-    if (systemMessage) {
-      // 如果已有系统消息，合并它们
-      claudeRequest.system = `${claudeCodeSystemMessage}\n\n${systemMessage}`;
-    } else {
-      // 如果没有系统消息，只使用 Claude Code 消息
-      claudeRequest.system = claudeCodeSystemMessage;
-    }
+    claudeRequest.system = claudeCodeSystemMessage;
 
     // 处理停止序列
     if (openaiRequest.stop) {
