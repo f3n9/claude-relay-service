@@ -1618,6 +1618,8 @@ const app = createApp({
                         rateLimitWindow: this.apiKeyForm.rateLimitWindow && this.apiKeyForm.rateLimitWindow.trim() ? parseInt(this.apiKeyForm.rateLimitWindow) : null,
                         rateLimitRequests: this.apiKeyForm.rateLimitRequests && this.apiKeyForm.rateLimitRequests.trim() ? parseInt(this.apiKeyForm.rateLimitRequests) : null,
                         claudeAccountId: this.apiKeyForm.claudeAccountId || null,
+                        geminiAccountId: this.apiKeyForm.geminiAccountId || null,
+                        permissions: this.apiKeyForm.permissions || 'all',
                         enableModelRestriction: this.apiKeyForm.enableModelRestriction,
                         restrictedModels: this.apiKeyForm.restrictedModels
                     })
@@ -1690,6 +1692,8 @@ const app = createApp({
                 rateLimitWindow: key.rateLimitWindow || '',
                 rateLimitRequests: key.rateLimitRequests || '',
                 claudeAccountId: key.claudeAccountId || '',
+                geminiAccountId: key.geminiAccountId || '',
+                permissions: key.permissions || 'all',
                 enableModelRestriction: key.enableModelRestriction || false,
                 restrictedModels: key.restrictedModels ? [...key.restrictedModels] : [],
                 modelInput: ''
@@ -1707,6 +1711,8 @@ const app = createApp({
                 rateLimitWindow: '',
                 rateLimitRequests: '',
                 claudeAccountId: '',
+                geminiAccountId: '',
+                permissions: 'all',
                 enableModelRestriction: false,
                 restrictedModels: [],
                 modelInput: ''
@@ -1728,6 +1734,8 @@ const app = createApp({
                         rateLimitWindow: this.editApiKeyForm.rateLimitWindow && this.editApiKeyForm.rateLimitWindow.toString().trim() !== '' ? parseInt(this.editApiKeyForm.rateLimitWindow) : 0,
                         rateLimitRequests: this.editApiKeyForm.rateLimitRequests && this.editApiKeyForm.rateLimitRequests.toString().trim() !== '' ? parseInt(this.editApiKeyForm.rateLimitRequests) : 0,
                         claudeAccountId: this.editApiKeyForm.claudeAccountId || null,
+                        geminiAccountId: this.editApiKeyForm.geminiAccountId || null,
+                        permissions: this.editApiKeyForm.permissions || 'all',
                         enableModelRestriction: this.editApiKeyForm.enableModelRestriction,
                         restrictedModels: this.editApiKeyForm.restrictedModels
                     })
