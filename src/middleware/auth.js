@@ -463,9 +463,9 @@ const securityMiddleware = (req, res, next) => {
   if (req.path.startsWith('/web') || req.path === '/') {
     res.setHeader('Content-Security-Policy', [
       'default-src \'self\'',
-      'script-src \'self\' \'unsafe-inline\' \'unsafe-eval\' https://unpkg.com https://cdn.tailwindcss.com https://cdnjs.cloudflare.com https://cdn.jsdelivr.net',
-      'style-src \'self\' \'unsafe-inline\' https://cdn.tailwindcss.com https://cdnjs.cloudflare.com',
-      'font-src \'self\' https://cdnjs.cloudflare.com',
+      'script-src \'self\' \'unsafe-inline\' \'unsafe-eval\' https://unpkg.com https://cdn.tailwindcss.com https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://cdn.bootcdn.net',
+      'style-src \'self\' \'unsafe-inline\' https://cdn.tailwindcss.com https://cdnjs.cloudflare.com https://cdn.bootcdn.net',
+      'font-src \'self\' https://cdnjs.cloudflare.com https://cdn.bootcdn.net',
       'img-src \'self\' data:',
       'connect-src \'self\'',
       'frame-ancestors \'none\'',

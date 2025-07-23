@@ -122,10 +122,35 @@ class Application {
           ]);
           
           const memory = process.memoryUsage();
+          
+          // 获取版本号：优先使用环境变量，其次VERSION文件，再次package.json，最后使用默认值
+          let version = process.env.APP_VERSION || process.env.VERSION;
+          if (!version) {
+            try {
+              // 尝试从VERSION文件读取
+              const fs = require('fs');
+              const path = require('path');
+              const versionFile = path.join(__dirname, '..', 'VERSION');
+              if (fs.existsSync(versionFile)) {
+                version = fs.readFileSync(versionFile, 'utf8').trim();
+              }
+            } catch (error) {
+              // 忽略错误，继续尝试其他方式
+            }
+          }
+          if (!version) {
+            try {
+              const packageJson = require('../package.json');
+              version = packageJson.version;
+            } catch (error) {
+              version = '1.0.0';
+            }
+          }
+          
           const health = {
             status: 'healthy',
             service: 'claude-relay-service',
-            version: '1.0.0',
+            version: version,
             timestamp: new Date().toISOString(),
             uptime: process.uptime(),
             memory: {

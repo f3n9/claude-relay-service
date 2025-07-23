@@ -255,6 +255,20 @@ const app = createApp({
                 cancelText: '取消',
                 onConfirm: null,
                 onCancel: null
+            },
+            
+            // 版本管理相关
+            versionInfo: {
+                current: '',  // 当前版本
+                latest: '',   // 最新版本
+                hasUpdate: false,  // 是否有更新
+                checkingUpdate: false,  // 正在检查更新
+                lastChecked: null,  // 上次检查时间
+                releaseInfo: null,  // 最新版本的发布信息
+                githubRepo: 'wei-shaw/claude-relay-service',  // GitHub仓库
+                showReleaseNotes: false,  // 是否显示发布说明
+                autoCheckInterval: null,  // 自动检查定时器
+                noUpdateMessage: false  // 显示"已是最新版"提醒
             }
         }
     },
@@ -295,6 +309,9 @@ const app = createApp({
             // 加载当前用户信息
             this.loadCurrentUser();
             
+            // 加载版本信息
+            this.loadCurrentVersion();
+            
             // 初始化日期筛选器和图表数据
             this.initializeDateFilter();
             
@@ -321,6 +338,10 @@ const app = createApp({
     
     beforeUnmount() {
         this.cleanupCharts();
+        // 清理版本检查定时器
+        if (this.versionInfo.autoCheckInterval) {
+            clearInterval(this.versionInfo.autoCheckInterval);
+        }
     },
     
     watch: {
@@ -1324,6 +1345,130 @@ const app = createApp({
             } catch (error) {
                 console.error('Error loading current user:', error);
             }
+        },
+        
+        // 版本管理相关方法
+        async loadCurrentVersion() {
+            try {
+                const response = await fetch('/health');
+                const data = await response.json();
+                
+                if (data.version) {
+                    // 从健康检查端点获取当前版本
+                    this.versionInfo.current = data.version;
+                    
+                    // 检查更新
+                    await this.checkForUpdates();
+                    
+                    // 设置自动检查更新（每小时检查一次）
+                    this.versionInfo.autoCheckInterval = setInterval(() => {
+                        this.checkForUpdates();
+                    }, 3600000); // 1小时
+                }
+            } catch (error) {
+                console.error('Error loading current version:', error);
+                this.versionInfo.current = '未知';
+            }
+        },
+        
+        async checkForUpdates() {
+            if (this.versionInfo.checkingUpdate) {
+                return;
+            }
+            
+            this.versionInfo.checkingUpdate = true;
+            
+            try {
+                // 使用后端接口检查更新
+                const response = await fetch('/admin/check-updates', {
+                    headers: {
+                        'Authorization': `Bearer ${this.authToken}`
+                    }
+                });
+                
+                if (response.ok) {
+                    const result = await response.json();
+                    const data = result.data;
+                    
+                    this.versionInfo.current = data.current;
+                    this.versionInfo.latest = data.latest;
+                    this.versionInfo.hasUpdate = data.hasUpdate;
+                    this.versionInfo.releaseInfo = data.releaseInfo;
+                    this.versionInfo.lastChecked = new Date();
+                    
+                    // 保存到localStorage
+                    localStorage.setItem('versionInfo', JSON.stringify({
+                        current: data.current,
+                        latest: data.latest,
+                        lastChecked: this.versionInfo.lastChecked,
+                        hasUpdate: data.hasUpdate,
+                        releaseInfo: data.releaseInfo
+                    }));
+                    
+                    // 如果没有更新，显示提醒
+                    if (!data.hasUpdate) {
+                        this.versionInfo.noUpdateMessage = true;
+                        // 3秒后自动隐藏提醒
+                        setTimeout(() => {
+                            this.versionInfo.noUpdateMessage = false;
+                        }, 3000);
+                    }
+                    
+                    if (data.cached && data.warning) {
+                        console.warn('Version check warning:', data.warning);
+                    }
+                } else {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+            } catch (error) {
+                console.error('Error checking for updates:', error);
+                
+                // 尝试从localStorage读取缓存的版本信息
+                const cached = localStorage.getItem('versionInfo');
+                if (cached) {
+                    const cachedInfo = JSON.parse(cached);
+                    this.versionInfo.current = cachedInfo.current || this.versionInfo.current;
+                    this.versionInfo.latest = cachedInfo.latest;
+                    this.versionInfo.hasUpdate = cachedInfo.hasUpdate;
+                    this.versionInfo.releaseInfo = cachedInfo.releaseInfo;
+                    this.versionInfo.lastChecked = new Date(cachedInfo.lastChecked);
+                }
+            } finally {
+                this.versionInfo.checkingUpdate = false;
+            }
+        },
+        
+        compareVersions(current, latest) {
+            // 比较语义化版本号
+            const parseVersion = (v) => {
+                const parts = v.split('.').map(Number);
+                return {
+                    major: parts[0] || 0,
+                    minor: parts[1] || 0,
+                    patch: parts[2] || 0
+                };
+            };
+            
+            const currentV = parseVersion(current);
+            const latestV = parseVersion(latest);
+            
+            if (currentV.major !== latestV.major) {
+                return currentV.major - latestV.major;
+            }
+            if (currentV.minor !== latestV.minor) {
+                return currentV.minor - latestV.minor;
+            }
+            return currentV.patch - latestV.patch;
+        },
+        
+        formatVersionDate(dateString) {
+            if (!dateString) return '';
+            const date = new Date(dateString);
+            return date.toLocaleDateString('zh-CN', { 
+                year: 'numeric', 
+                month: 'long', 
+                day: 'numeric' 
+            });
         },
         
         // 用户菜单相关方法

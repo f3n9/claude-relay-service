@@ -9,6 +9,9 @@ const oauthHelper = require('../utils/oauthHelper');
 const CostCalculator = require('../utils/costCalculator');
 const pricingService = require('../services/pricingService');
 const claudeCodeHeadersService = require('../services/claudeCodeHeadersService');
+const axios = require('axios');
+const fs = require('fs');
+const path = require('path');
 
 const router = express.Router();
 
@@ -1606,5 +1609,189 @@ router.delete('/claude-code-headers/:accountId', authenticateAdmin, async (req, 
     res.status(500).json({ error: 'Failed to clear Claude Code headers', message: error.message });
   }
 });
+
+// 🔄 版本检查
+router.get('/check-updates', authenticateAdmin, async (req, res) => {
+  // 读取当前版本
+  const versionPath = path.join(__dirname, '../../VERSION');
+  let currentVersion = '1.0.0';
+  try {
+    currentVersion = fs.readFileSync(versionPath, 'utf8').trim();
+  } catch (err) {
+    logger.warn('⚠️ Could not read VERSION file:', err.message);
+  }
+
+  try {
+
+    // 从缓存获取
+    const cacheKey = 'version_check_cache';
+    const cached = await redis.getClient().get(cacheKey);
+    
+    if (cached && !req.query.force) {
+      const cachedData = JSON.parse(cached);
+      const cacheAge = Date.now() - cachedData.timestamp;
+      
+      // 缓存有效期1小时
+      if (cacheAge < 3600000) {
+        // 实时计算 hasUpdate，不使用缓存的值
+        const hasUpdate = compareVersions(currentVersion, cachedData.latest) < 0;
+        
+        return res.json({
+          success: true,
+          data: {
+            current: currentVersion,
+            latest: cachedData.latest,
+            hasUpdate: hasUpdate, // 实时计算，不用缓存
+            releaseInfo: cachedData.releaseInfo,
+            cached: true
+          }
+        });
+      }
+    }
+
+    // 请求 GitHub API
+    const githubRepo = 'wei-shaw/claude-relay-service';
+    const response = await axios.get(
+      `https://api.github.com/repos/${githubRepo}/releases/latest`,
+      {
+        headers: {
+          'Accept': 'application/vnd.github.v3+json',
+          'User-Agent': 'Claude-Relay-Service'
+        },
+        timeout: 10000
+      }
+    );
+
+    const release = response.data;
+    const latestVersion = release.tag_name.replace(/^v/, '');
+    
+    // 比较版本
+    const hasUpdate = compareVersions(currentVersion, latestVersion) < 0;
+    
+    const releaseInfo = {
+      name: release.name,
+      body: release.body,
+      publishedAt: release.published_at,
+      htmlUrl: release.html_url
+    };
+
+    // 缓存结果（不缓存 hasUpdate，因为它应该实时计算）
+    await redis.getClient().set(cacheKey, JSON.stringify({
+      latest: latestVersion,
+      releaseInfo,
+      timestamp: Date.now()
+    }), 'EX', 3600); // 1小时过期
+
+    res.json({
+      success: true,
+      data: {
+        current: currentVersion,
+        latest: latestVersion,
+        hasUpdate,
+        releaseInfo,
+        cached: false
+      }
+    });
+
+  } catch (error) {
+    // 改进错误日志记录
+    const errorDetails = {
+      message: error.message || 'Unknown error',
+      code: error.code,
+      response: error.response ? {
+        status: error.response.status,
+        statusText: error.response.statusText,
+        data: error.response.data
+      } : null,
+      request: error.request ? 'Request was made but no response received' : null
+    };
+    
+    logger.error('❌ Failed to check for updates:', errorDetails.message);
+    
+    // 处理 404 错误 - 仓库或版本不存在
+    if (error.response && error.response.status === 404) {
+      return res.json({
+        success: true,
+        data: {
+          current: currentVersion,
+          latest: currentVersion,
+          hasUpdate: false,
+          releaseInfo: {
+            name: 'No releases found',
+            body: 'The GitHub repository has no releases yet.',
+            publishedAt: new Date().toISOString(),
+            htmlUrl: '#'
+          },
+          warning: 'GitHub repository has no releases'
+        }
+      });
+    }
+    
+    // 如果是网络错误，尝试返回缓存的数据
+    if (error.code === 'ECONNREFUSED' || error.code === 'ETIMEDOUT' || error.code === 'ENOTFOUND') {
+      const cacheKey = 'version_check_cache';
+      const cached = await redis.getClient().get(cacheKey);
+      
+      if (cached) {
+        const cachedData = JSON.parse(cached);
+        // 实时计算 hasUpdate
+        const hasUpdate = compareVersions(currentVersion, cachedData.latest) < 0;
+        
+        return res.json({
+          success: true,
+          data: {
+            current: currentVersion,
+            latest: cachedData.latest,
+            hasUpdate: hasUpdate, // 实时计算
+            releaseInfo: cachedData.releaseInfo,
+            cached: true,
+            warning: 'Using cached data due to network error'
+          }
+        });
+      }
+    }
+    
+    // 其他错误返回当前版本信息
+    res.json({
+      success: true,
+      data: {
+        current: currentVersion,
+        latest: currentVersion,
+        hasUpdate: false,
+        releaseInfo: {
+          name: 'Update check failed',
+          body: `Unable to check for updates: ${error.message || 'Unknown error'}`,
+          publishedAt: new Date().toISOString(),
+          htmlUrl: '#'
+        },
+        error: true,
+        warning: error.message || 'Failed to check for updates'
+      }
+    });
+  }
+});
+
+// 版本比较函数
+function compareVersions(current, latest) {
+  const parseVersion = (v) => {
+    const parts = v.split('.').map(Number);
+    return {
+      major: parts[0] || 0,
+      minor: parts[1] || 0,
+      patch: parts[2] || 0
+    };
+  };
+  
+  const currentV = parseVersion(current);
+  const latestV = parseVersion(latest);
+  
+  if (currentV.major !== latestV.major) {
+    return currentV.major - latestV.major;
+  }
+  if (currentV.minor !== latestV.minor) {
+    return currentV.minor - latestV.minor;
+  }
+  return currentV.patch - latestV.patch;
+}
 
 module.exports = router;
