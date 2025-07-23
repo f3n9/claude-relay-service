@@ -64,8 +64,17 @@ class Application {
         this.app.use(corsMiddleware);
       }
       
-      // 📦 压缩
-      this.app.use(compression());
+      // 📦 压缩 - 排除流式响应（SSE）
+      this.app.use(compression({
+        filter: (req, res) => {
+          // 不压缩 Server-Sent Events
+          if (res.getHeader('Content-Type') === 'text/event-stream') {
+            return false;
+          }
+          // 使用默认的压缩判断
+          return compression.filter(req, res);
+        }
+      }));
       
       // 🚦 全局速率限制（仅在生产环境启用）
       if (process.env.NODE_ENV === 'production') {
