@@ -52,6 +52,10 @@
 
 如果有以上困惑，那这个项目可能适合你。
 
+> 💡 **热心网友福利**  
+> 热心网友正在用本项目，正在拼车官方Claude Code Max 20X 200刀版本，是现在最稳定的方案。  
+> 有需要自取: [https://ctok.ai/](https://ctok.ai/)
+
 ### 适合的场景
 
 ✅ **找朋友拼车**: 三五好友一起分摊Claude Code Max订阅，Opus爽用  
@@ -376,6 +380,32 @@ export ANTHROPIC_AUTH_TOKEN="后台创建的API密钥"
 ```bash
 claude
 ```
+
+### 5. 第三方工具API接入
+
+本服务支持多种API端点格式，方便接入不同的第三方工具（如Cherry Studio等）：
+
+**Claude标准格式：**
+```
+# 如果工具支持Claude标准格式 那么推荐使用该接口
+http://你的服务器:3000/claude/  
+```
+
+**OpenAI兼容格式：**
+```
+# 适用于需要OpenAI格式的第三方工具
+http://你的服务器:3000/openai/claude/v1/
+```
+
+**接入示例：**
+- **Cherry Studio**: 使用OpenAI格式 `http://你的服务器:3000/openai/claude/v1/`
+- **其他支持自定义API的工具**: 根据工具要求选择合适的格式
+
+**重要说明：**
+- 所有格式都支持相同的功能，仅是路径不同
+- `/api/v1/messages` = `/claude/v1/messages` = `/openai/claude/v1/messages`
+- 选择适合你使用工具的格式即可
+- 支持所有Claude API端点（messages、models等）
 
 ---
 
