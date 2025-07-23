@@ -45,6 +45,15 @@ async function handleMessagesRequest(req, res) {
       res.setHeader('Cache-Control', 'no-cache');
       res.setHeader('Connection', 'keep-alive');
       res.setHeader('Access-Control-Allow-Origin', '*');
+      res.setHeader('X-Accel-Buffering', 'no'); // 禁用 Nginx 缓冲
+      
+      // 立即发送响应头，防止缓冲
+      res.flushHeaders();
+      
+      // 禁用 Nagle 算法，确保数据立即发送
+      if (res.socket && res.socket.setNoDelay) {
+        res.socket.setNoDelay(true);
+      }
       
       // 流式响应不需要额外处理，中间件已经设置了监听器
       
