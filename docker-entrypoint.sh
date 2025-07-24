@@ -3,12 +3,13 @@ set -e
 
 echo "🚀 Claude Relay Service 启动中..."
 
-# 检查并创建 .env 文件
+# 检查 .env 文件
 if [ ! -f "/app/.env" ]; then
   echo "📋 检测到 .env 不存在，从模板创建..."
   if [ -f "/app/.env.example" ]; then
     cp /app/.env.example /app/.env
     echo "✅ .env 已从模板创建"
+    echo "⚠️  注意：.env 文件将在容器内生成，请确保已映射到宿主机以持久化"
   else
     echo "❌ 错误: .env.example 不存在"
     exit 1
@@ -69,7 +70,7 @@ if [ -f "/app/.env" ]; then
   
   echo "✅ .env 已配置"
 else
-  echo "❌ 错误: .env 文件不存在"
+  echo "❌ 错误: .env 文件处理失败"
   exit 1
 fi
 
