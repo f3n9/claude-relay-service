@@ -238,6 +238,7 @@ docker run -d \
   -p 3000:3000 \
   -v $(pwd)/data:/app/data \
   -v $(pwd)/logs:/app/logs \
+  -v $(pwd)/.env:/app/.env \
   -e ADMIN_USERNAME=my_admin \
   -e ADMIN_PASSWORD=my_secure_password \
   weishaw/claude-relay-service:latest
@@ -260,6 +261,7 @@ services:
     volumes:
       - ./logs:/app/logs
       - ./data:/app/data
+      - ./.env:/app/.env  # 重要：持久化加密密钥
     depends_on:
       - redis
 
@@ -306,10 +308,12 @@ cat ./data/init.json
 
 docker-compose.yml 已包含：
 - ✅ 自动初始化管理员账号
-- ✅ 数据持久化（logs和data目录自动挂载）
+- ✅ 数据持久化（logs、data目录和.env文件自动挂载）
 - ✅ Redis数据库
 - ✅ 健康检查
 - ✅ 自动重启
+
+> ⚠️ **重要提示**：从 v1.1.15 版本开始，`.env` 文件必须映射到本地以持久化加密密钥。如果不映射，每次重建容器都会生成新的加密密钥，导致之前加密的数据无法解密！
 
 ### 管理员凭据获取方式
 

@@ -3,6 +3,18 @@ set -e
 
 echo "🚀 Claude Relay Service 启动中..."
 
+# 检查并创建 .env 文件
+if [ ! -f "/app/.env" ]; then
+  echo "📋 检测到 .env 不存在，从模板创建..."
+  if [ -f "/app/.env.example" ]; then
+    cp /app/.env.example /app/.env
+    echo "✅ .env 已从模板创建"
+  else
+    echo "❌ 错误: .env.example 不存在"
+    exit 1
+  fi
+fi
+
 # 生成随机字符串的函数
 generate_random_string() {
   length=$1
@@ -31,7 +43,11 @@ if [ -f "/app/.env" ]; then
     JWT_SECRET=$(grep "^JWT_SECRET=" /app/.env | cut -d'=' -f2)
     if [ -z "$JWT_SECRET" ] || [ "$JWT_SECRET" = "your-jwt-secret-here" ]; then
       JWT_SECRET=$(generate_random_string 64)
-      echo "🔑 生成 JWT_SECRET"
+      echo "🔑 生成新的 JWT_SECRET"
+      # 更新 .env 文件
+      sed -i "s/JWT_SECRET=.*/JWT_SECRET=${JWT_SECRET}/" /app/.env
+    else
+      echo "✅ 使用现有的 JWT_SECRET"
     fi
   fi
   
@@ -40,13 +56,15 @@ if [ -f "/app/.env" ]; then
     ENCRYPTION_KEY=$(grep "^ENCRYPTION_KEY=" /app/.env | cut -d'=' -f2)
     if [ -z "$ENCRYPTION_KEY" ] || [ "$ENCRYPTION_KEY" = "your-encryption-key-here" ]; then
       ENCRYPTION_KEY=$(generate_random_string 32)
-      echo "🔑 生成 ENCRYPTION_KEY"
+      echo "🔑 生成新的 ENCRYPTION_KEY"
+      # 更新 .env 文件
+      sed -i "s/ENCRYPTION_KEY=.*/ENCRYPTION_KEY=${ENCRYPTION_KEY}/" /app/.env
+    else
+      echo "✅ 使用现有的 ENCRYPTION_KEY"
     fi
   fi
   
-  # 直接使用sed修改.env文件 - root用户无权限问题
-  sed -i "s/JWT_SECRET=.*/JWT_SECRET=${JWT_SECRET}/" /app/.env
-  sed -i "s/ENCRYPTION_KEY=.*/ENCRYPTION_KEY=${ENCRYPTION_KEY}/" /app/.env
+  # 更新 Redis 主机配置
   sed -i "s/REDIS_HOST=.*/REDIS_HOST=redis/" /app/.env
   
   echo "✅ .env 已配置"
