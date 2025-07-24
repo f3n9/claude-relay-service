@@ -343,7 +343,6 @@ docker-compose.yml 已包含：
 - `ADMIN_USERNAME`: 管理员用户名（不设置则自动生成）
 - `ADMIN_PASSWORD`: 管理员密码（不设置则自动生成）
 - `LOG_LEVEL`: 日志级别（默认：info）
-- `DEFAULT_TOKEN_LIMIT`: 默认Token限制（默认：1000000）
 - 更多配置项请参考 `.env.example` 文件
 
 ### 管理员凭据获取方式
