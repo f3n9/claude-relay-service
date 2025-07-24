@@ -312,6 +312,9 @@ const app = createApp({
     mounted() {
         console.log('Vue app mounted, authToken:', !!this.authToken, 'activeTab:', this.activeTab);
         
+        // 从URL参数中读取tab信息
+        this.initializeTabFromUrl();
+        
         // 初始化防抖函数
         this.setTrendPeriod = this.debounce(this._setTrendPeriod, 300);
         
@@ -323,6 +326,11 @@ const app = createApp({
             if (!isClickInsideUserMenu) {
                 this.userMenuOpen = false;
             }
+        });
+        
+        // 监听浏览器前进后退按钮事件
+        window.addEventListener('popstate', () => {
+            this.initializeTabFromUrl();
         });
         
         if (this.authToken) {
@@ -390,6 +398,40 @@ const app = createApp({
     },
     
     methods: {
+        // 从URL读取tab参数并设置activeTab
+        initializeTabFromUrl() {
+            const urlParams = new URLSearchParams(window.location.search);
+            const tabParam = urlParams.get('tab');
+            
+            // 检查tab参数是否有效
+            const validTabs = this.tabs.map(tab => tab.key);
+            if (tabParam && validTabs.includes(tabParam)) {
+                this.activeTab = tabParam;
+            }
+        },
+        
+        // 切换tab并更新URL
+        switchTab(tabKey) {
+            if (this.activeTab !== tabKey) {
+                this.activeTab = tabKey;
+                this.updateUrlTab(tabKey);
+            }
+        },
+        
+        // 更新URL中的tab参数
+        updateUrlTab(tabKey) {
+            const url = new URL(window.location.href);
+            if (tabKey === 'dashboard') {
+                // 如果是默认的dashboard标签，移除tab参数
+                url.searchParams.delete('tab');
+            } else {
+                url.searchParams.set('tab', tabKey);
+            }
+            
+            // 使用pushState更新URL但不刷新页面
+            window.history.pushState({}, '', url.toString());
+        },
+        
         // 统一的API请求方法，处理token过期等错误
         async apiRequest(url, options = {}) {
             try {
