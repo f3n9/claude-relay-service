@@ -224,18 +224,6 @@ npm run service:status
 
 ## 🐳 Docker 部署（推荐）
 
-### ⚠️ 首次部署必须执行
-
-```bash
-# 创建空的 .env 文件（非常重要！）
-touch .env
-```
-
-> 🔴 **为什么必须先创建 .env 文件？**
-> - Docker 在映射不存在的文件时会创建成**目录**而非文件
-> - .env 文件用于存储加密密钥，必须持久化保存
-> - 如果变成目录，容器将无法启动
-
 ### 使用 Docker Hub 镜像（最简单）
 
 > 🚀 推荐使用官方镜像，自动构建，始终保持最新版本
@@ -244,18 +232,31 @@ touch .env
 # 拉取镜像（支持 amd64 和 arm64）
 docker pull weishaw/claude-relay-service:latest
 
-# 使用 docker run 运行
+# 使用 docker run 运行（注意设置必需的环境变量）
 docker run -d \
   --name claude-relay \
   -p 3000:3000 \
   -v $(pwd)/data:/app/data \
   -v $(pwd)/logs:/app/logs \
-  -v $(pwd)/.env:/app/.env \
+  -e JWT_SECRET=your-random-secret-key-at-least-32-chars \
+  -e ENCRYPTION_KEY=your-32-character-encryption-key \
+  -e REDIS_HOST=redis \
   -e ADMIN_USERNAME=my_admin \
   -e ADMIN_PASSWORD=my_secure_password \
   weishaw/claude-relay-service:latest
 
 # 或使用 docker-compose（推荐）
+# 创建 .env 文件用于 docker-compose 的环境变量：
+cat > .env << 'EOF'
+# 必填：安全密钥（请修改为随机值）
+JWT_SECRET=your-random-secret-key-at-least-32-chars
+ENCRYPTION_KEY=your-32-character-encryption-key
+
+# 可选：管理员凭据
+ADMIN_USERNAME=cr_admin
+ADMIN_PASSWORD=your-secure-password
+EOF
+
 # 创建 docker-compose.yml 文件：
 cat > docker-compose.yml << 'EOF'
 version: '3.8'
@@ -267,13 +268,14 @@ services:
     ports:
       - "3000:3000"
     environment:
+      - JWT_SECRET=${JWT_SECRET}
+      - ENCRYPTION_KEY=${ENCRYPTION_KEY}
       - REDIS_HOST=redis
       - ADMIN_USERNAME=${ADMIN_USERNAME:-}
       - ADMIN_PASSWORD=${ADMIN_PASSWORD:-}
     volumes:
       - ./logs:/app/logs
       - ./data:/app/data
-      - ./.env:/app/.env  # 重要：持久化加密密钥
     depends_on:
       - redis
 
@@ -299,19 +301,18 @@ docker-compose up -d
 git clone https://github.com/Wei-Shaw//claude-relay-service.git
 cd claude-relay-service
 
-# 2. 初始化环境（重要！首次部署必须执行）
-touch .env  # 创建空文件，防止 Docker 创建成目录
+# 2. 创建环境变量文件
+cat > .env << 'EOF'
+# 必填：安全密钥（请修改为随机值）
+JWT_SECRET=your-random-secret-key-at-least-32-chars
+ENCRYPTION_KEY=your-32-character-encryption-key
 
-# 如果 .env 已经错误地变成了目录，先删除：
-# rm -rf .env && touch .env
+# 可选：管理员凭据
+ADMIN_USERNAME=cr_admin_custom
+ADMIN_PASSWORD=your-secure-password
+EOF
 
-# 3. 设置管理员账号密码（可选）
-# 方式一：自动生成（查看容器日志获取）
-docker-compose up -d
-
-# 方式二：预设账号密码
-export ADMIN_USERNAME=cr_admin_custom
-export ADMIN_PASSWORD=your-secure-password
+# 3. 启动服务
 docker-compose up -d
 
 # 4. 查看管理员凭据
@@ -326,12 +327,24 @@ cat ./data/init.json
 
 docker-compose.yml 已包含：
 - ✅ 自动初始化管理员账号
-- ✅ 数据持久化（logs、data目录和.env文件自动挂载）
+- ✅ 数据持久化（logs和data目录自动挂载）
 - ✅ Redis数据库
 - ✅ 健康检查
 - ✅ 自动重启
+- ✅ 所有配置通过环境变量管理
 
-> ⚠️ **重要提示**：从 v1.1.15 版本开始，`.env` 文件必须映射到本地以持久化加密密钥。如果不映射，每次重建容器都会生成新的加密密钥，导致之前加密的数据无法解密！
+### 环境变量说明
+
+#### 必填项
+- `JWT_SECRET`: JWT密钥，至少32个字符
+- `ENCRYPTION_KEY`: 加密密钥，必须是32个字符
+
+#### 可选项
+- `ADMIN_USERNAME`: 管理员用户名（不设置则自动生成）
+- `ADMIN_PASSWORD`: 管理员密码（不设置则自动生成）
+- `LOG_LEVEL`: 日志级别（默认：info）
+- `DEFAULT_TOKEN_LIMIT`: 默认Token限制（默认：1000000）
+- 更多配置项请参考 `.env.example` 文件
 
 ### 管理员凭据获取方式
 
