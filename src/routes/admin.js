@@ -791,6 +791,73 @@ router.post('/gemini-accounts/:accountId/refresh', authenticateAdmin, async (req
   }
 });
 
+// 📊 账户使用统计
+
+// 获取所有账户的使用统计
+router.get('/accounts/usage-stats', authenticateAdmin, async (req, res) => {
+  try {
+    const accountsStats = await redis.getAllAccountsUsageStats();
+    
+    res.json({
+      success: true,
+      data: accountsStats,
+      summary: {
+        totalAccounts: accountsStats.length,
+        activeToday: accountsStats.filter(account => account.daily.requests > 0).length,
+        totalDailyTokens: accountsStats.reduce((sum, account) => sum + (account.daily.allTokens || 0), 0),
+        totalDailyRequests: accountsStats.reduce((sum, account) => sum + (account.daily.requests || 0), 0)
+      },
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    logger.error('❌ Failed to get accounts usage stats:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to get accounts usage stats',
+      message: error.message
+    });
+  }
+});
+
+// 获取单个账户的使用统计
+router.get('/accounts/:accountId/usage-stats', authenticateAdmin, async (req, res) => {
+  try {
+    const { accountId } = req.params;
+    const accountStats = await redis.getAccountUsageStats(accountId);
+    
+    // 获取账户基本信息
+    const accountData = await claudeAccountService.getAccount(accountId);
+    if (!accountData) {
+      return res.status(404).json({
+        success: false,
+        error: 'Account not found'
+      });
+    }
+    
+    res.json({
+      success: true,
+      data: {
+        ...accountStats,
+        accountInfo: {
+          name: accountData.name,
+          email: accountData.email,
+          status: accountData.status,
+          isActive: accountData.isActive,
+          createdAt: accountData.createdAt
+        }
+      },
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    logger.error('❌ Failed to get account usage stats:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to get account usage stats',
+      message: error.message
+    });
+  }
+});
+
 // 📊 系统统计
 
 // 获取系统概览
