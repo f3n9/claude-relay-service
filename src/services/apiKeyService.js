@@ -249,11 +249,16 @@ class ApiKeyService {
         keyData.lastUsedAt = new Date().toISOString();
         await redis.setApiKey(keyId, keyData);
         
-        // 记录账户级别的使用统计
-        const claudeAccountId = accountId || keyData.claudeAccountId;
-        if (claudeAccountId) {
-          await redis.incrementAccountUsage(claudeAccountId, totalTokens, inputTokens, outputTokens, cacheCreateTokens, cacheReadTokens, model);
-          logger.database(`📊 Recorded account usage: ${claudeAccountId} - ${totalTokens} tokens`);
+        // 记录账户级别的使用统计（只统计实际处理请求的账户）
+        if (accountId) {
+          await redis.incrementAccountUsage(accountId, totalTokens, inputTokens, outputTokens, cacheCreateTokens, cacheReadTokens, model);
+          logger.database(`📊 Recorded account usage: ${accountId} - ${totalTokens} tokens (API Key: ${keyId})`);
+        } else if (keyData.claudeAccountId) {
+          // 如果没有传入accountId，但API Key绑定了专属账户，也记录统计
+          await redis.incrementAccountUsage(keyData.claudeAccountId, totalTokens, inputTokens, outputTokens, cacheCreateTokens, cacheReadTokens, model);
+          logger.database(`📊 Recorded account usage (from API Key binding): ${keyData.claudeAccountId} - ${totalTokens} tokens (API Key: ${keyId})`);
+        } else {
+          logger.debug(`⚠️ No accountId provided and API Key not bound to account, skipping account-level statistics`);
         }
       }
       
