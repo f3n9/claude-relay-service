@@ -531,7 +531,34 @@ router.post('/claude-accounts/exchange-code', authenticateAdmin, async (req, res
 router.get('/claude-accounts', authenticateAdmin, async (req, res) => {
   try {
     const accounts = await claudeAccountService.getAllAccounts();
-    res.json({ success: true, data: accounts });
+    
+    // 为每个账户添加使用统计信息
+    const accountsWithStats = await Promise.all(accounts.map(async (account) => {
+      try {
+        const usageStats = await redis.getAccountUsageStats(account.id);
+        return {
+          ...account,
+          usage: {
+            daily: usageStats.daily,
+            total: usageStats.total,
+            averages: usageStats.averages
+          }
+        };
+      } catch (statsError) {
+        logger.warn(`⚠️ Failed to get usage stats for account ${account.id}:`, statsError.message);
+        // 如果获取统计失败，返回空统计
+        return {
+          ...account,
+          usage: {
+            daily: { tokens: 0, requests: 0, allTokens: 0 },
+            total: { tokens: 0, requests: 0, allTokens: 0 },
+            averages: { rpm: 0, tpm: 0 }
+          }
+        };
+      }
+    }));
+    
+    res.json({ success: true, data: accountsWithStats });
   } catch (error) {
     logger.error('❌ Failed to get Claude accounts:', error);
     res.status(500).json({ error: 'Failed to get Claude accounts', message: error.message });
@@ -718,7 +745,18 @@ router.post('/gemini-accounts/exchange-code', authenticateAdmin, async (req, res
 router.get('/gemini-accounts', authenticateAdmin, async (req, res) => {
   try {
     const accounts = await geminiAccountService.getAllAccounts();
-    res.json({ success: true, data: accounts });
+    
+    // 为Gemini账户添加空的使用统计（暂时）
+    const accountsWithStats = accounts.map(account => ({
+      ...account,
+      usage: {
+        daily: { tokens: 0, requests: 0, allTokens: 0 },
+        total: { tokens: 0, requests: 0, allTokens: 0 },
+        averages: { rpm: 0, tpm: 0 }
+      }
+    }));
+    
+    res.json({ success: true, data: accountsWithStats });
   } catch (error) {
     logger.error('❌ Failed to get Gemini accounts:', error);
     res.status(500).json({ error: 'Failed to get accounts', message: error.message });
