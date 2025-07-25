@@ -253,12 +253,8 @@ class ApiKeyService {
         if (accountId) {
           await redis.incrementAccountUsage(accountId, totalTokens, inputTokens, outputTokens, cacheCreateTokens, cacheReadTokens, model);
           logger.database(`📊 Recorded account usage: ${accountId} - ${totalTokens} tokens (API Key: ${keyId})`);
-        } else if (keyData.claudeAccountId) {
-          // 如果没有传入accountId，但API Key绑定了专属账户，也记录统计
-          await redis.incrementAccountUsage(keyData.claudeAccountId, totalTokens, inputTokens, outputTokens, cacheCreateTokens, cacheReadTokens, model);
-          logger.database(`📊 Recorded account usage (from API Key binding): ${keyData.claudeAccountId} - ${totalTokens} tokens (API Key: ${keyId})`);
         } else {
-          logger.debug(`⚠️ No accountId provided and API Key not bound to account, skipping account-level statistics`);
+          logger.debug(`⚠️ No accountId provided for usage recording, skipping account-level statistics`);
         }
       }
       
