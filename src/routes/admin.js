@@ -21,6 +21,77 @@ const router = express.Router();
 router.get('/api-keys', authenticateAdmin, async (req, res) => {
   try {
     const apiKeys = await apiKeyService.getAllApiKeys();
+    
+    // 为每个API Key计算准确的费用
+    for (const apiKey of apiKeys) {
+      if (apiKey.usage && apiKey.usage.total) {
+        const client = redis.getClientSafe();
+        
+        // 使用与展开模型统计相同的数据源
+        // 获取所有时间的模型统计数据
+        const monthlyKeys = await client.keys(`usage:${apiKey.id}:model:monthly:*:*`);
+        const modelStatsMap = new Map();
+        
+        // 汇总所有月份的数据
+        for (const key of monthlyKeys) {
+          const match = key.match(/usage:.+:model:monthly:(.+):\d{4}-\d{2}$/);
+          if (!match) continue;
+          
+          const model = match[1];
+          const data = await client.hgetall(key);
+          
+          if (data && Object.keys(data).length > 0) {
+            if (!modelStatsMap.has(model)) {
+              modelStatsMap.set(model, {
+                inputTokens: 0,
+                outputTokens: 0,
+                cacheCreateTokens: 0,
+                cacheReadTokens: 0
+              });
+            }
+            
+            const stats = modelStatsMap.get(model);
+            stats.inputTokens += parseInt(data.inputTokens) || 0;
+            stats.outputTokens += parseInt(data.outputTokens) || 0;
+            stats.cacheCreateTokens += parseInt(data.cacheCreateTokens) || 0;
+            stats.cacheReadTokens += parseInt(data.cacheReadTokens) || 0;
+          }
+        }
+        
+        let totalCost = 0;
+        
+        // 计算每个模型的费用
+        for (const [model, stats] of modelStatsMap) {
+          const usage = {
+            input_tokens: stats.inputTokens,
+            output_tokens: stats.outputTokens,
+            cache_creation_input_tokens: stats.cacheCreateTokens,
+            cache_read_input_tokens: stats.cacheReadTokens
+          };
+          
+          const costResult = CostCalculator.calculateCost(usage, model);
+          totalCost += costResult.costs.total;
+        }
+        
+        // 如果没有详细的模型数据，使用总量数据和默认模型计算
+        if (modelStatsMap.size === 0) {
+          const usage = {
+            input_tokens: apiKey.usage.total.inputTokens || 0,
+            output_tokens: apiKey.usage.total.outputTokens || 0,
+            cache_creation_input_tokens: apiKey.usage.total.cacheCreateTokens || 0,
+            cache_read_input_tokens: apiKey.usage.total.cacheReadTokens || 0
+          };
+          
+          const costResult = CostCalculator.calculateCost(usage, 'claude-3-5-haiku-20241022');
+          totalCost = costResult.costs.total;
+        }
+        
+        // 添加格式化的费用到响应数据
+        apiKey.usage.total.cost = totalCost;
+        apiKey.usage.total.formattedCost = CostCalculator.formatCost(totalCost);
+      }
+    }
+    
     res.json({ success: true, data: apiKeys });
   } catch (error) {
     logger.error('❌ Failed to get API keys:', error);
@@ -112,7 +183,7 @@ router.post('/api-keys', authenticateAdmin, async (req, res) => {
 router.put('/api-keys/:keyId', authenticateAdmin, async (req, res) => {
   try {
     const { keyId } = req.params;
-    const { tokenLimit, concurrencyLimit, rateLimitWindow, rateLimitRequests, claudeAccountId, geminiAccountId, permissions, enableModelRestriction, restrictedModels } = req.body;
+    const { tokenLimit, concurrencyLimit, rateLimitWindow, rateLimitRequests, claudeAccountId, geminiAccountId, permissions, enableModelRestriction, restrictedModels, expiresAt } = req.body;
 
     // 只允许更新指定字段
     const updates = {};
@@ -176,6 +247,21 @@ router.put('/api-keys/:keyId', authenticateAdmin, async (req, res) => {
         return res.status(400).json({ error: 'Restricted models must be an array' });
       }
       updates.restrictedModels = restrictedModels;
+    }
+
+    // 处理过期时间字段
+    if (expiresAt !== undefined) {
+      if (expiresAt === null) {
+        // null 表示永不过期
+        updates.expiresAt = null;
+      } else {
+        // 验证日期格式
+        const expireDate = new Date(expiresAt);
+        if (isNaN(expireDate.getTime())) {
+          return res.status(400).json({ error: 'Invalid expiration date format' });
+        }
+        updates.expiresAt = expiresAt;
+      }
     }
 
     await apiKeyService.updateApiKey(keyId, updates);
@@ -582,8 +668,8 @@ router.get('/dashboard', authenticateAdmin, async (req, res) => {
       redis.getSystemAverages()
     ]);
 
-    // 计算使用统计（包含cache tokens）
-    const totalTokensUsed = apiKeys.reduce((sum, key) => sum + (key.usage?.total?.tokens || 0), 0);
+    // 计算使用统计（统一使用allTokens）
+    const totalTokensUsed = apiKeys.reduce((sum, key) => sum + (key.usage?.total?.allTokens || 0), 0);
     const totalRequestsUsed = apiKeys.reduce((sum, key) => sum + (key.usage?.total?.requests || 0), 0);
     const totalInputTokensUsed = apiKeys.reduce((sum, key) => sum + (key.usage?.total?.inputTokens || 0), 0);
     const totalOutputTokensUsed = apiKeys.reduce((sum, key) => sum + (key.usage?.total?.outputTokens || 0), 0);
