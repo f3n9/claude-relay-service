@@ -20,16 +20,37 @@ const router = express.Router();
 // 获取所有API Keys
 router.get('/api-keys', authenticateAdmin, async (req, res) => {
   try {
+    const { timeRange = 'all' } = req.query; // all, 7days, monthly
     const apiKeys = await apiKeyService.getAllApiKeys();
     
-    // 为每个API Key计算准确的费用
+    // 根据时间范围计算查询模式
+    const now = new Date();
+    let searchPatterns = [];
+    
+    if (timeRange === '7days') {
+      // 最近7天
+      for (let i = 0; i < 7; i++) {
+        const date = new Date(now);
+        date.setDate(date.getDate() - i);
+        const dateStr = date.toISOString().split('T')[0];
+        searchPatterns.push(`usage:daily:*:${dateStr}`);
+      }
+    } else if (timeRange === 'monthly') {
+      // 本月
+      const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+      searchPatterns.push(`usage:monthly:*:${currentMonth}`);
+    }
+    
+    // 为每个API Key计算准确的费用和统计数据
     for (const apiKey of apiKeys) {
-      if (apiKey.usage && apiKey.usage.total) {
-        const client = redis.getClientSafe();
-        
-        // 使用与展开模型统计相同的数据源
-        // 获取所有时间的模型统计数据
-        const monthlyKeys = await client.keys(`usage:${apiKey.id}:model:monthly:*:*`);
+      const client = redis.getClientSafe();
+      
+      if (timeRange === 'all') {
+        // 全部时间：保持原有逻辑
+        if (apiKey.usage && apiKey.usage.total) {
+          // 使用与展开模型统计相同的数据源
+          // 获取所有时间的模型统计数据
+          const monthlyKeys = await client.keys(`usage:${apiKey.id}:model:monthly:*:*`);
         const modelStatsMap = new Map();
         
         // 汇总所有月份的数据
@@ -51,10 +72,10 @@ router.get('/api-keys', authenticateAdmin, async (req, res) => {
             }
             
             const stats = modelStatsMap.get(model);
-            stats.inputTokens += parseInt(data.inputTokens) || 0;
-            stats.outputTokens += parseInt(data.outputTokens) || 0;
-            stats.cacheCreateTokens += parseInt(data.cacheCreateTokens) || 0;
-            stats.cacheReadTokens += parseInt(data.cacheReadTokens) || 0;
+            stats.inputTokens += parseInt(data.totalInputTokens) || parseInt(data.inputTokens) || 0;
+            stats.outputTokens += parseInt(data.totalOutputTokens) || parseInt(data.outputTokens) || 0;
+            stats.cacheCreateTokens += parseInt(data.totalCacheCreateTokens) || parseInt(data.cacheCreateTokens) || 0;
+            stats.cacheReadTokens += parseInt(data.totalCacheReadTokens) || parseInt(data.cacheReadTokens) || 0;
           }
         }
         
@@ -86,9 +107,125 @@ router.get('/api-keys', authenticateAdmin, async (req, res) => {
           totalCost = costResult.costs.total;
         }
         
-        // 添加格式化的费用到响应数据
-        apiKey.usage.total.cost = totalCost;
-        apiKey.usage.total.formattedCost = CostCalculator.formatCost(totalCost);
+          // 添加格式化的费用到响应数据
+          apiKey.usage.total.cost = totalCost;
+          apiKey.usage.total.formattedCost = CostCalculator.formatCost(totalCost);
+        }
+      } else {
+        // 7天或本月：重新计算统计数据
+        const tempUsage = {
+          requests: 0,
+          tokens: 0,
+          allTokens: 0, // 添加allTokens字段
+          inputTokens: 0,
+          outputTokens: 0,
+          cacheCreateTokens: 0,
+          cacheReadTokens: 0
+        };
+        
+        // 获取指定时间范围的统计数据
+        for (const pattern of searchPatterns) {
+          const keys = await client.keys(pattern.replace('*', apiKey.id));
+          
+          for (const key of keys) {
+            const data = await client.hgetall(key);
+            if (data && Object.keys(data).length > 0) {
+              // 使用与 redis.js incrementTokenUsage 中相同的字段名
+              tempUsage.requests += parseInt(data.totalRequests) || parseInt(data.requests) || 0;
+              tempUsage.tokens += parseInt(data.totalTokens) || parseInt(data.tokens) || 0;
+              tempUsage.allTokens += parseInt(data.totalAllTokens) || parseInt(data.allTokens) || 0; // 读取包含所有Token的字段
+              tempUsage.inputTokens += parseInt(data.totalInputTokens) || parseInt(data.inputTokens) || 0;
+              tempUsage.outputTokens += parseInt(data.totalOutputTokens) || parseInt(data.outputTokens) || 0;
+              tempUsage.cacheCreateTokens += parseInt(data.totalCacheCreateTokens) || parseInt(data.cacheCreateTokens) || 0;
+              tempUsage.cacheReadTokens += parseInt(data.totalCacheReadTokens) || parseInt(data.cacheReadTokens) || 0;
+            }
+          }
+        }
+        
+        // 计算指定时间范围的费用
+        let totalCost = 0;
+        const modelKeys = timeRange === '7days' 
+          ? await client.keys(`usage:${apiKey.id}:model:daily:*:*`)
+          : await client.keys(`usage:${apiKey.id}:model:monthly:*:${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`);
+        
+        const modelStatsMap = new Map();
+        
+        // 过滤和汇总相应时间范围的模型数据
+        for (const key of modelKeys) {
+          if (timeRange === '7days') {
+            // 检查是否在最近7天内
+            const dateMatch = key.match(/\d{4}-\d{2}-\d{2}$/);
+            if (dateMatch) {
+              const keyDate = new Date(dateMatch[0]);
+              const daysDiff = Math.floor((now - keyDate) / (1000 * 60 * 60 * 24));
+              if (daysDiff > 6) continue;
+            }
+          }
+          
+          const modelMatch = key.match(/usage:.+:model:(?:daily|monthly):(.+):\d{4}-\d{2}(?:-\d{2})?$/);
+          if (!modelMatch) continue;
+          
+          const model = modelMatch[1];
+          const data = await client.hgetall(key);
+          
+          if (data && Object.keys(data).length > 0) {
+            if (!modelStatsMap.has(model)) {
+              modelStatsMap.set(model, {
+                inputTokens: 0,
+                outputTokens: 0,
+                cacheCreateTokens: 0,
+                cacheReadTokens: 0
+              });
+            }
+            
+            const stats = modelStatsMap.get(model);
+            stats.inputTokens += parseInt(data.totalInputTokens) || parseInt(data.inputTokens) || 0;
+            stats.outputTokens += parseInt(data.totalOutputTokens) || parseInt(data.outputTokens) || 0;
+            stats.cacheCreateTokens += parseInt(data.totalCacheCreateTokens) || parseInt(data.cacheCreateTokens) || 0;
+            stats.cacheReadTokens += parseInt(data.totalCacheReadTokens) || parseInt(data.cacheReadTokens) || 0;
+          }
+        }
+        
+        // 计算费用
+        for (const [model, stats] of modelStatsMap) {
+          const usage = {
+            input_tokens: stats.inputTokens,
+            output_tokens: stats.outputTokens,
+            cache_creation_input_tokens: stats.cacheCreateTokens,
+            cache_read_input_tokens: stats.cacheReadTokens
+          };
+          
+          const costResult = CostCalculator.calculateCost(usage, model);
+          totalCost += costResult.costs.total;
+        }
+        
+        // 如果没有模型数据，使用临时统计数据计算
+        if (modelStatsMap.size === 0 && tempUsage.tokens > 0) {
+          const usage = {
+            input_tokens: tempUsage.inputTokens,
+            output_tokens: tempUsage.outputTokens,
+            cache_creation_input_tokens: tempUsage.cacheCreateTokens,
+            cache_read_input_tokens: tempUsage.cacheReadTokens
+          };
+          
+          const costResult = CostCalculator.calculateCost(usage, 'claude-3-5-haiku-20241022');
+          totalCost = costResult.costs.total;
+        }
+        
+        // 使用从Redis读取的allTokens，如果没有则计算
+        const allTokens = tempUsage.allTokens || (tempUsage.inputTokens + tempUsage.outputTokens + tempUsage.cacheCreateTokens + tempUsage.cacheReadTokens);
+        
+        // 更新API Key的usage数据为指定时间范围的数据
+        apiKey.usage[timeRange] = {
+          ...tempUsage,
+          tokens: allTokens, // 使用包含所有Token的总数
+          allTokens: allTokens,
+          cost: totalCost,
+          formattedCost: CostCalculator.formatCost(totalCost)
+        };
+        
+        // 为了保持兼容性，也更新total字段
+        apiKey.usage.total = apiKey.usage[timeRange];
       }
     }
     

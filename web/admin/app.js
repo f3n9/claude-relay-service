@@ -111,6 +111,7 @@ const app = createApp({
             // API Keys
             apiKeys: [],
             apiKeysLoading: false,
+            apiKeyStatsTimeRange: 'all', // API Key统计时间范围：all, 7days, monthly
             showCreateApiKeyModal: false,
             createApiKeyLoading: false,
             apiKeyForm: {
@@ -1779,9 +1780,9 @@ const app = createApp({
         
         async loadApiKeys() {
             this.apiKeysLoading = true;
-            console.log('Loading API Keys...');
+            console.log('Loading API Keys with time range:', this.apiKeyStatsTimeRange);
             try {
-                const data = await this.apiRequest('/admin/api-keys');
+                const data = await this.apiRequest(`/admin/api-keys?timeRange=${this.apiKeyStatsTimeRange}`);
                 
                 if (!data) {
                     // 如果token过期，apiRequest会返回null并刷新页面
