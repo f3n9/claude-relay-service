@@ -39,21 +39,17 @@ async function testGeminiTokenRefresh() {
     for (const account of geminiAccounts) {
       console.log(`\n📋 测试账户: ${account.name} (${account.id})`);
       console.log(`   状态: ${account.status}`);
-      console.log(`   是否有 refresh token: ${account.refreshToken ? '是' : '否'}`);
-      
-      if (!account.refreshToken || account.refreshToken === '[ENCRYPTED]') {
-        console.log('   ⚠️  跳过：无 refresh token\n');
-        continue;
-      }
       
       try {
         // 获取完整账户信息（包括解密的 token）
         const fullAccount = await geminiAccountService.getAccount(account.id);
         
         if (!fullAccount.refreshToken) {
-          console.log('   ⚠️  跳过：无法获取 refresh token\n');
+          console.log('   ⚠️  跳过：该账户无 refresh token\n');
           continue;
         }
+        
+        console.log(`   ✅ 找到 refresh token`)
         
         console.log('   🔄 开始刷新 token...');
         const startTime = Date.now();
