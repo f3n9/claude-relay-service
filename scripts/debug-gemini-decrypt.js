@@ -13,18 +13,16 @@ dotenv.config({ path: path.join(__dirname, '..', '.env') });
 
 const redis = require('../src/models/redis');
 const logger = require('../src/utils/logger');
+const config = require('../config/config');
 
 const ALGORITHM = 'aes-256-cbc';
 const IV_LENGTH = 16;
 const GEMINI_ACCOUNT_KEY_PREFIX = 'gemini_account:';
+const ENCRYPTION_SALT = 'gemini-encryption-salt-2024';
 
-// 生成加密密钥
+// 生成加密密钥（使用与 geminiAccountService 相同的方法）
 function generateEncryptionKey() {
-  const configKey = process.env.ENCRYPTION_KEY;
-  if (!configKey || configKey.length !== 32) {
-    throw new Error('ENCRYPTION_KEY must be exactly 32 characters long');
-  }
-  return Buffer.from(configKey);
+  return crypto.scryptSync(config.security.encryptionKey, ENCRYPTION_SALT, 32);
 }
 
 // 旧版解密函数（使用冒号分隔）
@@ -68,10 +66,11 @@ async function debugGeminiDecrypt() {
   try {
     console.log('🚀 开始调试 Gemini refreshToken 解密...\n');
     
-    // 显示环境变量
-    console.log('📋 环境变量检查:');
-    console.log(`   ENCRYPTION_KEY 长度: ${process.env.ENCRYPTION_KEY ? process.env.ENCRYPTION_KEY.length : 'undefined'}`);
-    console.log(`   ENCRYPTION_KEY 前8位: ${process.env.ENCRYPTION_KEY ? process.env.ENCRYPTION_KEY.substring(0, 8) + '...' : 'undefined'}`);
+    // 显示加密配置
+    console.log('📋 加密配置检查:');
+    console.log(`   config.security.encryptionKey: ${config.security.encryptionKey}`);
+    console.log(`   实际使用的加密密钥长度: ${config.security.encryptionKey.length}`);
+    console.log(`   ENCRYPTION_SALT: ${ENCRYPTION_SALT}`);
     console.log();
     
     // 连接 Redis
