@@ -622,7 +622,9 @@ async function refreshAccountToken(accountId) {
       refreshToken: newTokens.refresh_token || account.refreshToken,
       expiresAt: new Date(newTokens.expiry_date).toISOString(),
       lastRefreshAt: new Date().toISOString(),
-      geminiOauth: JSON.stringify(newTokens)
+      geminiOauth: JSON.stringify(newTokens),
+      status: 'active',  // 刷新成功后，将状态更新为 active
+      errorMessage: ''   // 清空错误信息
     };
     
     await updateAccount(accountId, updates);
