@@ -168,22 +168,36 @@ async function refreshAccessToken(refreshToken) {
   const oAuth2Client = createOAuth2Client();
   
   try {
+    // 设置 refresh_token
     oAuth2Client.setCredentials({
       refresh_token: refreshToken
     });
     
-    const { credentials } = await oAuth2Client.refreshAccessToken();
+    // 调用 refreshAccessToken 获取新的 tokens
+    const response = await oAuth2Client.refreshAccessToken();
+    const credentials = response.credentials;
+    
+    // 检查是否成功获取了新的 access_token
+    if (!credentials || !credentials.access_token) {
+      throw new Error('No access token returned from refresh');
+    }
+    
+    logger.info(`🔄 Successfully refreshed Gemini token. New expiry: ${new Date(credentials.expiry_date).toISOString()}`);
     
     return {
       access_token: credentials.access_token,
-      refresh_token: credentials.refresh_token || refreshToken,
+      refresh_token: credentials.refresh_token || refreshToken, // 保留原 refresh_token 如果没有返回新的
       scope: credentials.scope || OAUTH_SCOPES.join(' '),
       token_type: credentials.token_type || 'Bearer',
-      expiry_date: credentials.expiry_date
+      expiry_date: credentials.expiry_date || Date.now() + 3600000 // 默认1小时过期
     };
   } catch (error) {
-    logger.error('Error refreshing access token:', error);
-    throw new Error('Failed to refresh access token');
+    logger.error('Error refreshing access token:', {
+      message: error.message,
+      code: error.code,
+      response: error.response?.data
+    });
+    throw new Error(`Failed to refresh access token: ${error.message}`);
   }
 }
 
@@ -625,11 +639,17 @@ async function refreshAccountToken(accountId) {
     
     logger.error(`Failed to refresh token for account ${accountId}:`, error);
     
-    // 标记账户为错误状态
-    await updateAccount(accountId, {
-      status: 'error',
-      errorMessage: error.message
-    });
+    // 标记账户为错误状态（只有在账户存在时）
+    if (account) {
+      try {
+        await updateAccount(accountId, {
+          status: 'error',
+          errorMessage: error.message
+        });
+      } catch (updateError) {
+        logger.error(`Failed to update account status after refresh error:`, updateError);
+      }
+    }
     
     throw error;
   } finally {
