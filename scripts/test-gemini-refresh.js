@@ -13,10 +13,46 @@ dotenv.config({ path: path.join(__dirname, '..', '.env') });
 const redis = require('../src/models/redis');
 const geminiAccountService = require('../src/services/geminiAccountService');
 const logger = require('../src/utils/logger');
+const crypto = require('crypto');
+const config = require('../config/config');
+
+// 加密相关常量（与 geminiAccountService 保持一致）
+const ALGORITHM = 'aes-256-cbc';
+const ENCRYPTION_SALT = 'gemini-account-salt'; // 注意：是 'gemini-account-salt' 不是其他值！
+
+// 生成加密密钥
+function generateEncryptionKey() {
+  return crypto.scryptSync(config.security.encryptionKey, ENCRYPTION_SALT, 32);
+}
+
+// 解密函数（用于调试）
+function debugDecrypt(text) {
+  if (!text) return { success: false, error: 'Empty text' };
+  try {
+    const key = generateEncryptionKey();
+    const ivHex = text.substring(0, 32);
+    const encryptedHex = text.substring(33);
+    
+    const iv = Buffer.from(ivHex, 'hex');
+    const encryptedText = Buffer.from(encryptedHex, 'hex');
+    const decipher = crypto.createDecipheriv(ALGORITHM, key, iv);
+    let decrypted = decipher.update(encryptedText);
+    decrypted = Buffer.concat([decrypted, decipher.final()]);
+    return { success: true, value: decrypted.toString() };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+}
 
 async function testGeminiTokenRefresh() {
   try {
     console.log('🚀 开始测试 Gemini token 刷新功能...\n');
+    
+    // 显示配置信息
+    console.log('📋 配置信息:');
+    console.log(`   加密密钥: ${config.security.encryptionKey}`);
+    console.log(`   加密盐值: ${ENCRYPTION_SALT}`);
+    console.log();
     
     // 1. 连接 Redis
     console.log('📡 连接 Redis...');
@@ -41,6 +77,26 @@ async function testGeminiTokenRefresh() {
       console.log(`   状态: ${account.status}`);
       
       try {
+        // 获取原始账户数据（用于调试）
+        const client = redis.getClient();
+        const rawData = await client.hgetall(`gemini_account:${account.id}`);
+        
+        console.log('   📊 原始数据检查:');
+        console.log(`      refreshToken 存在: ${rawData.refreshToken ? '是' : '否'}`);
+        if (rawData.refreshToken) {
+          console.log(`      refreshToken 长度: ${rawData.refreshToken.length}`);
+          console.log(`      refreshToken 前50字符: ${rawData.refreshToken.substring(0, 50)}...`);
+          
+          // 尝试手动解密
+          const decryptResult = debugDecrypt(rawData.refreshToken);
+          if (decryptResult.success) {
+            console.log(`      ✅ 手动解密成功`);
+            console.log(`      解密后前20字符: ${decryptResult.value.substring(0, 20)}...`);
+          } else {
+            console.log(`      ❌ 手动解密失败: ${decryptResult.error}`);
+          }
+        }
+        
         // 获取完整账户信息（包括解密的 token）
         const fullAccount = await geminiAccountService.getAccount(account.id);
         
@@ -49,7 +105,8 @@ async function testGeminiTokenRefresh() {
           continue;
         }
         
-        console.log(`   ✅ 找到 refresh token`)
+        console.log(`   ✅ 找到 refresh token`);
+        console.log(`   📝 解密后的 refresh token 前20字符: ${fullAccount.refreshToken.substring(0, 20)}...`);
         
         console.log('   🔄 开始刷新 token...');
         const startTime = Date.now();
