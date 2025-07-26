@@ -50,9 +50,12 @@ function decrypt(text) {
   if (!text) return '';
   try {
     const key = generateEncryptionKey();
-    const textParts = text.split(':');
-    const iv = Buffer.from(textParts.shift(), 'hex');
-    const encryptedText = Buffer.from(textParts.join(':'), 'hex');
+    // IV 是固定长度的 32 个十六进制字符（16 字节）
+    const ivHex = text.substring(0, 32);
+    const encryptedHex = text.substring(33); // 跳过冒号
+    
+    const iv = Buffer.from(ivHex, 'hex');
+    const encryptedText = Buffer.from(encryptedHex, 'hex');
     const decipher = crypto.createDecipheriv(ALGORITHM, key, iv);
     let decrypted = decipher.update(encryptedText);
     decrypted = Buffer.concat([decrypted, decipher.final()]);
@@ -325,7 +328,8 @@ async function updateAccount(accountId, updates) {
   updates.updatedAt = now;
   
   // 检查是否新增了 refresh token
-  const oldRefreshToken = existingAccount.refreshToken ? decrypt(existingAccount.refreshToken) : '';
+  // existingAccount.refreshToken 已经是解密后的值了（从 getAccount 返回）
+  const oldRefreshToken = existingAccount.refreshToken || '';
   let needUpdateExpiry = false;
   
   // 加密敏感字段
