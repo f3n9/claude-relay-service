@@ -613,7 +613,8 @@ async function refreshAccountToken(accountId) {
     logRefreshStart(accountId, account.name, 'gemini', 'manual_refresh');
     logger.info(`🔄 Starting token refresh for Gemini account: ${account.name} (${accountId})`);
     
-    const newTokens = await refreshAccessToken(decrypt(account.refreshToken));
+    // account.refreshToken 已经是解密后的值（从 getAccount 返回）
+    const newTokens = await refreshAccessToken(account.refreshToken);
     
     // 更新账户信息
     const updates = {
