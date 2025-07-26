@@ -194,7 +194,7 @@ const app = createApp({
             // 账户
             accounts: [],
             accountsLoading: false,
-            accountsSortBy: '', // 当前排序字段
+            accountSortBy: 'dailyTokens', // 默认按今日Token排序
             accountsSortOrder: 'asc', // 排序顺序 'asc' 或 'desc'
             showCreateAccountModal: false,
             createAccountLoading: false,
@@ -1973,6 +1973,9 @@ const app = createApp({
                         account.boundApiKeysCount = this.apiKeys.filter(key => key.geminiAccountId === account.id).length;
                     }
                 });
+                
+                // 加载完成后自动排序
+                this.sortAccounts();
             } catch (error) {
                 console.error('Failed to load accounts:', error);
             } finally {
@@ -1980,6 +1983,35 @@ const app = createApp({
             }
         },
         
+        // 账户排序
+        sortAccounts() {
+            if (!this.accounts || this.accounts.length === 0) return;
+            
+            this.accounts.sort((a, b) => {
+                switch (this.accountSortBy) {
+                    case 'name':
+                        return a.name.localeCompare(b.name);
+                    case 'dailyTokens':
+                        const aTokens = (a.usage && a.usage.daily && a.usage.daily.allTokens) || 0;
+                        const bTokens = (b.usage && b.usage.daily && b.usage.daily.allTokens) || 0;
+                        return bTokens - aTokens; // 降序
+                    case 'dailyRequests':
+                        const aRequests = (a.usage && a.usage.daily && a.usage.daily.requests) || 0;
+                        const bRequests = (b.usage && b.usage.daily && b.usage.daily.requests) || 0;
+                        return bRequests - aRequests; // 降序
+                    case 'totalTokens':
+                        const aTotalTokens = (a.usage && a.usage.total && a.usage.total.allTokens) || 0;
+                        const bTotalTokens = (b.usage && b.usage.total && b.usage.total.allTokens) || 0;
+                        return bTotalTokens - aTotalTokens; // 降序
+                    case 'lastUsed':
+                        const aLastUsed = a.lastUsedAt ? new Date(a.lastUsedAt) : new Date(0);
+                        const bLastUsed = b.lastUsedAt ? new Date(b.lastUsedAt) : new Date(0);
+                        return bLastUsed - aLastUsed; // 降序（最近使用的在前）
+                    default:
+                        return 0;
+                }
+            });
+        },
         
         async loadModelStats() {
             this.modelStatsLoading = true;
