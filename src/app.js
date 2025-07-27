@@ -51,6 +51,16 @@ class Application {
       logger.info('🔄 Initializing admin credentials...');
       await this.initializeAdmin();
       
+      // 💰 初始化费用数据
+      logger.info('💰 Checking cost data initialization...');
+      const costInitService = require('./services/costInitService');
+      const needsInit = await costInitService.needsInitialization();
+      if (needsInit) {
+        logger.info('💰 Initializing cost data for all API Keys...');
+        const result = await costInitService.initializeAllCosts();
+        logger.info(`💰 Cost initialization completed: ${result.processed} processed, ${result.errors} errors`);
+      }
+      
       // 🛡️ 安全中间件
       this.app.use(helmet({
         contentSecurityPolicy: false, // 允许内联样式和脚本
