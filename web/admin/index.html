@@ -543,11 +543,12 @@
                                 <select 
                                     v-model="apiKeyStatsTimeRange" 
                                     @change="loadApiKeys()"
-                                    class="form-select px-4 py-2 bg-white border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                    class="form-input px-3 py-2 text-sm"
                                 >
-                                    <option value="all">全部时间</option>
+                                    <option value="today">今日</option>
                                     <option value="7days">最近7天</option>
                                     <option value="monthly">本月</option>
+                                    <option value="all">全部时间</option>
                                 </select>
                                 <button 
                                     @click.stop="openCreateApiKeyModal"

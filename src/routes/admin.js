@@ -28,7 +28,11 @@ router.get('/api-keys', authenticateAdmin, async (req, res) => {
     const now = new Date();
     let searchPatterns = [];
     
-    if (timeRange === '7days') {
+    if (timeRange === 'today') {
+      // 今日
+      const dateStr = now.toISOString().split('T')[0];
+      searchPatterns.push(`usage:daily:*:${dateStr}`);
+    } else if (timeRange === '7days') {
       // 最近7天
       for (let i = 0; i < 7; i++) {
         const date = new Date(now);
@@ -145,7 +149,9 @@ router.get('/api-keys', authenticateAdmin, async (req, res) => {
         
         // 计算指定时间范围的费用
         let totalCost = 0;
-        const modelKeys = timeRange === '7days' 
+        const modelKeys = timeRange === 'today' 
+          ? await client.keys(`usage:${apiKey.id}:model:daily:*:${now.toISOString().split('T')[0]}`)
+          : timeRange === '7days' 
           ? await client.keys(`usage:${apiKey.id}:model:daily:*:*`)
           : await client.keys(`usage:${apiKey.id}:model:monthly:*:${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`);
         
@@ -161,6 +167,8 @@ router.get('/api-keys', authenticateAdmin, async (req, res) => {
               const daysDiff = Math.floor((now - keyDate) / (1000 * 60 * 60 * 24));
               if (daysDiff > 6) continue;
             }
+          } else if (timeRange === 'today') {
+            // today选项已经在查询时过滤了，不需要额外处理
           }
           
           const modelMatch = key.match(/usage:.+:model:(?:daily|monthly):(.+):\d{4}-\d{2}(?:-\d{2})?$/);
