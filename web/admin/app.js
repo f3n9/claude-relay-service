@@ -133,7 +133,8 @@ const app = createApp({
                 allowedClients: [],
                 expireDuration: '', // 过期时长选择
                 customExpireDate: '', // 自定义过期日期
-                expiresAt: null // 实际的过期时间戳
+                expiresAt: null, // 实际的过期时间戳
+                dailyCostLimit: '' // 每日费用限制
             },
             apiKeyModelStats: {}, // 存储每个key的模型统计数据
             expandedApiKeys: {}, // 跟踪展开的API Keys
@@ -192,7 +193,8 @@ const app = createApp({
                 restrictedModels: [],
                 modelInput: '',
                 enableClientRestriction: false,
-                allowedClients: []
+                allowedClients: [],
+                dailyCostLimit: ''
             },
             
             // 支持的客户端列表
@@ -2075,7 +2077,8 @@ const app = createApp({
                         restrictedModels: this.apiKeyForm.restrictedModels,
                         enableClientRestriction: this.apiKeyForm.enableClientRestriction,
                         allowedClients: this.apiKeyForm.allowedClients,
-                        expiresAt: this.apiKeyForm.expiresAt
+                        expiresAt: this.apiKeyForm.expiresAt,
+                        dailyCostLimit: this.apiKeyForm.dailyCostLimit && this.apiKeyForm.dailyCostLimit.trim() ? parseFloat(this.apiKeyForm.dailyCostLimit) : 0
                     })
                 });
                 
@@ -2113,7 +2116,8 @@ const app = createApp({
                         allowedClients: [],
                         expireDuration: '',
                         customExpireDate: '',
-                        expiresAt: null
+                        expiresAt: null,
+                        dailyCostLimit: ''
                     };
                     
                     // 重新加载API Keys列表
@@ -2280,7 +2284,8 @@ const app = createApp({
                 restrictedModels: key.restrictedModels ? [...key.restrictedModels] : [],
                 modelInput: '',
                 enableClientRestriction: key.enableClientRestriction || false,
-                allowedClients: key.allowedClients ? [...key.allowedClients] : []
+                allowedClients: key.allowedClients ? [...key.allowedClients] : [],
+                dailyCostLimit: key.dailyCostLimit || ''
             };
             this.showEditApiKeyModal = true;
         },
@@ -2301,7 +2306,8 @@ const app = createApp({
                 restrictedModels: [],
                 modelInput: '',
                 enableClientRestriction: false,
-                allowedClients: []
+                allowedClients: [],
+                dailyCostLimit: ''
             };
         },
 
@@ -2321,7 +2327,8 @@ const app = createApp({
                         enableModelRestriction: this.editApiKeyForm.enableModelRestriction,
                         restrictedModels: this.editApiKeyForm.restrictedModels,
                         enableClientRestriction: this.editApiKeyForm.enableClientRestriction,
-                        allowedClients: this.editApiKeyForm.allowedClients
+                        allowedClients: this.editApiKeyForm.allowedClients,
+                        dailyCostLimit: this.editApiKeyForm.dailyCostLimit && this.editApiKeyForm.dailyCostLimit.toString().trim() !== '' ? parseFloat(this.editApiKeyForm.dailyCostLimit) : 0
                     })
                 });
                 
