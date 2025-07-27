@@ -2488,7 +2488,11 @@ const app = createApp({
         // 格式化数字，添加千分符
         formatNumber(num) {
             if (num === null || num === undefined) return '0';
-            return Number(num).toLocaleString();
+            const number = Number(num);
+            if (number >= 1000000) {
+                return Math.floor(number / 1000000).toLocaleString() + 'M';
+            }
+            return number.toLocaleString();
         },
 
         // 格式化运行时间
