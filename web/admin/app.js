@@ -2065,11 +2065,11 @@ const app = createApp({
                     method: 'POST',
                     body: JSON.stringify({
                         name: this.apiKeyForm.name,
-                        tokenLimit: this.apiKeyForm.tokenLimit && this.apiKeyForm.tokenLimit.trim() ? parseInt(this.apiKeyForm.tokenLimit) : null,
+                        tokenLimit: this.apiKeyForm.tokenLimit && this.apiKeyForm.tokenLimit.toString().trim() ? parseInt(this.apiKeyForm.tokenLimit) : null,
                         description: this.apiKeyForm.description || '',
-                        concurrencyLimit: this.apiKeyForm.concurrencyLimit && this.apiKeyForm.concurrencyLimit.trim() ? parseInt(this.apiKeyForm.concurrencyLimit) : 0,
-                        rateLimitWindow: this.apiKeyForm.rateLimitWindow && this.apiKeyForm.rateLimitWindow.trim() ? parseInt(this.apiKeyForm.rateLimitWindow) : null,
-                        rateLimitRequests: this.apiKeyForm.rateLimitRequests && this.apiKeyForm.rateLimitRequests.trim() ? parseInt(this.apiKeyForm.rateLimitRequests) : null,
+                        concurrencyLimit: this.apiKeyForm.concurrencyLimit && this.apiKeyForm.concurrencyLimit.toString().trim() ? parseInt(this.apiKeyForm.concurrencyLimit) : 0,
+                        rateLimitWindow: this.apiKeyForm.rateLimitWindow && this.apiKeyForm.rateLimitWindow.toString().trim() ? parseInt(this.apiKeyForm.rateLimitWindow) : null,
+                        rateLimitRequests: this.apiKeyForm.rateLimitRequests && this.apiKeyForm.rateLimitRequests.toString().trim() ? parseInt(this.apiKeyForm.rateLimitRequests) : null,
                         claudeAccountId: this.apiKeyForm.claudeAccountId || null,
                         geminiAccountId: this.apiKeyForm.geminiAccountId || null,
                         permissions: this.apiKeyForm.permissions || 'all',
@@ -2078,7 +2078,7 @@ const app = createApp({
                         enableClientRestriction: this.apiKeyForm.enableClientRestriction,
                         allowedClients: this.apiKeyForm.allowedClients,
                         expiresAt: this.apiKeyForm.expiresAt,
-                        dailyCostLimit: this.apiKeyForm.dailyCostLimit && this.apiKeyForm.dailyCostLimit.trim() ? parseFloat(this.apiKeyForm.dailyCostLimit) : 0
+                        dailyCostLimit: this.apiKeyForm.dailyCostLimit && this.apiKeyForm.dailyCostLimit.toString().trim() ? parseFloat(this.apiKeyForm.dailyCostLimit) : 0
                     })
                 });
                 
