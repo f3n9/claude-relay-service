@@ -261,6 +261,59 @@ body::before {
     background: rgba(255, 255, 255, 0.95);
 }
 
+/* ====== 系统标题样式 ====== */
+.header-title {
+    background: linear-gradient(135deg, var(--primary-color) 0%, var(--secondary-color) 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    font-weight: 700;
+    letter-spacing: -0.025em;
+}
+
+/* ====== 玻璃按钮样式 ====== */
+.glass-button {
+    background: linear-gradient(135deg, var(--primary-color) 0%, var(--secondary-color) 100%) !important;
+    border: 1px solid rgba(255, 255, 255, 0.2) !important;
+    backdrop-filter: blur(10px) !important;
+    -webkit-backdrop-filter: blur(10px) !important;
+    border-radius: 12px !important;
+    transition: all 0.3s ease !important;
+    color: white !important;
+    text-decoration: none !important;
+    box-shadow: 
+        0 10px 15px -3px rgba(102, 126, 234, 0.3),
+        0 4px 6px -2px rgba(102, 126, 234, 0.05) !important;
+    position: relative;
+    overflow: hidden;
+}
+
+.glass-button::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+    transition: left 0.5s;
+}
+
+.glass-button:hover::before {
+    left: 100%;
+}
+
+.glass-button:hover {
+    background: linear-gradient(135deg, var(--primary-color) 0%, var(--secondary-color) 100%) !important;
+    border-color: rgba(255, 255, 255, 0.3) !important;
+    transform: translateY(-1px) !important;
+    box-shadow: 
+        0 20px 25px -5px rgba(102, 126, 234, 0.3),
+        0 10px 10px -5px rgba(102, 126, 234, 0.1) !important;
+    color: white !important;
+    text-decoration: none !important;
+}
+
 /* 🎨 按钮样式 - 与管理页面一致 */
 .btn {
     font-weight: 500;
@@ -568,6 +621,190 @@ body::before {
     100% { background-position: 0% 50%; }
 }
 
+/* 🎯 单层宽卡片样式优化 */
+.api-input-wide-card {
+    background: var(--surface-color);
+    backdrop-filter: blur(25px);
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    box-shadow: 
+        0 25px 50px -12px rgba(0, 0, 0, 0.25),
+        0 0 0 1px rgba(255, 255, 255, 0.05),
+        inset 0 1px 0 rgba(255, 255, 255, 0.1);
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.api-input-wide-card:hover {
+    box-shadow: 
+        0 32px 64px -12px rgba(0, 0, 0, 0.35),
+        0 0 0 1px rgba(255, 255, 255, 0.08),
+        inset 0 1px 0 rgba(255, 255, 255, 0.15);
+    transform: translateY(-1px);
+}
+
+/* 🎯 宽卡片内标题样式 */
+.wide-card-title h2 {
+    color: #1f2937 !important;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+    font-weight: 700;
+}
+
+.wide-card-title p {
+    color: #4b5563 !important;
+    text-shadow: 0 1px 1px rgba(0, 0, 0, 0.05);
+}
+
+.wide-card-title .fas.fa-chart-line {
+    color: #3b82f6 !important;
+    text-shadow: 0 1px 2px rgba(59, 130, 246, 0.2);
+}
+
+/* 🎯 网格布局优化 */
+.api-input-grid {
+    align-items: end;
+    gap: 1rem;
+}
+
+@media (min-width: 1024px) {
+    .api-input-grid {
+        grid-template-columns: 3fr 1fr;
+        gap: 1.5rem;
+    }
+}
+
+/* 🎯 输入框在宽卡片中的样式调整 */
+.wide-card-input {
+    background: rgba(255, 255, 255, 0.95);
+    border: 2px solid rgba(255, 255, 255, 0.4);
+    border-radius: 12px;
+    padding: 14px 16px;
+    font-size: 16px;
+    transition: all 0.3s ease;
+    backdrop-filter: blur(10px);
+    color: var(--text-primary);
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+}
+
+.wide-card-input::placeholder {
+    color: #9ca3af;
+}
+
+.wide-card-input:focus {
+    outline: none;
+    border-color: #60a5fa;
+    box-shadow: 
+        0 0 0 3px rgba(96, 165, 250, 0.2),
+        0 10px 15px -3px rgba(0, 0, 0, 0.1);
+    background: white;
+}
+
+/* 🎯 安全提示样式优化 */
+.security-notice {
+    background: rgba(255, 255, 255, 0.15);
+    border: 1px solid rgba(255, 255, 255, 0.25);
+    backdrop-filter: blur(10px);
+    border-radius: 8px;
+    padding: 12px 16px;
+    color: #374151;
+    font-size: 0.875rem;
+    transition: all 0.3s ease;
+}
+
+.security-notice:hover {
+    background: rgba(255, 255, 255, 0.2);
+    border-color: rgba(255, 255, 255, 0.35);
+}
+
+.security-notice .fas.fa-shield-alt {
+    color: #10b981 !important;
+    text-shadow: 0 1px 2px rgba(16, 185, 129, 0.2);
+}
+
+/* 🎯 时间范围选择器在卡片内的样式优化 */
+.time-range-section {
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 12px;
+    padding: 16px;
+    margin-bottom: 24px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    transition: all 0.3s ease;
+}
+
+.time-range-section:hover {
+    background: rgba(255, 255, 255, 0.08);
+    border-color: rgba(255, 255, 255, 0.15);
+}
+
+/* 📱 响应式优化 - 宽卡片布局 */
+@media (max-width: 768px) {
+    .api-input-wide-card {
+        padding: 1.25rem !important;
+        margin-left: 1rem;
+        margin-right: 1rem;
+    }
+    
+    .wide-card-title {
+        margin-bottom: 1.25rem !important;
+    }
+    
+    .wide-card-title h2 {
+        font-size: 1.5rem !important;
+    }
+    
+    .wide-card-title p {
+        font-size: 0.875rem !important;
+    }
+    
+    .api-input-grid {
+        grid-template-columns: 1fr !important;
+        gap: 1rem !important;
+    }
+    
+    .wide-card-input {
+        padding: 12px 14px !important;
+        font-size: 16px !important;
+    }
+    
+    .security-notice {
+        padding: 10px 14px !important;
+        font-size: 0.8rem !important;
+    }
+}
+
+@media (max-width: 480px) {
+    .api-input-wide-card {
+        padding: 1rem !important;
+        margin-left: 0.5rem;
+        margin-right: 0.5rem;
+    }
+    
+    .wide-card-title h2 {
+        font-size: 1.25rem !important;
+    }
+    
+    .wide-card-title p {
+        font-size: 0.8rem !important;
+    }
+}
+
+/* 📱 响应式优化 - 时间范围选择器 */
+@media (max-width: 768px) {
+    .time-range-section .flex {
+        flex-direction: column;
+        align-items: flex-start !important;
+        gap: 1rem;
+    }
+    
+    .time-range-section .flex .flex {
+        width: 100%;
+        justify-content: center;
+    }
+    
+    .period-btn {
+        flex: 1;
+        justify-content: center;
+    }
+}
+
 /* 📱 触摸设备优化 */
 @media (hover: none) and (pointer: coarse) {
     .card:hover {
@@ -583,6 +820,29 @@ body::before {
     .model-usage-item:hover {
         transform: none;
         background: rgba(255, 255, 255, 0.05);
+    }
+    
+    .time-range-section:hover {
+        background: rgba(255, 255, 255, 0.05);
+        border-color: rgba(255, 255, 255, 0.1);
+    }
+    
+    .query-title-section:hover {
+        background: linear-gradient(135deg, rgba(59, 130, 246, 0.05) 0%, rgba(99, 102, 241, 0.05) 100%);
+        border-color: rgba(59, 130, 246, 0.1);
+    }
+    
+    .api-input-wide-card:hover {
+        transform: none;
+        box-shadow: 
+            0 25px 50px -12px rgba(0, 0, 0, 0.25),
+            0 0 0 1px rgba(255, 255, 255, 0.05),
+            inset 0 1px 0 rgba(255, 255, 255, 0.1);
+    }
+    
+    .security-notice:hover {
+        background: rgba(255, 255, 255, 0.15);
+        border-color: rgba(255, 255, 255, 0.25);
     }
 }
 

@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>API Key 使用统计 - Claude Relay Service</title>
+    <title>Claude Relay Service - API Key 统计</title>
     
     <!-- 🎨 样式 -->
     <link rel="stylesheet" href="/apiStats/style.css">
@@ -24,37 +24,66 @@
 </head>
 <body class="min-h-screen text-white">
     <div id="app">
-        <!-- 🎯 顶部标题 -->
+        <!-- 🎯 顶部导航 -->
         <div class="container mx-auto px-4 py-8">
-            <div class="text-center mb-8">
-                <h1 class="text-4xl font-bold mb-2">
-                    <i class="fas fa-chart-line mr-3"></i>
-                    API Key 使用统计
-                </h1>
-                <p class="text-white/80 text-lg">查询您的 API Key 使用情况和统计数据</p>
+            <div class="glass-strong rounded-3xl p-6 mb-8 shadow-xl">
+                <div class="flex flex-col md:flex-row justify-between items-center gap-4">
+                    <div class="flex items-center gap-4">
+                        <div class="w-12 h-12 bg-gradient-to-br from-blue-500/20 to-purple-500/20 border border-gray-300/30 rounded-xl flex items-center justify-center backdrop-blur-sm flex-shrink-0">
+                            <i class="fas fa-cloud text-xl text-gray-700"></i>
+                        </div>
+                        <div class="flex flex-col justify-center min-h-[48px]">
+                            <div class="flex items-center gap-3">
+                                <h1 class="text-2xl font-bold text-white header-title leading-tight">Claude Relay Service</h1>
+                            </div>
+                            <p class="text-white/80 text-sm leading-tight">API Key 使用统计</p>
+                        </div>
+                    </div>
+                    <div class="flex items-center gap-3">
+                        <a href="/web" class="glass-button rounded-xl px-4 py-2 text-white hover:bg-white/20 transition-colors flex items-center gap-2">
+                            <i class="fas fa-cog text-sm"></i>
+                            <span class="text-sm font-medium">管理后台</span>
+                        </a>
+                    </div>
+                </div>
             </div>
-
+            
             <!-- 🔑 API Key 输入区域 -->
-            <div class="max-w-2xl mx-auto mb-8">
-                <div class="glass-strong rounded-3xl p-6">
-                    <div class="mb-4">
-                        <label class="block text-sm font-medium mb-2 text-gray-700">
-                            <i class="fas fa-key mr-2"></i>
-                            输入您的 API Key
-                        </label>
-                        <div class="flex gap-3">
+            <div class="api-input-wide-card glass-strong rounded-3xl p-6 mb-8 shadow-xl">
+                <!-- 📊 标题区域 -->
+                <div class="wide-card-title text-center mb-6">
+                    <h2 class="text-2xl font-bold mb-2">
+                        <i class="fas fa-chart-line mr-3"></i>
+                        使用统计查询
+                    </h2>
+                    <p class="text-base">查询您的 API Key 使用情况和统计数据</p>
+                </div>
+                
+                <!-- 🔍 输入区域 -->
+                <div class="max-w-4xl mx-auto">
+                    <div class="api-input-grid grid grid-cols-1 lg:grid-cols-4">
+                        <!-- API Key 输入 -->
+                        <div class="lg:col-span-3">
+                            <label class="block text-sm font-medium mb-2 text-gray-700">
+                                <i class="fas fa-key mr-2"></i>
+                                输入您的 API Key
+                            </label>
                             <input 
                                 v-model="apiKey" 
                                 type="password" 
                                 placeholder="请输入您的 API Key (cr_...)"
-                                class="form-input flex-1"
+                                class="wide-card-input w-full"
                                 @keyup.enter="queryStats"
                                 :disabled="loading"
                             >
+                        </div>
+                        
+                        <!-- 查询按钮 -->
+                        <div class="lg:col-span-1">
                             <button 
                                 @click="queryStats"
                                 :disabled="loading || !apiKey.trim()"
-                                class="btn btn-primary px-6 py-3 flex items-center gap-2"
+                                class="btn btn-primary w-full px-6 py-3 flex items-center justify-center gap-2"
                             >
                                 <i v-if="loading" class="fas fa-spinner loading-spinner"></i>
                                 <i v-else class="fas fa-search"></i>
@@ -64,41 +93,9 @@
                     </div>
                     
                     <!-- 安全提示 -->
-                    <div class="text-sm text-gray-600 bg-white/20 rounded-lg p-3">
-                        <i class="fas fa-shield-alt mr-2 text-green-500"></i>
+                    <div class="security-notice mt-4">
+                        <i class="fas fa-shield-alt mr-2"></i>
                         您的 API Key 仅用于查询自己的统计数据，不会被存储或用于其他用途
-                    </div>
-                </div>
-            </div>
-
-            <!-- 📅 时间范围选择器（数据展示前显示） -->
-            <div v-if="statsData" class="max-w-4xl mx-auto mb-8">
-                <div class="glass-strong rounded-3xl p-4">
-                    <div class="flex items-center justify-between">
-                        <div class="flex items-center gap-3">
-                            <i class="fas fa-clock text-blue-500 text-lg"></i>
-                            <span class="text-lg font-medium text-gray-700">统计时间范围</span>
-                        </div>
-                        <div class="flex gap-2">
-                            <button 
-                                @click="switchPeriod('daily')"
-                                :class="['period-btn', { 'active': statsPeriod === 'daily' }]"
-                                class="px-6 py-2 text-sm font-medium flex items-center gap-2"
-                                :disabled="loading || modelStatsLoading"
-                            >
-                                <i class="fas fa-calendar-day"></i>
-                                今日
-                            </button>
-                            <button 
-                                @click="switchPeriod('monthly')"
-                                :class="['period-btn', { 'active': statsPeriod === 'monthly' }]"
-                                class="px-6 py-2 text-sm font-medium flex items-center gap-2"
-                                :disabled="loading || modelStatsLoading"
-                            >
-                                <i class="fas fa-calendar-alt"></i>
-                                本月
-                            </button>
-                        </div>
                     </div>
                 </div>
             </div>
@@ -115,6 +112,35 @@
             <div v-if="statsData" class="fade-in">
                 <!-- 主要内容卡片 -->
                 <div class="glass-strong rounded-3xl p-6">
+                    <!-- 📅 时间范围选择器 -->
+                    <div class="mb-6 pb-6 border-b border-gray-200">
+                        <div class="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+                            <div class="flex items-center gap-3">
+                                <i class="fas fa-clock text-blue-500 text-lg"></i>
+                                <span class="text-lg font-medium text-gray-700">统计时间范围</span>
+                            </div>
+                            <div class="flex gap-2">
+                                <button 
+                                    @click="switchPeriod('daily')"
+                                    :class="['period-btn', { 'active': statsPeriod === 'daily' }]"
+                                    class="px-6 py-2 text-sm font-medium flex items-center gap-2"
+                                    :disabled="loading || modelStatsLoading"
+                                >
+                                    <i class="fas fa-calendar-day"></i>
+                                    今日
+                                </button>
+                                <button 
+                                    @click="switchPeriod('monthly')"
+                                    :class="['period-btn', { 'active': statsPeriod === 'monthly' }]"
+                                    class="px-6 py-2 text-sm font-medium flex items-center gap-2"
+                                    :disabled="loading || modelStatsLoading"
+                                >
+                                    <i class="fas fa-calendar-alt"></i>
+                                    本月
+                                </button>
+                            </div>
+                        </div>
+                    </div>
                     <!-- 📈 基本信息卡片 -->
                     <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
                         <!-- API Key 基本信息 -->
@@ -317,13 +343,6 @@
                 </div>
             </div>
 
-            <!-- 🔗 管理后台链接 -->
-            <div class="text-center mt-8">
-                <a href="/web" class="inline-flex items-center glass rounded-2xl px-6 py-3 text-white hover:bg-white/20 transition-colors">
-                    <i class="fas fa-cog mr-2"></i>
-                    访问管理后台
-                </a>
-            </div>
         </div>
     </div>
 
