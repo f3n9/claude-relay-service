@@ -43,7 +43,7 @@ const app = createApp({
             this.modelStats = [];
             
             try {
-                const response = await fetch('/web/api/user-stats', {
+                const response = await fetch('/apiStats/api/user-stats', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json'
@@ -100,7 +100,7 @@ const app = createApp({
         // 📊 加载指定时间段的统计数据
         async loadPeriodStats(period) {
             try {
-                const response = await fetch('/web/api/user-model-stats', {
+                const response = await fetch('/apiStats/api/user-model-stats', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json'
@@ -163,7 +163,7 @@ const app = createApp({
             this.modelStatsLoading = true;
             
             try {
-                const response = await fetch('/web/api/user-model-stats', {
+                const response = await fetch('/apiStats/api/user-model-stats', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json'
