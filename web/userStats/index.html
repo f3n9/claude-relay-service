@@ -1,0 +1,428 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>API Key 使用统计 - Claude Relay Service</title>
+    
+    <!-- 🎨 样式 -->
+    <link rel="stylesheet" href="/web/userStats.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- 🔧 Vue 3 -->
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    
+    <!-- 📊 Charts -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    
+    <!-- 🧮 工具库 -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/dayjs/1.11.9/dayjs.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/dayjs/1.11.9/plugin/relativeTime.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/dayjs/1.11.9/plugin/timezone.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/dayjs/1.11.9/plugin/utc.min.js"></script>
+    
+    <style>
+        /* 自定义样式 */
+        .gradient-bg {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+        
+        .card {
+            transition: all 0.3s ease;
+            backdrop-filter: blur(10px);
+        }
+        
+        .card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+        }
+        
+        .stat-card {
+            background: linear-gradient(135deg, rgba(255, 255, 255, 0.1) 0%, rgba(255, 255, 255, 0.05) 100%);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+        
+        .input-field {
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            color: white;
+        }
+        
+        .input-field::placeholder {
+            color: rgba(255, 255, 255, 0.7);
+        }
+        
+        .input-field:focus {
+            background: rgba(255, 255, 255, 0.15);
+            border-color: rgba(255, 255, 255, 0.4);
+            outline: none;
+        }
+        
+        .btn-primary {
+            background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%);
+            transition: all 0.3s ease;
+        }
+        
+        .btn-primary:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 10px 25px -5px rgba(79, 70, 229, 0.4);
+        }
+        
+        .model-usage-item {
+            transition: all 0.3s ease;
+        }
+        
+        .model-usage-item:hover {
+            transform: translateX(4px);
+            background: rgba(255, 255, 255, 0.05);
+        }
+        
+        .loading-spinner {
+            animation: spin 1s linear infinite;
+        }
+        
+        @keyframes spin {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+        
+        .fade-in {
+            animation: fadeIn 0.5s ease-in;
+        }
+        
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        
+        .slide-in {
+            animation: slideIn 0.3s ease-out;
+        }
+        
+        @keyframes slideIn {
+            from { opacity: 0; transform: translateX(-20px); }
+            to { opacity: 1; transform: translateX(0); }
+        }
+        
+        .chart-container {
+            position: relative;
+            height: 300px;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 12px;
+            padding: 20px;
+        }
+    </style>
+</head>
+<body class="gradient-bg min-h-screen text-white">
+    <div id="app">
+        <!-- 🎯 顶部标题 -->
+        <div class="container mx-auto px-4 py-8">
+            <div class="text-center mb-8">
+                <h1 class="text-4xl font-bold mb-2">
+                    <i class="fas fa-chart-line mr-3"></i>
+                    API Key 使用统计
+                </h1>
+                <p class="text-white/80 text-lg">查询您的 API Key 使用情况和统计数据</p>
+            </div>
+
+            <!-- 🔑 API Key 输入区域 -->
+            <div class="max-w-2xl mx-auto mb-8">
+                <div class="card bg-white/10 rounded-xl p-6 backdrop-blur-md">
+                    <div class="mb-4">
+                        <label class="block text-sm font-medium mb-2">
+                            <i class="fas fa-key mr-2"></i>
+                            输入您的 API Key
+                        </label>
+                        <div class="flex gap-3">
+                            <input 
+                                v-model="apiKey" 
+                                type="password" 
+                                placeholder="请输入您的 API Key (cr_...)"
+                                class="input-field flex-1 px-4 py-3 rounded-lg focus:ring-2 focus:ring-purple-500"
+                                @keyup.enter="queryStats"
+                                :disabled="loading"
+                            >
+                            <button 
+                                @click="queryStats"
+                                :disabled="loading || !apiKey.trim()"
+                                class="btn-primary px-6 py-3 rounded-lg font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                            >
+                                <i v-if="loading" class="fas fa-spinner loading-spinner"></i>
+                                <i v-else class="fas fa-search"></i>
+                                {{ loading ? '查询中...' : '查询统计' }}
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <!-- 安全提示 -->
+                    <div class="text-sm text-white/70 bg-white/5 rounded-lg p-3">
+                        <i class="fas fa-shield-alt mr-2 text-green-400"></i>
+                        您的 API Key 仅用于查询自己的统计数据，不会被存储或用于其他用途
+                    </div>
+                </div>
+            </div>
+
+            <!-- 📅 时间范围选择器（数据展示前显示） -->
+            <div v-if="statsData" class="max-w-4xl mx-auto mb-8">
+                <div class="card bg-white/10 rounded-xl p-4 backdrop-blur-md">
+                    <div class="flex items-center justify-between">
+                        <div class="flex items-center gap-3">
+                            <i class="fas fa-clock text-blue-400 text-lg"></i>
+                            <span class="text-lg font-medium">统计时间范围</span>
+                        </div>
+                        <div class="flex gap-2">
+                            <button 
+                                @click="switchPeriod('daily')"
+                                :class="{ 
+                                    'bg-blue-500 text-white shadow-lg': statsPeriod === 'daily', 
+                                    'bg-white/10 text-white/80 hover:bg-white/20': statsPeriod !== 'daily' 
+                                }"
+                                class="px-6 py-2 rounded-lg text-sm font-medium transition-all duration-300 flex items-center gap-2"
+                                :disabled="loading || modelStatsLoading"
+                            >
+                                <i class="fas fa-calendar-day"></i>
+                                今日
+                            </button>
+                            <button 
+                                @click="switchPeriod('monthly')"
+                                :class="{ 
+                                    'bg-blue-500 text-white shadow-lg': statsPeriod === 'monthly', 
+                                    'bg-white/10 text-white/80 hover:bg-white/20': statsPeriod !== 'monthly' 
+                                }"
+                                class="px-6 py-2 rounded-lg text-sm font-medium transition-all duration-300 flex items-center gap-2"
+                                :disabled="loading || modelStatsLoading"
+                            >
+                                <i class="fas fa-calendar-alt"></i>
+                                本月
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ❌ 错误提示 -->
+            <div v-if="error" class="max-w-2xl mx-auto mb-8">
+                <div class="bg-red-500/20 border border-red-500/30 rounded-lg p-4 text-red-200">
+                    <i class="fas fa-exclamation-triangle mr-2"></i>
+                    {{ error }}
+                </div>
+            </div>
+
+            <!-- 📊 统计数据展示区域 -->
+            <div v-if="statsData" class="fade-in">
+                <!-- 📈 基本信息卡片 -->
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+                    <!-- API Key 基本信息 -->
+                    <div class="card bg-white/10 rounded-xl p-6 backdrop-blur-md">
+                        <h3 class="text-xl font-bold mb-4 flex items-center">
+                            <i class="fas fa-info-circle mr-3 text-blue-400"></i>
+                            API Key 信息
+                        </h3>
+                        <div class="space-y-3">
+                            <div class="flex justify-between items-center">
+                                <span class="text-white/80">名称</span>
+                                <span class="font-medium">{{ statsData.name }}</span>
+                            </div>
+                            <div class="flex justify-between items-center">
+                                <span class="text-white/80">状态</span>
+                                <span :class="statsData.isActive ? 'text-green-400' : 'text-red-400'" class="font-medium">
+                                    <i :class="statsData.isActive ? 'fas fa-check-circle' : 'fas fa-times-circle'" class="mr-1"></i>
+                                    {{ statsData.isActive ? '活跃' : '已停用' }}
+                                </span>
+                            </div>
+                            <div class="flex justify-between items-center">
+                                <span class="text-white/80">权限</span>
+                                <span class="font-medium">{{ formatPermissions(statsData.permissions) }}</span>
+                            </div>
+                            <div class="flex justify-between items-center">
+                                <span class="text-white/80">创建时间</span>
+                                <span class="font-medium">{{ formatDate(statsData.createdAt) }}</span>
+                            </div>
+                            <div v-if="statsData.expiresAt" class="flex justify-between items-center">
+                                <span class="text-white/80">过期时间</span>
+                                <span class="font-medium">{{ formatDate(statsData.expiresAt) }}</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 使用统计概览 -->
+                    <div class="card bg-white/10 rounded-xl p-6 backdrop-blur-md">
+                        <h3 class="text-xl font-bold mb-4 flex items-center">
+                            <i class="fas fa-chart-bar mr-3 text-green-400"></i>
+                            使用统计概览 <span class="text-sm font-normal text-white/70 ml-2">({{ statsPeriod === 'daily' ? '今日' : '本月' }})</span>
+                        </h3>
+                        <div class="grid grid-cols-2 gap-4">
+                            <div class="stat-card p-4 rounded-lg text-center">
+                                <div class="text-2xl font-bold text-green-400">{{ formatNumber(currentPeriodData.requests) }}</div>
+                                <div class="text-sm text-white/80">{{ statsPeriod === 'daily' ? '今日' : '本月' }}请求数</div>
+                            </div>
+                            <div class="stat-card p-4 rounded-lg text-center">
+                                <div class="text-2xl font-bold text-blue-400">{{ formatNumber(currentPeriodData.allTokens) }}</div>
+                                <div class="text-sm text-white/80">{{ statsPeriod === 'daily' ? '今日' : '本月' }}Token数</div>
+                            </div>
+                            <div class="stat-card p-4 rounded-lg text-center">
+                                <div class="text-2xl font-bold text-purple-400">{{ currentPeriodData.formattedCost || '$0.000000' }}</div>
+                                <div class="text-sm text-white/80">{{ statsPeriod === 'daily' ? '今日' : '本月' }}费用</div>
+                            </div>
+                            <div class="stat-card p-4 rounded-lg text-center">
+                                <div class="text-2xl font-bold text-yellow-400">{{ formatNumber(currentPeriodData.inputTokens) }}</div>
+                                <div class="text-sm text-white/80">{{ statsPeriod === 'daily' ? '今日' : '本月' }}输入Token</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 📋 详细使用数据 -->
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+                    <!-- Token 分类统计 -->
+                    <div class="card bg-white/10 rounded-xl p-6 backdrop-blur-md">
+                        <h3 class="text-xl font-bold mb-4 flex items-center">
+                            <i class="fas fa-coins mr-3 text-yellow-400"></i>
+                            Token 使用分布 <span class="text-sm font-normal text-white/70 ml-2">({{ statsPeriod === 'daily' ? '今日' : '本月' }})</span>
+                        </h3>
+                        <div class="space-y-3">
+                            <div class="flex justify-between items-center">
+                                <span class="text-white/80 flex items-center">
+                                    <i class="fas fa-arrow-right mr-2 text-green-400"></i>
+                                    输入 Token
+                                </span>
+                                <span class="font-medium">{{ formatNumber(currentPeriodData.inputTokens) }}</span>
+                            </div>
+                            <div class="flex justify-between items-center">
+                                <span class="text-white/80 flex items-center">
+                                    <i class="fas fa-arrow-left mr-2 text-blue-400"></i>
+                                    输出 Token
+                                </span>
+                                <span class="font-medium">{{ formatNumber(currentPeriodData.outputTokens) }}</span>
+                            </div>
+                            <div class="flex justify-between items-center">
+                                <span class="text-white/80 flex items-center">
+                                    <i class="fas fa-save mr-2 text-purple-400"></i>
+                                    缓存创建 Token
+                                </span>
+                                <span class="font-medium">{{ formatNumber(currentPeriodData.cacheCreateTokens) }}</span>
+                            </div>
+                            <div class="flex justify-between items-center">
+                                <span class="text-white/80 flex items-center">
+                                    <i class="fas fa-download mr-2 text-orange-400"></i>
+                                    缓存读取 Token
+                                </span>
+                                <span class="font-medium">{{ formatNumber(currentPeriodData.cacheReadTokens) }}</span>
+                            </div>
+                        </div>
+                        <div class="mt-4 pt-4 border-t border-white/20">
+                            <div class="flex justify-between items-center font-bold">
+                                <span>{{ statsPeriod === 'daily' ? '今日' : '本月' }}总计</span>
+                                <span class="text-xl">{{ formatNumber(currentPeriodData.allTokens) }}</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 限制设置 -->
+                    <div class="card bg-white/10 rounded-xl p-6 backdrop-blur-md">
+                        <h3 class="text-xl font-bold mb-4 flex items-center">
+                            <i class="fas fa-shield-alt mr-3 text-red-400"></i>
+                            限制配置
+                        </h3>
+                        <div class="space-y-3">
+                            <div class="flex justify-between items-center">
+                                <span class="text-white/80">Token 限制</span>
+                                <span class="font-medium">{{ statsData.limits.tokenLimit > 0 ? formatNumber(statsData.limits.tokenLimit) : '无限制' }}</span>
+                            </div>
+                            <div class="flex justify-between items-center">
+                                <span class="text-white/80">并发限制</span>
+                                <span class="font-medium">{{ statsData.limits.concurrencyLimit > 0 ? statsData.limits.concurrencyLimit : '无限制' }}</span>
+                            </div>
+                            <div class="flex justify-between items-center">
+                                <span class="text-white/80">速率限制</span>
+                                <span class="font-medium">
+                                    {{ statsData.limits.rateLimitRequests > 0 && statsData.limits.rateLimitWindow > 0 
+                                        ? `${statsData.limits.rateLimitRequests}次/${statsData.limits.rateLimitWindow}分钟` 
+                                        : '无限制' }}
+                                </span>
+                            </div>
+                            <div class="flex justify-between items-center">
+                                <span class="text-white/80">每日费用限制</span>
+                                <span class="font-medium">{{ statsData.limits.dailyCostLimit > 0 ? '$' + statsData.limits.dailyCostLimit : '无限制' }}</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 📊 模型使用统计 -->
+                <div class="card bg-white/10 rounded-xl p-6 backdrop-blur-md mb-8">
+                    <div class="mb-6">
+                        <h3 class="text-xl font-bold flex items-center">
+                            <i class="fas fa-robot mr-3 text-indigo-400"></i>
+                            模型使用统计 <span class="text-sm font-normal text-white/70 ml-2">({{ statsPeriod === 'daily' ? '今日' : '本月' }})</span>
+                        </h3>
+                    </div>
+
+                    <!-- 模型统计加载状态 -->
+                    <div v-if="modelStatsLoading" class="text-center py-8">
+                        <i class="fas fa-spinner loading-spinner text-2xl mb-2"></i>
+                        <p class="text-white/80">加载模型统计数据中...</p>
+                    </div>
+
+                    <!-- 模型统计数据 -->
+                    <div v-else-if="modelStats.length > 0" class="space-y-4">
+                        <div 
+                            v-for="(model, index) in modelStats" 
+                            :key="index"
+                            class="model-usage-item bg-white/5 rounded-lg p-4 border border-white/10"
+                        >
+                            <div class="flex justify-between items-start mb-3">
+                                <div>
+                                    <h4 class="font-bold text-lg">{{ model.model }}</h4>
+                                    <p class="text-white/70 text-sm">{{ model.requests }} 次请求</p>
+                                </div>
+                                <div class="text-right">
+                                    <div class="text-lg font-bold text-green-400">{{ model.formatted?.total || '$0.000000' }}</div>
+                                    <div class="text-sm text-white/70">总费用</div>
+                                </div>
+                            </div>
+                            
+                            <div class="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
+                                <div class="bg-white/5 rounded p-2">
+                                    <div class="text-white/70">输入 Token</div>
+                                    <div class="font-medium">{{ formatNumber(model.inputTokens) }}</div>
+                                </div>
+                                <div class="bg-white/5 rounded p-2">
+                                    <div class="text-white/70">输出 Token</div>
+                                    <div class="font-medium">{{ formatNumber(model.outputTokens) }}</div>
+                                </div>
+                                <div class="bg-white/5 rounded p-2">
+                                    <div class="text-white/70">缓存创建</div>
+                                    <div class="font-medium">{{ formatNumber(model.cacheCreateTokens) }}</div>
+                                </div>
+                                <div class="bg-white/5 rounded p-2">
+                                    <div class="text-white/70">缓存读取</div>
+                                    <div class="font-medium">{{ formatNumber(model.cacheReadTokens) }}</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 无模型数据 -->
+                    <div v-else class="text-center py-8 text-white/60">
+                        <i class="fas fa-chart-pie text-3xl mb-3"></i>
+                        <p>暂无{{ statsPeriod === 'daily' ? '今日' : '本月' }}模型使用数据</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 🔗 返回链接 -->
+            <div class="text-center mt-8">
+                <a href="/" class="inline-flex items-center text-white/80 hover:text-white transition-colors">
+                    <i class="fas fa-arrow-left mr-2"></i>
+                    返回管理后台
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <!-- 📱 JavaScript -->
+    <script src="/web/userStats.js"></script>
+</body>
+</html>
