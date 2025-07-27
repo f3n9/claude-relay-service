@@ -10,11 +10,13 @@ const app = createApp({
         return {
             // 用户输入
             apiKey: '',
+            apiId: null, // 存储 API Key 对应的 ID
             
             // 状态控制
             loading: false,
             modelStatsLoading: false,
             error: '',
+            showAdminButton: true, // 控制管理后端按钮显示
             
             // 时间范围控制
             statsPeriod: 'daily', // 默认今日
@@ -41,9 +43,11 @@ const app = createApp({
             this.error = '';
             this.statsData = null;
             this.modelStats = [];
+            this.apiId = null;
             
             try {
-                const response = await fetch('/apiStats/api/user-stats', {
+                // 首先获取 API Key 对应的 ID
+                const idResponse = await fetch('/apiStats/api/get-key-id', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json'
@@ -53,22 +57,48 @@ const app = createApp({
                     })
                 });
                 
-                const result = await response.json();
+                const idResult = await idResponse.json();
                 
-                if (!response.ok) {
-                    throw new Error(result.message || '查询失败');
+                if (!idResponse.ok) {
+                    throw new Error(idResult.message || '获取 API Key ID 失败');
                 }
                 
-                if (result.success) {
-                    this.statsData = result.data;
+                if (idResult.success) {
+                    this.apiId = idResult.data.id;
                     
-                    // 同时加载今日和本月的统计数据
-                    await this.loadAllPeriodStats();
+                    // 使用 apiId 查询统计数据
+                    const response = await fetch('/apiStats/api/user-stats', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            apiId: this.apiId
+                        })
+                    });
                     
-                    // 清除错误信息
-                    this.error = '';
+                    const result = await response.json();
+                    
+                    if (!response.ok) {
+                        throw new Error(result.message || '查询失败');
+                    }
+                    
+                    if (result.success) {
+                        this.statsData = result.data;
+                        
+                        // 同时加载今日和本月的统计数据
+                        await this.loadAllPeriodStats();
+                        
+                        // 清除错误信息
+                        this.error = '';
+                        
+                        // 更新 URL
+                        this.updateURL();
+                    } else {
+                        throw new Error(result.message || '查询失败');
+                    }
                 } else {
-                    throw new Error(result.message || '查询失败');
+                    throw new Error(idResult.message || '获取 API Key ID 失败');
                 }
                 
             } catch (error) {
@@ -76,6 +106,7 @@ const app = createApp({
                 this.error = error.message || '查询统计数据失败，请检查您的 API Key 是否正确';
                 this.statsData = null;
                 this.modelStats = [];
+                this.apiId = null;
             } finally {
                 this.loading = false;
             }
@@ -83,7 +114,7 @@ const app = createApp({
         
         // 📊 加载所有时间段的统计数据
         async loadAllPeriodStats() {
-            if (!this.apiKey.trim()) {
+            if (!this.apiId) {
                 return;
             }
             
@@ -106,7 +137,7 @@ const app = createApp({
                         'Content-Type': 'application/json'
                     },
                     body: JSON.stringify({
-                        apiKey: this.apiKey,
+                        apiId: this.apiId,
                         period: period
                     })
                 });
@@ -156,7 +187,7 @@ const app = createApp({
         
         // 📊 加载模型统计数据
         async loadModelStats(period = 'daily') {
-            if (!this.apiKey.trim()) {
+            if (!this.apiId) {
                 return;
             }
             
@@ -169,7 +200,7 @@ const app = createApp({
                         'Content-Type': 'application/json'
                     },
                     body: JSON.stringify({
-                        apiKey: this.apiKey,
+                        apiId: this.apiId,
                         period: period
                     })
                 });
@@ -373,6 +404,7 @@ const app = createApp({
             this.monthlyStats = null;
             this.error = '';
             this.statsPeriod = 'daily'; // 重置为默认值
+            this.apiId = null;
         },
         
         // 🔄 刷新数据
@@ -384,9 +416,69 @@ const app = createApp({
         
         // 📊 刷新当前时间段数据
         async refreshCurrentPeriod() {
-            if (this.apiKey) {
+            if (this.apiId) {
                 await this.loadPeriodStats(this.statsPeriod);
                 await this.loadModelStats(this.statsPeriod);
+            }
+        },
+        
+        // 🔄 更新 URL
+        updateURL() {
+            if (this.apiId) {
+                const url = new URL(window.location);
+                url.searchParams.set('apiId', this.apiId);
+                window.history.pushState({}, '', url);
+            }
+        },
+        
+        // 📊 使用 apiId 直接加载数据
+        async loadStatsWithApiId() {
+            if (!this.apiId) {
+                return;
+            }
+            
+            this.loading = true;
+            this.error = '';
+            this.statsData = null;
+            this.modelStats = [];
+            
+            try {
+                // 使用 apiId 查询统计数据
+                const response = await fetch('/apiStats/api/user-stats', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        apiId: this.apiId
+                    })
+                });
+                
+                const result = await response.json();
+                
+                if (!response.ok) {
+                    throw new Error(result.message || '查询失败');
+                }
+                
+                if (result.success) {
+                    this.statsData = result.data;
+                    
+                    // 同时加载今日和本月的统计数据
+                    await this.loadAllPeriodStats();
+                    
+                    // 清除错误信息
+                    this.error = '';
+                } else {
+                    throw new Error(result.message || '查询失败');
+                }
+                
+            } catch (error) {
+                console.error('Load stats with apiId error:', error);
+                this.error = error.message || '查询统计数据失败';
+                this.statsData = null;
+                this.modelStats = [];
+            } finally {
+                this.loading = false;
             }
         }
     },
@@ -475,10 +567,18 @@ const app = createApp({
         // 页面加载完成后的初始化
         console.log('User Stats Page loaded');
         
-        // 检查 URL 参数是否有预填的 API Key（用于开发测试）
+        // 检查 URL 参数
         const urlParams = new URLSearchParams(window.location.search);
+        const presetApiId = urlParams.get('apiId');
         const presetApiKey = urlParams.get('apiKey');
-        if (presetApiKey && presetApiKey.length > 10) {
+        
+        if (presetApiId && presetApiId.match(/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i)) {
+            // 如果 URL 中有 apiId，直接使用 apiId 加载数据
+            this.apiId = presetApiId;
+            this.showAdminButton = false; // 隐藏管理后端按钮
+            this.loadStatsWithApiId();
+        } else if (presetApiKey && presetApiKey.length > 10) {
+            // 向后兼容，支持 apiKey 参数
             this.apiKey = presetApiKey;
         }
         

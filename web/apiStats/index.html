@@ -39,7 +39,7 @@
                             <p class="text-gray-600 text-sm leading-tight font-medium">使用统计查询</p>
                         </div>
                     </div>
-                    <div class="flex items-center gap-3">
+                    <div v-if="showAdminButton" class="flex items-center gap-3">
                         <a href="/web" class="glass-button rounded-xl px-4 py-2 text-white hover:bg-white/20 transition-colors flex items-center gap-2">
                             <i class="fas fa-cog text-sm"></i>
                             <span class="text-sm font-medium">管理后台</span>
