@@ -2490,7 +2490,7 @@ const app = createApp({
             if (num === null || num === undefined) return '0';
             const number = Number(num);
             if (number >= 1000000000) {
-                return (number / 1000).toLocaleString() + 'k';
+                return Math.floor(number / 1000).toLocaleString() + 'k';
             }
             return number.toLocaleString();
         },
