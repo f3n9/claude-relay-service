@@ -226,6 +226,34 @@ const app = createApp({
             }
         },
         
+        // 📅 格式化过期日期
+        formatExpireDate(dateString) {
+            if (!dateString) return '';
+            const date = new Date(dateString);
+            return date.toLocaleString('zh-CN', {
+                year: 'numeric',
+                month: '2-digit',
+                day: '2-digit',
+                hour: '2-digit',
+                minute: '2-digit'
+            });
+        },
+        
+        // 🔍 检查 API Key 是否已过期
+        isApiKeyExpired(expiresAt) {
+            if (!expiresAt) return false;
+            return new Date(expiresAt) < new Date();
+        },
+        
+        // ⏰ 检查 API Key 是否即将过期（7天内）
+        isApiKeyExpiringSoon(expiresAt) {
+            if (!expiresAt) return false;
+            const expireDate = new Date(expiresAt);
+            const now = new Date();
+            const daysUntilExpire = (expireDate - now) / (1000 * 60 * 60 * 24);
+            return daysUntilExpire > 0 && daysUntilExpire <= 7;
+        },
+        
         // 🔢 格式化数字
         formatNumber(num) {
             if (typeof num !== 'number') {

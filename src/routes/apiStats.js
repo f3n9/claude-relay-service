@@ -97,7 +97,6 @@ router.post('/api/user-stats', async (req, res) => {
     
     try {
       const client = redis.getClientSafe();
-      const currentMonth = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`;
       
       // 获取所有月度模型统计（与model-stats接口相同的逻辑）
       const allModelKeys = await client.keys(`usage:${fullKeyData.id}:model:monthly:*:*`);

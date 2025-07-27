@@ -6,8 +6,6 @@ const fs = require('fs');
 const redis = require('../models/redis');
 const logger = require('../utils/logger');
 const config = require('../../config/config');
-const apiKeyService = require('../services/apiKeyService');
-const CostCalculator = require('../utils/costCalculator');
 
 const router = express.Router();
 
