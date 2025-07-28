@@ -443,8 +443,10 @@ router.post('/api/user-model-stats', async (req, res) => {
 
     // 重用管理后台的模型统计逻辑，但只返回该API Key的数据
     const client = redis.getClientSafe();
-    const today = new Date().toISOString().split('T')[0];
-    const currentMonth = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`;
+    // 使用与管理页面相同的时区处理逻辑
+    const tzDate = redis.getDateInTimezone();
+    const today = redis.getDateStringInTimezone();
+    const currentMonth = `${tzDate.getFullYear()}-${String(tzDate.getMonth() + 1).padStart(2, '0')}`;
     
     const pattern = period === 'daily' ? 
       `usage:${keyId}:model:daily:*:${today}` : 
@@ -489,33 +491,10 @@ router.post('/api/user-model-stats', async (req, res) => {
       }
     }
 
-    // 如果没有详细的模型数据，尝试从总体usage中生成
-    if (modelStats.length === 0 && keyData.usage?.total) {
-      const usageData = keyData.usage.total;
-      
-      if (usageData.allTokens > 0) {
-        const usage = {
-          input_tokens: usageData.inputTokens || 0,
-          output_tokens: usageData.outputTokens || 0,
-          cache_creation_input_tokens: usageData.cacheCreateTokens || 0,
-          cache_read_input_tokens: usageData.cacheReadTokens || 0
-        };
-        
-        const costData = CostCalculator.calculateCost(usage, 'claude-3-5-sonnet-20241022');
-        
-        modelStats.push({
-          model: '总体使用 (历史数据)',
-          requests: usageData.requests || 0,
-          inputTokens: usageData.inputTokens || 0,
-          outputTokens: usageData.outputTokens || 0,
-          cacheCreateTokens: usageData.cacheCreateTokens || 0,
-          cacheReadTokens: usageData.cacheReadTokens || 0,
-          allTokens: usageData.allTokens || 0,
-          costs: costData.costs,
-          formatted: costData.formatted,
-          pricing: costData.pricing
-        });
-      }
+    // 如果没有详细的模型数据，不显示历史数据以避免混淆
+    // 只有在查询特定时间段时返回空数组，表示该时间段确实没有数据
+    if (modelStats.length === 0) {
+      logger.info(`📊 No model stats found for key ${keyId} in period ${period}`);
     }
 
     // 按总token数降序排列
