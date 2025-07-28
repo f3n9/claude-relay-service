@@ -2538,6 +2538,34 @@ const app = createApp({
             return number.toLocaleString();
         },
 
+        // 格式化会话窗口时间
+        formatSessionWindow(windowStart, windowEnd) {
+            if (!windowStart || !windowEnd) return '--';
+            
+            const start = new Date(windowStart);
+            const end = new Date(windowEnd);
+            
+            const startHour = start.getHours().toString().padStart(2, '0');
+            const startMin = start.getMinutes().toString().padStart(2, '0');
+            const endHour = end.getHours().toString().padStart(2, '0');
+            const endMin = end.getMinutes().toString().padStart(2, '0');
+            
+            return `${startHour}:${startMin} - ${endHour}:${endMin}`;
+        },
+
+        // 格式化剩余时间
+        formatRemainingTime(minutes) {
+            if (!minutes || minutes <= 0) return '已结束';
+            
+            const hours = Math.floor(minutes / 60);
+            const mins = minutes % 60;
+            
+            if (hours > 0) {
+                return `${hours}小时${mins}分钟`;
+            }
+            return `${mins}分钟`;
+        },
+
         // 格式化运行时间
         formatUptime(seconds) {
             if (!seconds) return '0s';
