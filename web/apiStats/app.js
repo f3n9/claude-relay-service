@@ -27,7 +27,14 @@ const app = createApp({
             
             // 分时间段的统计数据
             dailyStats: null,
-            monthlyStats: null
+            monthlyStats: null,
+            
+            // OEM设置
+            oemSettings: {
+                siteName: 'Claude Relay Service',
+                siteIcon: '',
+                siteIconData: ''
+            }
         };
     },
     
@@ -407,6 +414,60 @@ const app = createApp({
             this.apiId = null;
         },
         
+        // 加载OEM设置
+        async loadOemSettings() {
+            try {
+                const response = await fetch('/admin/oem-settings', {
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                });
+                
+                if (response.ok) {
+                    const result = await response.json();
+                    if (result && result.success && result.data) {
+                        this.oemSettings = { ...this.oemSettings, ...result.data };
+                        
+                        // 应用设置到页面
+                        this.applyOemSettings();
+                    }
+                }
+            } catch (error) {
+                console.error('Error loading OEM settings:', error);
+                // 静默失败，使用默认值
+            }
+        },
+        
+        // 应用OEM设置
+        applyOemSettings() {
+            // 更新网站标题
+            document.title = `API Key 统计 - ${this.oemSettings.siteName}`;
+            
+            // 应用网站图标
+            const iconData = this.oemSettings.siteIconData || this.oemSettings.siteIcon;
+            if (iconData && iconData.trim()) {
+                // 移除现有的favicon
+                const existingFavicons = document.querySelectorAll('link[rel*="icon"]');
+                existingFavicons.forEach(link => link.remove());
+
+                // 添加新的favicon
+                const link = document.createElement('link');
+                link.rel = 'icon';
+                
+                // 根据数据类型设置适当的type
+                if (iconData.startsWith('data:')) {
+                    // Base64数据
+                    link.href = iconData;
+                } else {
+                    // URL
+                    link.type = 'image/x-icon';
+                    link.href = iconData;
+                }
+                
+                document.head.appendChild(link);
+            }
+        },
+        
         // 🔄 刷新数据
         async refreshData() {
             if (this.statsData && this.apiKey) {
@@ -566,8 +627,11 @@ const app = createApp({
     mounted() {
         // 页面加载完成后的初始化
         console.log('User Stats Page loaded');
+
+        // 加载OEM设置
+        this.loadOemSettings();
         
-        // 检查 URL 参数
+        // 检查 URL 参数是否有预填的 API Key（用于开发测试）
         const urlParams = new URLSearchParams(window.location.search);
         const presetApiId = urlParams.get('apiId');
         const presetApiKey = urlParams.get('apiKey');
