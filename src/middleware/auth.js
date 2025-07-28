@@ -2,6 +2,7 @@ const apiKeyService = require('../services/apiKeyService');
 const logger = require('../utils/logger');
 const redis = require('../models/redis');
 const { RateLimiterRedis } = require('rate-limiter-flexible');
+const config = require('../../config/config');
 
 // 🔑 API Key验证中间件（优化版）
 const authenticateApiKey = async (req, res, next) => {
@@ -42,6 +43,52 @@ const authenticateApiKey = async (req, res, next) => {
       });
     }
 
+    // 🔒 检查客户端限制
+    if (validation.keyData.enableClientRestriction && validation.keyData.allowedClients?.length > 0) {
+      const userAgent = req.headers['user-agent'] || '';
+      const clientIP = req.ip || req.connection?.remoteAddress || 'unknown';
+      
+      // 记录客户端限制检查开始
+      logger.api(`🔍 Checking client restriction for key: ${validation.keyData.id} (${validation.keyData.name})`);
+      logger.api(`   User-Agent: "${userAgent}"`);
+      logger.api(`   Allowed clients: ${validation.keyData.allowedClients.join(', ')}`);
+      
+      let clientAllowed = false;
+      let matchedClient = null;
+      
+      // 遍历允许的客户端列表
+      for (const allowedClientId of validation.keyData.allowedClients) {
+        // 在预定义客户端列表中查找
+        const predefinedClient = config.clientRestrictions.predefinedClients.find(
+          client => client.id === allowedClientId
+        );
+        
+        if (predefinedClient) {
+          // 使用预定义的正则表达式匹配 User-Agent
+          if (predefinedClient.userAgentPattern.test(userAgent)) {
+            clientAllowed = true;
+            matchedClient = predefinedClient.name;
+            break;
+          }
+        } else if (config.clientRestrictions.allowCustomClients) {
+          // 如果允许自定义客户端，这里可以添加自定义客户端的验证逻辑
+          // 目前暂时跳过自定义客户端
+          continue;
+        }
+      }
+      
+      if (!clientAllowed) {
+        logger.security(`🚫 Client restriction failed for key: ${validation.keyData.id} (${validation.keyData.name}) from ${clientIP}, User-Agent: ${userAgent}`);
+        return res.status(403).json({
+          error: 'Client not allowed',
+          message: 'Your client is not authorized to use this API key',
+          allowedClients: validation.keyData.allowedClients
+        });
+      }
+      
+      logger.api(`✅ Client validated: ${matchedClient} for key: ${validation.keyData.id} (${validation.keyData.name})`);
+      logger.api(`   Matched client: ${matchedClient} with User-Agent: "${userAgent}"`);
+    }
 
     // 检查并发限制
     const concurrencyLimit = validation.keyData.concurrencyLimit || 0;
@@ -192,6 +239,27 @@ const authenticateApiKey = async (req, res, next) => {
       };
     }
     
+    // 检查每日费用限制
+    const dailyCostLimit = validation.keyData.dailyCostLimit || 0;
+    if (dailyCostLimit > 0) {
+      const dailyCost = validation.keyData.dailyCost || 0;
+      
+      if (dailyCost >= dailyCostLimit) {
+        logger.security(`💰 Daily cost limit exceeded for key: ${validation.keyData.id} (${validation.keyData.name}), cost: $${dailyCost.toFixed(2)}/$${dailyCostLimit}`);
+        
+        return res.status(429).json({
+          error: 'Daily cost limit exceeded',
+          message: `已达到每日费用限制 ($${dailyCostLimit})`,
+          currentCost: dailyCost,
+          costLimit: dailyCostLimit,
+          resetAt: new Date(new Date().setHours(24, 0, 0, 0)).toISOString() // 明天0点重置
+        });
+      }
+      
+      // 记录当前费用使用情况
+      logger.api(`💰 Cost usage for key: ${validation.keyData.id} (${validation.keyData.name}), current: $${dailyCost.toFixed(2)}/$${dailyCostLimit}`);
+    }
+    
     // 将验证信息添加到请求对象（只包含必要信息）
     req.apiKey = {
       id: validation.keyData.id,
@@ -205,12 +273,18 @@ const authenticateApiKey = async (req, res, next) => {
       rateLimitRequests: validation.keyData.rateLimitRequests,
       enableModelRestriction: validation.keyData.enableModelRestriction,
       restrictedModels: validation.keyData.restrictedModels,
+      enableClientRestriction: validation.keyData.enableClientRestriction,
+      allowedClients: validation.keyData.allowedClients,
+      dailyCostLimit: validation.keyData.dailyCostLimit,
+      dailyCost: validation.keyData.dailyCost,
       usage: validation.keyData.usage
     };
     req.usage = validation.keyData.usage;
     
     const authDuration = Date.now() - startTime;
+    const userAgent = req.headers['user-agent'] || 'No User-Agent';
     logger.api(`🔓 Authenticated request from key: ${validation.keyData.name} (${validation.keyData.id}) in ${authDuration}ms`);
+    logger.api(`   User-Agent: "${userAgent}"`);
     
     next();
   } catch (error) {

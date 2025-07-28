@@ -1,3 +1,4 @@
+/* global Vue, Chart, ElementPlus, ElementPlusLocaleZhCn, FileReader, document, localStorage, location, navigator, window */
 const { createApp } = Vue;
 
 const app = createApp({
@@ -24,7 +25,8 @@ const app = createApp({
                 { key: 'dashboard', name: '仪表板', icon: 'fas fa-tachometer-alt' },
                 { key: 'apiKeys', name: 'API Keys', icon: 'fas fa-key' },
                 { key: 'accounts', name: '账户管理', icon: 'fas fa-user-circle' },
-                { key: 'tutorial', name: '使用教程', icon: 'fas fa-graduation-cap' }
+                { key: 'tutorial', name: '使用教程', icon: 'fas fa-graduation-cap' },
+                { key: 'settings', name: '其他设置', icon: 'fas fa-cogs' }
             ],
             
             // 教程系统选择
@@ -111,6 +113,9 @@ const app = createApp({
             // API Keys
             apiKeys: [],
             apiKeysLoading: false,
+            apiKeyStatsTimeRange: 'all', // API Key统计时间范围：all, 7days, monthly
+            apiKeysSortBy: '', // 当前排序字段
+            apiKeysSortOrder: 'asc', // 排序顺序 'asc' 或 'desc'
             showCreateApiKeyModal: false,
             createApiKeyLoading: false,
             apiKeyForm: {
@@ -125,7 +130,13 @@ const app = createApp({
                 permissions: 'all', // 'claude', 'gemini', 'all'
                 enableModelRestriction: false,
                 restrictedModels: [],
-                modelInput: ''
+                modelInput: '',
+                enableClientRestriction: false,
+                allowedClients: [],
+                expireDuration: '', // 过期时长选择
+                customExpireDate: '', // 自定义过期日期
+                expiresAt: null, // 实际的过期时间戳
+                dailyCostLimit: '' // 每日费用限制
             },
             apiKeyModelStats: {}, // 存储每个key的模型统计数据
             expandedApiKeys: {}, // 跟踪展开的API Keys
@@ -154,6 +165,18 @@ const app = createApp({
                 description: '',
                 showFullKey: false
             },
+            
+            // API Key续期
+            showRenewApiKeyModal: false,
+            renewApiKeyLoading: false,
+            renewApiKeyForm: {
+                id: '',
+                name: '',
+                currentExpiresAt: null,
+                renewDuration: '30d',
+                customExpireDate: '',
+                newExpiresAt: null
+            },
 
             // 编辑API Key
             showEditApiKeyModal: false,
@@ -170,12 +193,20 @@ const app = createApp({
                 permissions: 'all',
                 enableModelRestriction: false,
                 restrictedModels: [],
-                modelInput: ''
+                modelInput: '',
+                enableClientRestriction: false,
+                allowedClients: [],
+                dailyCostLimit: ''
             },
+            
+            // 支持的客户端列表
+            supportedClients: [],
             
             // 账户
             accounts: [],
             accountsLoading: false,
+            accountSortBy: 'dailyTokens', // 默认按今日Token排序
+            accountsSortOrder: 'asc', // 排序顺序 'asc' 或 'desc'
             showCreateAccountModal: false,
             createAccountLoading: false,
             accountForm: {
@@ -269,7 +300,17 @@ const app = createApp({
                 showReleaseNotes: false,  // 是否显示发布说明
                 autoCheckInterval: null,  // 自动检查定时器
                 noUpdateMessage: false  // 显示"已是最新版"提醒
-            }
+            },
+
+            // OEM设置相关
+            oemSettings: {
+                siteName: 'Claude Relay Service',
+                siteIcon: '',
+                siteIconData: '', // Base64图标数据
+                updatedAt: null
+            },
+            oemSettingsLoading: false,
+            oemSettingsSaving: false
         }
     },
     
@@ -279,16 +320,103 @@ const app = createApp({
             return `${window.location.protocol}//${window.location.host}/api/`;
         },
         
+        // 排序后的账户列表
+        sortedAccounts() {
+            if (!this.accountsSortBy) {
+                return this.accounts;
+            }
+            
+            return [...this.accounts].sort((a, b) => {
+                let aValue = a[this.accountsSortBy];
+                let bValue = b[this.accountsSortBy];
+                
+                // 特殊处理状态字段
+                if (this.accountsSortBy === 'status') {
+                    aValue = a.isActive ? 1 : 0;
+                    bValue = b.isActive ? 1 : 0;
+                }
+                
+                // 处理字符串比较
+                if (typeof aValue === 'string' && typeof bValue === 'string') {
+                    aValue = aValue.toLowerCase();
+                    bValue = bValue.toLowerCase();
+                }
+                
+                // 排序
+                if (this.accountsSortOrder === 'asc') {
+                    return aValue > bValue ? 1 : aValue < bValue ? -1 : 0;
+                } else {
+                    return aValue < bValue ? 1 : aValue > bValue ? -1 : 0;
+                }
+            });
+        },
+        
+        // 排序后的API Keys列表
+        sortedApiKeys() {
+            if (!this.apiKeysSortBy) {
+                return this.apiKeys;
+            }
+            
+            return [...this.apiKeys].sort((a, b) => {
+                let aValue, bValue;
+                
+                // 特殊处理不同字段
+                switch (this.apiKeysSortBy) {
+                    case 'status':
+                        aValue = a.isActive ? 1 : 0;
+                        bValue = b.isActive ? 1 : 0;
+                        break;
+                    case 'cost':
+                        // 计算费用，转换为数字比较
+                        aValue = this.calculateApiKeyCostNumber(a.usage);
+                        bValue = this.calculateApiKeyCostNumber(b.usage);
+                        break;
+                    case 'createdAt':
+                    case 'expiresAt':
+                        // 日期比较
+                        aValue = a[this.apiKeysSortBy] ? new Date(a[this.apiKeysSortBy]).getTime() : 0;
+                        bValue = b[this.apiKeysSortBy] ? new Date(b[this.apiKeysSortBy]).getTime() : 0;
+                        break;
+                    default:
+                        aValue = a[this.apiKeysSortBy];
+                        bValue = b[this.apiKeysSortBy];
+                        
+                        // 处理字符串比较
+                        if (typeof aValue === 'string' && typeof bValue === 'string') {
+                            aValue = aValue.toLowerCase();
+                            bValue = bValue.toLowerCase();
+                        }
+                }
+                
+                // 排序
+                if (this.apiKeysSortOrder === 'asc') {
+                    return aValue > bValue ? 1 : aValue < bValue ? -1 : 0;
+                } else {
+                    return aValue < bValue ? 1 : aValue > bValue ? -1 : 0;
+                }
+            });
+        },
+        
         // 获取专属账号列表
         dedicatedAccounts() {
             return this.accounts.filter(account => 
                 account.accountType === 'dedicated' && account.isActive === true
             );
+        },
+        
+        // 计算最小日期时间（当前时间）
+        minDateTime() {
+            const now = new Date();
+            now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
+            return now.toISOString().slice(0, 16);
         }
     },
     
     mounted() {
         console.log('Vue app mounted, authToken:', !!this.authToken, 'activeTab:', this.activeTab);
+        
+        // 从URL参数中读取tab信息
+        this.initializeTabFromUrl();
         
         // 初始化防抖函数
         this.setTrendPeriod = this.debounce(this._setTrendPeriod, 300);
@@ -303,6 +431,11 @@ const app = createApp({
             }
         });
         
+        // 监听浏览器前进后退按钮事件
+        window.addEventListener('popstate', () => {
+            this.initializeTabFromUrl();
+        });
+        
         if (this.authToken) {
             this.isLoggedIn = true;
             
@@ -315,14 +448,16 @@ const app = createApp({
             // 初始化日期筛选器和图表数据
             this.initializeDateFilter();
             
-            // 预加载账号列表和API Keys，以便正确显示绑定关系
+            // 预加载账号列表、API Keys和支持的客户端，以便正确显示绑定关系
             Promise.all([
                 this.loadAccounts(),
-                this.loadApiKeys()
+                this.loadApiKeys(),
+                this.loadSupportedClients()
             ]).then(() => {
                 // 根据当前活跃标签页加载数据
                 this.loadCurrentTabData();
             });
+            
             // 如果在仪表盘，等待Chart.js加载后初始化图表
             if (this.activeTab === 'dashboard') {
                 this.waitForChartJS().then(() => {
@@ -334,6 +469,9 @@ const app = createApp({
         } else {
             console.log('No auth token found, user needs to login');
         }
+        
+        // 始终加载OEM设置，无论登录状态
+        this.loadOemSettings();
     },
     
     beforeUnmount() {
@@ -368,6 +506,64 @@ const app = createApp({
     },
     
     methods: {
+        // 账户列表排序
+        sortAccounts(field) {
+            if (this.accountsSortBy === field) {
+                // 如果点击的是当前排序字段，切换排序顺序
+                this.accountsSortOrder = this.accountsSortOrder === 'asc' ? 'desc' : 'asc';
+            } else {
+                // 如果点击的是新字段，设置为升序
+                this.accountsSortBy = field;
+                this.accountsSortOrder = 'asc';
+            }
+        },
+        
+        // API Keys列表排序
+        sortApiKeys(field) {
+            if (this.apiKeysSortBy === field) {
+                // 如果点击的是当前排序字段，切换排序顺序
+                this.apiKeysSortOrder = this.apiKeysSortOrder === 'asc' ? 'desc' : 'asc';
+            } else {
+                // 如果点击的是新字段，设置为升序
+                this.apiKeysSortBy = field;
+                this.apiKeysSortOrder = 'asc';
+            }
+        },
+        
+        // 从URL读取tab参数并设置activeTab
+        initializeTabFromUrl() {
+            const urlParams = new URLSearchParams(window.location.search);
+            const tabParam = urlParams.get('tab');
+            
+            // 检查tab参数是否有效
+            const validTabs = this.tabs.map(tab => tab.key);
+            if (tabParam && validTabs.includes(tabParam)) {
+                this.activeTab = tabParam;
+            }
+        },
+        
+        // 切换tab并更新URL
+        switchTab(tabKey) {
+            if (this.activeTab !== tabKey) {
+                this.activeTab = tabKey;
+                this.updateUrlTab(tabKey);
+            }
+        },
+        
+        // 更新URL中的tab参数
+        updateUrlTab(tabKey) {
+            const url = new URL(window.location.href);
+            if (tabKey === 'dashboard') {
+                // 如果是默认的dashboard标签，移除tab参数
+                url.searchParams.delete('tab');
+            } else {
+                url.searchParams.set('tab', tabKey);
+            }
+            
+            // 使用pushState更新URL但不刷新页面
+            window.history.pushState({}, '', url.toString());
+        },
+        
         // 统一的API请求方法，处理token过期等错误
         async apiRequest(url, options = {}) {
             try {
@@ -525,6 +721,86 @@ const app = createApp({
             this.$nextTick(() => {
                 this.showCreateApiKeyModal = true;
             });
+        },
+        
+        // 更新过期时间
+        updateExpireAt() {
+            const duration = this.apiKeyForm.expireDuration;
+            if (!duration) {
+                this.apiKeyForm.expiresAt = null;
+                return;
+            }
+            
+            if (duration === 'custom') {
+                // 自定义日期需要用户选择
+                return;
+            }
+            
+            const now = new Date();
+            const durationMap = {
+                '1d': 1,
+                '7d': 7,
+                '30d': 30,
+                '90d': 90,
+                '180d': 180,
+                '365d': 365
+            };
+            
+            const days = durationMap[duration];
+            if (days) {
+                const expireDate = new Date(now.getTime() + days * 24 * 60 * 60 * 1000);
+                this.apiKeyForm.expiresAt = expireDate.toISOString();
+            }
+        },
+        
+        // 更新自定义过期时间
+        updateCustomExpireAt() {
+            if (this.apiKeyForm.customExpireDate) {
+                const expireDate = new Date(this.apiKeyForm.customExpireDate);
+                this.apiKeyForm.expiresAt = expireDate.toISOString();
+            }
+        },
+        
+        // 格式化过期日期
+        formatExpireDate(dateString) {
+            if (!dateString) return '';
+            const date = new Date(dateString);
+            return date.toLocaleString('zh-CN', {
+                year: 'numeric',
+                month: '2-digit',
+                day: '2-digit',
+                hour: '2-digit',
+                minute: '2-digit'
+            });
+        },
+
+        // 格式化日期时间
+        formatDateTime(dateString) {
+            if (!dateString) return '';
+            const date = new Date(dateString);
+            return date.toLocaleString('zh-CN', {
+                year: 'numeric',
+                month: '2-digit',
+                day: '2-digit',
+                hour: '2-digit',
+                minute: '2-digit',
+                second: '2-digit'
+            });
+        },
+        
+        // 检查 API Key 是否已过期
+        isApiKeyExpired(expiresAt) {
+            if (!expiresAt) return false;
+            return new Date(expiresAt) < new Date();
+        },
+        
+        // 检查 API Key 是否即将过期（7天内）
+        isApiKeyExpiringSoon(expiresAt) {
+            if (!expiresAt) return false;
+            const expireDate = new Date(expiresAt);
+            const now = new Date();
+            const daysUntilExpire = (expireDate - now) / (1000 * 60 * 60 * 24);
+            return daysUntilExpire > 0 && daysUntilExpire <= 7;
         },
         
         // 打开创建账户模态框  
@@ -1242,6 +1518,12 @@ const app = createApp({
                 case 'tutorial':
                     // 教程页面不需要加载数据
                     break;
+                case 'settings':
+                    // OEM 设置已在 mounted 时加载，避免重复加载
+                    if (!this.oemSettings.siteName && !this.oemSettings.siteIcon && !this.oemSettings.siteIconData) {
+                        this.loadOemSettings();
+                    }
+                    break;
             }
         },
 
@@ -1647,11 +1929,23 @@ const app = createApp({
             }
         },
         
+        async loadSupportedClients() {
+            try {
+                const data = await this.apiRequest('/admin/supported-clients');
+                if (data && data.success) {
+                    this.supportedClients = data.data || [];
+                    console.log('Loaded supported clients:', this.supportedClients);
+                }
+            } catch (error) {
+                console.error('Failed to load supported clients:', error);
+            }
+        },
+        
         async loadApiKeys() {
             this.apiKeysLoading = true;
-            console.log('Loading API Keys...');
+            console.log('Loading API Keys with time range:', this.apiKeyStatsTimeRange);
             try {
-                const data = await this.apiRequest('/admin/api-keys');
+                const data = await this.apiRequest(`/admin/api-keys?timeRange=${this.apiKeyStatsTimeRange}`);
                 
                 if (!data) {
                     // 如果token过期，apiRequest会返回null并刷新页面
@@ -1737,6 +2031,9 @@ const app = createApp({
                         account.boundApiKeysCount = this.apiKeys.filter(key => key.geminiAccountId === account.id).length;
                     }
                 });
+                
+                // 加载完成后自动排序
+                this.sortAccounts();
             } catch (error) {
                 console.error('Failed to load accounts:', error);
             } finally {
@@ -1744,6 +2041,35 @@ const app = createApp({
             }
         },
         
+        // 账户排序
+        sortAccounts() {
+            if (!this.accounts || this.accounts.length === 0) return;
+            
+            this.accounts.sort((a, b) => {
+                switch (this.accountSortBy) {
+                    case 'name':
+                        return a.name.localeCompare(b.name);
+                    case 'dailyTokens':
+                        const aTokens = (a.usage && a.usage.daily && a.usage.daily.allTokens) || 0;
+                        const bTokens = (b.usage && b.usage.daily && b.usage.daily.allTokens) || 0;
+                        return bTokens - aTokens; // 降序
+                    case 'dailyRequests':
+                        const aRequests = (a.usage && a.usage.daily && a.usage.daily.requests) || 0;
+                        const bRequests = (b.usage && b.usage.daily && b.usage.daily.requests) || 0;
+                        return bRequests - aRequests; // 降序
+                    case 'totalTokens':
+                        const aTotalTokens = (a.usage && a.usage.total && a.usage.total.allTokens) || 0;
+                        const bTotalTokens = (b.usage && b.usage.total && b.usage.total.allTokens) || 0;
+                        return bTotalTokens - aTotalTokens; // 降序
+                    case 'lastUsed':
+                        const aLastUsed = a.lastUsedAt ? new Date(a.lastUsedAt) : new Date(0);
+                        const bLastUsed = b.lastUsedAt ? new Date(b.lastUsedAt) : new Date(0);
+                        return bLastUsed - aLastUsed; // 降序（最近使用的在前）
+                    default:
+                        return 0;
+                }
+            });
+        },
         
         async loadModelStats() {
             this.modelStatsLoading = true;
@@ -1775,16 +2101,20 @@ const app = createApp({
                     method: 'POST',
                     body: JSON.stringify({
                         name: this.apiKeyForm.name,
-                        tokenLimit: this.apiKeyForm.tokenLimit && this.apiKeyForm.tokenLimit.trim() ? parseInt(this.apiKeyForm.tokenLimit) : null,
+                        tokenLimit: this.apiKeyForm.tokenLimit && this.apiKeyForm.tokenLimit.toString().trim() ? parseInt(this.apiKeyForm.tokenLimit) : null,
                         description: this.apiKeyForm.description || '',
-                        concurrencyLimit: this.apiKeyForm.concurrencyLimit && this.apiKeyForm.concurrencyLimit.trim() ? parseInt(this.apiKeyForm.concurrencyLimit) : 0,
-                        rateLimitWindow: this.apiKeyForm.rateLimitWindow && this.apiKeyForm.rateLimitWindow.trim() ? parseInt(this.apiKeyForm.rateLimitWindow) : null,
-                        rateLimitRequests: this.apiKeyForm.rateLimitRequests && this.apiKeyForm.rateLimitRequests.trim() ? parseInt(this.apiKeyForm.rateLimitRequests) : null,
+                        concurrencyLimit: this.apiKeyForm.concurrencyLimit && this.apiKeyForm.concurrencyLimit.toString().trim() ? parseInt(this.apiKeyForm.concurrencyLimit) : 0,
+                        rateLimitWindow: this.apiKeyForm.rateLimitWindow && this.apiKeyForm.rateLimitWindow.toString().trim() ? parseInt(this.apiKeyForm.rateLimitWindow) : null,
+                        rateLimitRequests: this.apiKeyForm.rateLimitRequests && this.apiKeyForm.rateLimitRequests.toString().trim() ? parseInt(this.apiKeyForm.rateLimitRequests) : null,
                         claudeAccountId: this.apiKeyForm.claudeAccountId || null,
                         geminiAccountId: this.apiKeyForm.geminiAccountId || null,
                         permissions: this.apiKeyForm.permissions || 'all',
                         enableModelRestriction: this.apiKeyForm.enableModelRestriction,
-                        restrictedModels: this.apiKeyForm.restrictedModels
+                        restrictedModels: this.apiKeyForm.restrictedModels,
+                        enableClientRestriction: this.apiKeyForm.enableClientRestriction,
+                        allowedClients: this.apiKeyForm.allowedClients,
+                        expiresAt: this.apiKeyForm.expiresAt,
+                        dailyCostLimit: this.apiKeyForm.dailyCostLimit && this.apiKeyForm.dailyCostLimit.toString().trim() ? parseFloat(this.apiKeyForm.dailyCostLimit) : 0
                     })
                 });
                 
@@ -1805,7 +2135,26 @@ const app = createApp({
                     
                     // 关闭创建弹窗并清理表单
                     this.showCreateApiKeyModal = false;
-                    this.apiKeyForm = { name: '', tokenLimit: '', description: '', concurrencyLimit: '', rateLimitWindow: '', rateLimitRequests: '', claudeAccountId: '', enableModelRestriction: false, restrictedModels: [], modelInput: '' };
+                    this.apiKeyForm = { 
+                        name: '', 
+                        tokenLimit: '', 
+                        description: '', 
+                        concurrencyLimit: '', 
+                        rateLimitWindow: '', 
+                        rateLimitRequests: '', 
+                        claudeAccountId: '', 
+                        geminiAccountId: '',
+                        permissions: 'all',
+                        enableModelRestriction: false, 
+                        restrictedModels: [], 
+                        modelInput: '',
+                        enableClientRestriction: false,
+                        allowedClients: [],
+                        expireDuration: '',
+                        customExpireDate: '',
+                        expiresAt: null,
+                        dailyCostLimit: ''
+                    };
                     
                     // 重新加载API Keys列表
                     await this.loadApiKeys();
@@ -1851,6 +2200,111 @@ const app = createApp({
             }
         },
 
+        // 打开续期弹窗
+        openRenewApiKeyModal(key) {
+            this.renewApiKeyForm = {
+                id: key.id,
+                name: key.name,
+                currentExpiresAt: key.expiresAt,
+                renewDuration: '30d',
+                customExpireDate: '',
+                newExpiresAt: null
+            };
+            this.showRenewApiKeyModal = true;
+            // 立即计算新的过期时间
+            this.updateRenewExpireAt();
+        },
+        
+        // 关闭续期弹窗
+        closeRenewApiKeyModal() {
+            this.showRenewApiKeyModal = false;
+            this.renewApiKeyForm = {
+                id: '',
+                name: '',
+                currentExpiresAt: null,
+                renewDuration: '30d',
+                customExpireDate: '',
+                newExpiresAt: null
+            };
+        },
+        
+        // 更新续期过期时间
+        updateRenewExpireAt() {
+            const duration = this.renewApiKeyForm.renewDuration;
+            
+            if (duration === 'permanent') {
+                this.renewApiKeyForm.newExpiresAt = null;
+                return;
+            }
+            
+            if (duration === 'custom') {
+                // 自定义日期需要用户选择
+                return;
+            }
+            
+            // 计算新的过期时间
+            const baseTime = this.renewApiKeyForm.currentExpiresAt 
+                ? new Date(this.renewApiKeyForm.currentExpiresAt) 
+                : new Date();
+                
+            // 如果当前已过期，从现在开始计算
+            if (baseTime < new Date()) {
+                baseTime.setTime(new Date().getTime());
+            }
+            
+            const durationMap = {
+                '7d': 7,
+                '30d': 30,
+                '90d': 90,
+                '180d': 180,
+                '365d': 365
+            };
+            
+            const days = durationMap[duration];
+            if (days) {
+                const expireDate = new Date(baseTime.getTime() + days * 24 * 60 * 60 * 1000);
+                this.renewApiKeyForm.newExpiresAt = expireDate.toISOString();
+            }
+        },
+        
+        // 更新自定义续期时间
+        updateCustomRenewExpireAt() {
+            if (this.renewApiKeyForm.customExpireDate) {
+                const expireDate = new Date(this.renewApiKeyForm.customExpireDate);
+                this.renewApiKeyForm.newExpiresAt = expireDate.toISOString();
+            }
+        },
+        
+        // 执行续期操作
+        async renewApiKey() {
+            this.renewApiKeyLoading = true;
+            try {
+                const data = await this.apiRequest('/admin/api-keys/' + this.renewApiKeyForm.id, {
+                    method: 'PUT',
+                    body: JSON.stringify({
+                        expiresAt: this.renewApiKeyForm.newExpiresAt
+                    })
+                });
+                
+                if (!data) {
+                    return;
+                }
+                
+                if (data.success) {
+                    this.showToast('API Key 续期成功', 'success');
+                    this.closeRenewApiKeyModal();
+                    await this.loadApiKeys();
+                } else {
+                    this.showToast(data.message || '续期失败', 'error');
+                }
+            } catch (error) {
+                console.error('Error renewing API key:', error);
+                this.showToast('续期失败，请检查网络连接', 'error');
+            } finally {
+                this.renewApiKeyLoading = false;
+            }
+        },
+        
         openEditApiKeyModal(key) {
             this.editApiKeyForm = {
                 id: key.id,
@@ -1864,7 +2318,10 @@ const app = createApp({
                 permissions: key.permissions || 'all',
                 enableModelRestriction: key.enableModelRestriction || false,
                 restrictedModels: key.restrictedModels ? [...key.restrictedModels] : [],
-                modelInput: ''
+                modelInput: '',
+                enableClientRestriction: key.enableClientRestriction || false,
+                allowedClients: key.allowedClients ? [...key.allowedClients] : [],
+                dailyCostLimit: key.dailyCostLimit || ''
             };
             this.showEditApiKeyModal = true;
         },
@@ -1883,7 +2340,10 @@ const app = createApp({
                 permissions: 'all',
                 enableModelRestriction: false,
                 restrictedModels: [],
-                modelInput: ''
+                modelInput: '',
+                enableClientRestriction: false,
+                allowedClients: [],
+                dailyCostLimit: ''
             };
         },
 
@@ -1901,7 +2361,10 @@ const app = createApp({
                         geminiAccountId: this.editApiKeyForm.geminiAccountId || null,
                         permissions: this.editApiKeyForm.permissions || 'all',
                         enableModelRestriction: this.editApiKeyForm.enableModelRestriction,
-                        restrictedModels: this.editApiKeyForm.restrictedModels
+                        restrictedModels: this.editApiKeyForm.restrictedModels,
+                        enableClientRestriction: this.editApiKeyForm.enableClientRestriction,
+                        allowedClients: this.editApiKeyForm.allowedClients,
+                        dailyCostLimit: this.editApiKeyForm.dailyCostLimit && this.editApiKeyForm.dailyCostLimit.toString().trim() !== '' ? parseFloat(this.editApiKeyForm.dailyCostLimit) : 0
                     })
                 });
                 
@@ -2068,7 +2531,11 @@ const app = createApp({
         // 格式化数字，添加千分符
         formatNumber(num) {
             if (num === null || num === undefined) return '0';
-            return Number(num).toLocaleString();
+            const number = Number(num);
+            if (number >= 1000000) {
+                return Math.floor(number / 1000000).toLocaleString() + 'M';
+            }
+            return number.toLocaleString();
         },
 
         // 格式化运行时间
@@ -2889,23 +3356,26 @@ const app = createApp({
         calculateApiKeyCost(usage) {
             if (!usage || !usage.total) return '$0.000000';
             
-            // 使用通用模型价格估算
-            const totalInputTokens = usage.total.inputTokens || 0;
-            const totalOutputTokens = usage.total.outputTokens || 0;
-            const totalCacheCreateTokens = usage.total.cacheCreateTokens || 0;
-            const totalCacheReadTokens = usage.total.cacheReadTokens || 0;
+            // 使用后端返回的准确费用数据
+            if (usage.total.formattedCost) {
+                return usage.total.formattedCost;
+            }
             
-            // 简单估算（使用Claude 3.5 Sonnet价格）
-            const inputCost = (totalInputTokens / 1000000) * 3.00;
-            const outputCost = (totalOutputTokens / 1000000) * 15.00;
-            const cacheCreateCost = (totalCacheCreateTokens / 1000000) * 3.75;
-            const cacheReadCost = (totalCacheReadTokens / 1000000) * 0.30;
+            // 如果没有后端费用数据，返回默认值
+            return '$0.000000';
+        },
+        
+        // 计算API Key费用数值（用于排序）
+        calculateApiKeyCostNumber(usage) {
+            if (!usage || !usage.total) return 0;
             
-            const totalCost = inputCost + outputCost + cacheCreateCost + cacheReadCost;
+            // 使用后端返回的准确费用数据
+            if (usage.total.cost) {
+                return usage.total.cost;
+            }
             
-            if (totalCost < 0.000001) return '$0.000000';
-            if (totalCost < 0.01) return '$' + totalCost.toFixed(6);
-            return '$' + totalCost.toFixed(4);
+            // 如果没有后端费用数据，返回0
+            return 0;
         },
 
         // 初始化日期筛选器
@@ -3531,6 +4001,180 @@ const app = createApp({
             });
             
             this.showToast('已重置筛选条件并刷新数据', 'info', '重置成功');
+        },
+
+        // OEM设置相关方法
+        async loadOemSettings() {
+            this.oemSettingsLoading = true;
+            try {
+                const result = await this.apiRequest('/admin/oem-settings');
+                if (result && result.success) {
+                    this.oemSettings = { ...this.oemSettings, ...result.data };
+                    
+                    // 应用设置到页面
+                    this.applyOemSettings();
+                } else {
+                    // 如果请求失败但不是因为认证问题，使用默认值
+                    console.warn('Failed to load OEM settings, using defaults');
+                    this.applyOemSettings();
+                }
+            } catch (error) {
+                console.error('Error loading OEM settings:', error);
+                // 加载失败时也应用默认值，确保页面正常显示
+                this.applyOemSettings();
+            } finally {
+                this.oemSettingsLoading = false;
+            }
+        },
+
+        async saveOemSettings() {
+            // 验证输入
+            if (!this.oemSettings.siteName || this.oemSettings.siteName.trim() === '') {
+                this.showToast('网站名称不能为空', 'error', '验证失败');
+                return;
+            }
+
+            if (this.oemSettings.siteName.length > 100) {
+                this.showToast('网站名称不能超过100个字符', 'error', '验证失败');
+                return;
+            }
+
+            this.oemSettingsSaving = true;
+            try {
+                const result = await this.apiRequest('/admin/oem-settings', {
+                    method: 'PUT',
+                    body: JSON.stringify({
+                        siteName: this.oemSettings.siteName.trim(),
+                        siteIcon: this.oemSettings.siteIcon.trim(),
+                        siteIconData: this.oemSettings.siteIconData.trim()
+                    })
+                });
+
+                if (result && result.success) {
+                    this.oemSettings = { ...this.oemSettings, ...result.data };
+                    this.showToast('OEM设置保存成功', 'success', '保存成功');
+                    
+                    // 应用设置到页面
+                    this.applyOemSettings();
+                } else {
+                    this.showToast(result?.message || '保存失败', 'error', '保存失败');
+                }
+            } catch (error) {
+                console.error('Error saving OEM settings:', error);
+                this.showToast('保存OEM设置失败', 'error', '保存失败');
+            } finally {
+                this.oemSettingsSaving = false;
+            }
+        },
+
+        applyOemSettings() {
+            // 更新网站标题
+            document.title = `${this.oemSettings.siteName} - 管理后台`;
+            
+            // 更新页面中的所有网站名称
+            const titleElements = document.querySelectorAll('.header-title');
+            titleElements.forEach(el => {
+                el.textContent = this.oemSettings.siteName;
+            });
+
+            // 应用自定义CSS
+            this.applyCustomCss();
+            
+            // 应用网站图标
+            this.applyFavicon();
+        },
+
+        applyCustomCss() {
+            // 移除之前的自定义CSS
+            const existingStyle = document.getElementById('custom-oem-css');
+            if (existingStyle) {
+                existingStyle.remove();
+            }
+        },
+
+        applyFavicon() {
+            const iconData = this.oemSettings.siteIconData || this.oemSettings.siteIcon;
+            if (iconData && iconData.trim()) {
+                // 移除现有的favicon
+                const existingFavicons = document.querySelectorAll('link[rel*="icon"]');
+                existingFavicons.forEach(link => link.remove());
+
+                // 添加新的favicon
+                const link = document.createElement('link');
+                link.rel = 'icon';
+                
+                // 根据数据类型设置适当的type
+                if (iconData.startsWith('data:')) {
+                    // Base64数据
+                    link.href = iconData;
+                } else {
+                    // URL
+                    link.type = 'image/x-icon';
+                    link.href = iconData;
+                }
+                
+                document.head.appendChild(link);
+            }
+        },
+
+        resetOemSettings() {
+            this.oemSettings = {
+                siteName: 'Claude Relay Service',
+                siteIcon: '',
+                siteIconData: '',
+                updatedAt: null
+            };
+        },
+
+        // 处理图标文件上传
+        async handleIconUpload(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            // 验证文件大小
+            if (file.size > 350 * 1024) { // 350KB
+                this.showToast('图标文件大小不能超过350KB', 'error', '文件太大');
+                return;
+            }
+
+            // 验证文件类型
+            const allowedTypes = ['image/x-icon', 'image/png', 'image/jpeg', 'image/svg+xml'];
+            if (!allowedTypes.includes(file.type) && !file.name.endsWith('.ico')) {
+                this.showToast('请选择有效的图标文件格式 (.ico, .png, .jpg, .svg)', 'error', '格式错误');
+                return;
+            }
+
+            try {
+                // 读取文件为Base64
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    this.oemSettings.siteIconData = e.target.result;
+                    this.oemSettings.siteIcon = ''; // 清空URL
+                    this.showToast('图标上传成功', 'success', '上传成功');
+                };
+                reader.onerror = () => {
+                    this.showToast('图标文件读取失败', 'error', '读取失败');
+                };
+                reader.readAsDataURL(file);
+            } catch (error) {
+                console.error('Icon upload error:', error);
+                this.showToast('图标上传过程中出现错误', 'error', '上传失败');
+            }
+        },
+
+        // 移除图标
+        removeIcon() {
+            this.oemSettings.siteIcon = '';
+            this.oemSettings.siteIconData = '';
+            if (this.$refs.iconFileInput) {
+                this.$refs.iconFileInput.value = '';
+            }
+        },
+
+        // 处理图标加载错误
+        handleIconError(event) {
+            console.error('Icon load error');
+            event.target.style.display = 'none';
         }
     }
 });

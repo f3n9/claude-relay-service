@@ -282,6 +282,104 @@ class RedisClient {
     ]);
   }
 
+  // 📊 记录账户级别的使用统计
+  async incrementAccountUsage(accountId, totalTokens, inputTokens = 0, outputTokens = 0, cacheCreateTokens = 0, cacheReadTokens = 0, model = 'unknown') {
+    const now = new Date();
+    const today = getDateStringInTimezone(now);
+    const tzDate = getDateInTimezone(now);
+    const currentMonth = `${tzDate.getFullYear()}-${String(tzDate.getMonth() + 1).padStart(2, '0')}`;
+    const currentHour = `${today}:${String(getHourInTimezone(now)).padStart(2, '0')}`;
+    
+    // 账户级别统计的键
+    const accountKey = `account_usage:${accountId}`;
+    const accountDaily = `account_usage:daily:${accountId}:${today}`;
+    const accountMonthly = `account_usage:monthly:${accountId}:${currentMonth}`;
+    const accountHourly = `account_usage:hourly:${accountId}:${currentHour}`;
+    
+    // 账户按模型统计的键
+    const accountModelDaily = `account_usage:model:daily:${accountId}:${model}:${today}`;
+    const accountModelMonthly = `account_usage:model:monthly:${accountId}:${model}:${currentMonth}`;
+    const accountModelHourly = `account_usage:model:hourly:${accountId}:${model}:${currentHour}`;
+    
+    // 处理token分配
+    const finalInputTokens = inputTokens || 0;
+    const finalOutputTokens = outputTokens || 0;
+    const finalCacheCreateTokens = cacheCreateTokens || 0;
+    const finalCacheReadTokens = cacheReadTokens || 0;
+    const actualTotalTokens = finalInputTokens + finalOutputTokens + finalCacheCreateTokens + finalCacheReadTokens;
+    const coreTokens = finalInputTokens + finalOutputTokens;
+
+    await Promise.all([
+      // 账户总体统计
+      this.client.hincrby(accountKey, 'totalTokens', coreTokens),
+      this.client.hincrby(accountKey, 'totalInputTokens', finalInputTokens),
+      this.client.hincrby(accountKey, 'totalOutputTokens', finalOutputTokens),
+      this.client.hincrby(accountKey, 'totalCacheCreateTokens', finalCacheCreateTokens),
+      this.client.hincrby(accountKey, 'totalCacheReadTokens', finalCacheReadTokens),
+      this.client.hincrby(accountKey, 'totalAllTokens', actualTotalTokens),
+      this.client.hincrby(accountKey, 'totalRequests', 1),
+      
+      // 账户每日统计
+      this.client.hincrby(accountDaily, 'tokens', coreTokens),
+      this.client.hincrby(accountDaily, 'inputTokens', finalInputTokens),
+      this.client.hincrby(accountDaily, 'outputTokens', finalOutputTokens),
+      this.client.hincrby(accountDaily, 'cacheCreateTokens', finalCacheCreateTokens),
+      this.client.hincrby(accountDaily, 'cacheReadTokens', finalCacheReadTokens),
+      this.client.hincrby(accountDaily, 'allTokens', actualTotalTokens),
+      this.client.hincrby(accountDaily, 'requests', 1),
+      
+      // 账户每月统计
+      this.client.hincrby(accountMonthly, 'tokens', coreTokens),
+      this.client.hincrby(accountMonthly, 'inputTokens', finalInputTokens),
+      this.client.hincrby(accountMonthly, 'outputTokens', finalOutputTokens),
+      this.client.hincrby(accountMonthly, 'cacheCreateTokens', finalCacheCreateTokens),
+      this.client.hincrby(accountMonthly, 'cacheReadTokens', finalCacheReadTokens),
+      this.client.hincrby(accountMonthly, 'allTokens', actualTotalTokens),
+      this.client.hincrby(accountMonthly, 'requests', 1),
+      
+      // 账户每小时统计
+      this.client.hincrby(accountHourly, 'tokens', coreTokens),
+      this.client.hincrby(accountHourly, 'inputTokens', finalInputTokens),
+      this.client.hincrby(accountHourly, 'outputTokens', finalOutputTokens),
+      this.client.hincrby(accountHourly, 'cacheCreateTokens', finalCacheCreateTokens),
+      this.client.hincrby(accountHourly, 'cacheReadTokens', finalCacheReadTokens),
+      this.client.hincrby(accountHourly, 'allTokens', actualTotalTokens),
+      this.client.hincrby(accountHourly, 'requests', 1),
+      
+      // 账户按模型统计 - 每日
+      this.client.hincrby(accountModelDaily, 'inputTokens', finalInputTokens),
+      this.client.hincrby(accountModelDaily, 'outputTokens', finalOutputTokens),
+      this.client.hincrby(accountModelDaily, 'cacheCreateTokens', finalCacheCreateTokens),
+      this.client.hincrby(accountModelDaily, 'cacheReadTokens', finalCacheReadTokens),
+      this.client.hincrby(accountModelDaily, 'allTokens', actualTotalTokens),
+      this.client.hincrby(accountModelDaily, 'requests', 1),
+      
+      // 账户按模型统计 - 每月
+      this.client.hincrby(accountModelMonthly, 'inputTokens', finalInputTokens),
+      this.client.hincrby(accountModelMonthly, 'outputTokens', finalOutputTokens),
+      this.client.hincrby(accountModelMonthly, 'cacheCreateTokens', finalCacheCreateTokens),
+      this.client.hincrby(accountModelMonthly, 'cacheReadTokens', finalCacheReadTokens),
+      this.client.hincrby(accountModelMonthly, 'allTokens', actualTotalTokens),
+      this.client.hincrby(accountModelMonthly, 'requests', 1),
+      
+      // 账户按模型统计 - 每小时
+      this.client.hincrby(accountModelHourly, 'inputTokens', finalInputTokens),
+      this.client.hincrby(accountModelHourly, 'outputTokens', finalOutputTokens),
+      this.client.hincrby(accountModelHourly, 'cacheCreateTokens', finalCacheCreateTokens),
+      this.client.hincrby(accountModelHourly, 'cacheReadTokens', finalCacheReadTokens),
+      this.client.hincrby(accountModelHourly, 'allTokens', actualTotalTokens),
+      this.client.hincrby(accountModelHourly, 'requests', 1),
+      
+      // 设置过期时间
+      this.client.expire(accountDaily, 86400 * 32), // 32天过期
+      this.client.expire(accountMonthly, 86400 * 365), // 1年过期
+      this.client.expire(accountHourly, 86400 * 7), // 7天过期
+      this.client.expire(accountModelDaily, 86400 * 32), // 32天过期
+      this.client.expire(accountModelMonthly, 86400 * 365), // 1年过期
+      this.client.expire(accountModelHourly, 86400 * 7) // 7天过期
+    ]);
+  }
+
   async getUsageStats(keyId) {
     const totalKey = `usage:${keyId}`;
     const today = getDateStringInTimezone();
@@ -324,11 +422,13 @@ class RedisClient {
       const allTokens = parseInt(data.totalAllTokens) || parseInt(data.allTokens) || 0;
 
       const totalFromSeparate = inputTokens + outputTokens;
+      // 计算实际的总tokens（包含所有类型）
+      const actualAllTokens = allTokens || (inputTokens + outputTokens + cacheCreateTokens + cacheReadTokens);
 
       if (totalFromSeparate === 0 && tokens > 0) {
         // 旧数据：没有输入输出分离
         return {
-          tokens,
+          tokens: tokens, // 保持兼容性，但统一使用allTokens
           inputTokens: Math.round(tokens * 0.3), // 假设30%为输入
           outputTokens: Math.round(tokens * 0.7), // 假设70%为输出
           cacheCreateTokens: 0, // 旧数据没有缓存token
@@ -337,14 +437,14 @@ class RedisClient {
           requests
         };
       } else {
-        // 新数据或无数据
+        // 新数据或无数据 - 统一使用allTokens作为tokens的值
         return {
-          tokens,
+          tokens: actualAllTokens, // 统一使用allTokens作为总数
           inputTokens,
           outputTokens,
           cacheCreateTokens,
           cacheReadTokens,
-          allTokens: allTokens || (inputTokens + outputTokens + cacheCreateTokens + cacheReadTokens), // 计算或使用存储的值
+          allTokens: actualAllTokens,
           requests
         };
       }
@@ -365,6 +465,170 @@ class RedisClient {
         dailyTokens: Math.round((totalTokens / daysSinceCreated) * 100) / 100
       }
     };
+  }
+
+  // 💰 获取当日费用
+  async getDailyCost(keyId) {
+    const today = getDateStringInTimezone();
+    const costKey = `usage:cost:daily:${keyId}:${today}`;
+    const cost = await this.client.get(costKey);
+    const result = parseFloat(cost || 0);
+    logger.debug(`💰 Getting daily cost for ${keyId}, date: ${today}, key: ${costKey}, value: ${cost}, result: ${result}`);
+    return result;
+  }
+
+  // 💰 增加当日费用
+  async incrementDailyCost(keyId, amount) {
+    const today = getDateStringInTimezone();
+    const tzDate = getDateInTimezone();
+    const currentMonth = `${tzDate.getFullYear()}-${String(tzDate.getMonth() + 1).padStart(2, '0')}`;
+    const currentHour = `${today}:${String(getHourInTimezone()).padStart(2, '0')}`;
+    
+    const dailyKey = `usage:cost:daily:${keyId}:${today}`;
+    const monthlyKey = `usage:cost:monthly:${keyId}:${currentMonth}`;
+    const hourlyKey = `usage:cost:hourly:${keyId}:${currentHour}`;
+    const totalKey = `usage:cost:total:${keyId}`;
+    
+    logger.debug(`💰 Incrementing cost for ${keyId}, amount: $${amount}, date: ${today}, dailyKey: ${dailyKey}`);
+    
+    const results = await Promise.all([
+      this.client.incrbyfloat(dailyKey, amount),
+      this.client.incrbyfloat(monthlyKey, amount),
+      this.client.incrbyfloat(hourlyKey, amount),
+      this.client.incrbyfloat(totalKey, amount),
+      // 设置过期时间
+      this.client.expire(dailyKey, 86400 * 30), // 30天
+      this.client.expire(monthlyKey, 86400 * 90), // 90天
+      this.client.expire(hourlyKey, 86400 * 7) // 7天
+    ]);
+    
+    logger.debug(`💰 Cost incremented successfully, new daily total: $${results[0]}`);
+  }
+
+  // 💰 获取费用统计
+  async getCostStats(keyId) {
+    const today = getDateStringInTimezone();
+    const tzDate = getDateInTimezone();
+    const currentMonth = `${tzDate.getFullYear()}-${String(tzDate.getMonth() + 1).padStart(2, '0')}`;
+    const currentHour = `${today}:${String(getHourInTimezone()).padStart(2, '0')}`;
+    
+    const [daily, monthly, hourly, total] = await Promise.all([
+      this.client.get(`usage:cost:daily:${keyId}:${today}`),
+      this.client.get(`usage:cost:monthly:${keyId}:${currentMonth}`),
+      this.client.get(`usage:cost:hourly:${keyId}:${currentHour}`),
+      this.client.get(`usage:cost:total:${keyId}`)
+    ]);
+    
+    return {
+      daily: parseFloat(daily || 0),
+      monthly: parseFloat(monthly || 0),
+      hourly: parseFloat(hourly || 0),
+      total: parseFloat(total || 0)
+    };
+  }
+
+  // 📊 获取账户使用统计
+  async getAccountUsageStats(accountId) {
+    const accountKey = `account_usage:${accountId}`;
+    const today = getDateStringInTimezone();
+    const accountDailyKey = `account_usage:daily:${accountId}:${today}`;
+    const tzDate = getDateInTimezone();
+    const currentMonth = `${tzDate.getFullYear()}-${String(tzDate.getMonth() + 1).padStart(2, '0')}`;
+    const accountMonthlyKey = `account_usage:monthly:${accountId}:${currentMonth}`;
+
+    const [total, daily, monthly] = await Promise.all([
+      this.client.hgetall(accountKey),
+      this.client.hgetall(accountDailyKey),
+      this.client.hgetall(accountMonthlyKey)
+    ]);
+
+    // 获取账户创建时间来计算平均值
+    const accountData = await this.client.hgetall(`claude_account:${accountId}`);
+    const createdAt = accountData.createdAt ? new Date(accountData.createdAt) : new Date();
+    const now = new Date();
+    const daysSinceCreated = Math.max(1, Math.ceil((now - createdAt) / (1000 * 60 * 60 * 24)));
+
+    const totalTokens = parseInt(total.totalTokens) || 0;
+    const totalRequests = parseInt(total.totalRequests) || 0;
+
+    // 计算平均RPM和TPM
+    const totalMinutes = Math.max(1, daysSinceCreated * 24 * 60);
+    const avgRPM = totalRequests / totalMinutes;
+    const avgTPM = totalTokens / totalMinutes;
+
+    // 处理账户统计数据
+    const handleAccountData = (data) => {
+      const tokens = parseInt(data.totalTokens) || parseInt(data.tokens) || 0;
+      const inputTokens = parseInt(data.totalInputTokens) || parseInt(data.inputTokens) || 0;
+      const outputTokens = parseInt(data.totalOutputTokens) || parseInt(data.outputTokens) || 0;
+      const requests = parseInt(data.totalRequests) || parseInt(data.requests) || 0;
+      const cacheCreateTokens = parseInt(data.totalCacheCreateTokens) || parseInt(data.cacheCreateTokens) || 0;
+      const cacheReadTokens = parseInt(data.totalCacheReadTokens) || parseInt(data.cacheReadTokens) || 0;
+      const allTokens = parseInt(data.totalAllTokens) || parseInt(data.allTokens) || 0;
+
+      const actualAllTokens = allTokens || (inputTokens + outputTokens + cacheCreateTokens + cacheReadTokens);
+
+      return {
+        tokens: tokens,
+        inputTokens: inputTokens,
+        outputTokens: outputTokens,
+        cacheCreateTokens: cacheCreateTokens,
+        cacheReadTokens: cacheReadTokens,
+        allTokens: actualAllTokens,
+        requests: requests
+      };
+    };
+
+    const totalData = handleAccountData(total);
+    const dailyData = handleAccountData(daily);
+    const monthlyData = handleAccountData(monthly);
+
+    return {
+      accountId: accountId,
+      total: totalData,
+      daily: dailyData,
+      monthly: monthlyData,
+      averages: {
+        rpm: Math.round(avgRPM * 100) / 100,
+        tpm: Math.round(avgTPM * 100) / 100,
+        dailyRequests: Math.round((totalRequests / daysSinceCreated) * 100) / 100,
+        dailyTokens: Math.round((totalTokens / daysSinceCreated) * 100) / 100
+      }
+    };
+  }
+
+  // 📈 获取所有账户的使用统计
+  async getAllAccountsUsageStats() {
+    try {
+      // 获取所有Claude账户
+      const accountKeys = await this.client.keys('claude_account:*');
+      const accountStats = [];
+      
+      for (const accountKey of accountKeys) {
+        const accountId = accountKey.replace('claude_account:', '');
+        const accountData = await this.client.hgetall(accountKey);
+        
+        if (accountData.name) {
+          const stats = await this.getAccountUsageStats(accountId);
+          accountStats.push({
+            id: accountId,
+            name: accountData.name,
+            email: accountData.email || '',
+            status: accountData.status || 'unknown',
+            isActive: accountData.isActive === 'true',
+            ...stats
+          });
+        }
+      }
+      
+      // 按当日token使用量排序
+      accountStats.sort((a, b) => (b.daily.allTokens || 0) - (a.daily.allTokens || 0));
+      
+      return accountStats;
+    } catch (error) {
+      logger.error('❌ Failed to get all accounts usage stats:', error);
+      return [];
+    }
   }
 
   // 🧹 清空所有API Key的使用统计数据
@@ -819,4 +1083,11 @@ class RedisClient {
   }
 }
 
-module.exports = new RedisClient();
+const redisClient = new RedisClient();
+
+// 导出时区辅助函数
+redisClient.getDateInTimezone = getDateInTimezone;
+redisClient.getDateStringInTimezone = getDateStringInTimezone;
+redisClient.getHourInTimezone = getHourInTimezone;
+
+module.exports = redisClient;

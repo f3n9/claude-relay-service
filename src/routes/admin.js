@@ -12,19 +12,293 @@ const claudeCodeHeadersService = require('../services/claudeCodeHeadersService')
 const axios = require('axios');
 const fs = require('fs');
 const path = require('path');
+const config = require('../../config/config');
 
 const router = express.Router();
 
 // 🔑 API Keys 管理
 
+// 调试：获取API Key费用详情
+router.get('/api-keys/:keyId/cost-debug', authenticateAdmin, async (req, res) => {
+  try {
+    const { keyId } = req.params;
+    const costStats = await redis.getCostStats(keyId);
+    const dailyCost = await redis.getDailyCost(keyId);
+    const today = redis.getDateStringInTimezone();
+    const client = redis.getClientSafe();
+    
+    // 获取所有相关的Redis键
+    const costKeys = await client.keys(`usage:cost:*:${keyId}:*`);
+    const keyValues = {};
+    
+    for (const key of costKeys) {
+      keyValues[key] = await client.get(key);
+    }
+    
+    res.json({
+      keyId,
+      today,
+      dailyCost,
+      costStats,
+      redisKeys: keyValues,
+      timezone: config.system.timezoneOffset || 8
+    });
+  } catch (error) {
+    logger.error('❌ Failed to get cost debug info:', error);
+    res.status(500).json({ error: 'Failed to get cost debug info', message: error.message });
+  }
+});
+
 // 获取所有API Keys
 router.get('/api-keys', authenticateAdmin, async (req, res) => {
   try {
+    const { timeRange = 'all' } = req.query; // all, 7days, monthly
     const apiKeys = await apiKeyService.getAllApiKeys();
+    
+    // 根据时间范围计算查询模式
+    const now = new Date();
+    let searchPatterns = [];
+    
+    if (timeRange === 'today') {
+      // 今日 - 使用时区日期
+      const redis = require('../models/redis');
+      const tzDate = redis.getDateInTimezone(now);
+      const dateStr = `${tzDate.getFullYear()}-${String(tzDate.getMonth() + 1).padStart(2, '0')}-${String(tzDate.getDate()).padStart(2, '0')}`;
+      searchPatterns.push(`usage:daily:*:${dateStr}`);
+    } else if (timeRange === '7days') {
+      // 最近7天
+      const redis = require('../models/redis');
+      for (let i = 0; i < 7; i++) {
+        const date = new Date(now);
+        date.setDate(date.getDate() - i);
+        const tzDate = redis.getDateInTimezone(date);
+        const dateStr = `${tzDate.getFullYear()}-${String(tzDate.getMonth() + 1).padStart(2, '0')}-${String(tzDate.getDate()).padStart(2, '0')}`;
+        searchPatterns.push(`usage:daily:*:${dateStr}`);
+      }
+    } else if (timeRange === 'monthly') {
+      // 本月
+      const redis = require('../models/redis');
+      const tzDate = redis.getDateInTimezone(now);
+      const currentMonth = `${tzDate.getFullYear()}-${String(tzDate.getMonth() + 1).padStart(2, '0')}`;
+      searchPatterns.push(`usage:monthly:*:${currentMonth}`);
+    }
+    
+    // 为每个API Key计算准确的费用和统计数据
+    for (const apiKey of apiKeys) {
+      const client = redis.getClientSafe();
+      
+      if (timeRange === 'all') {
+        // 全部时间：保持原有逻辑
+        if (apiKey.usage && apiKey.usage.total) {
+          // 使用与展开模型统计相同的数据源
+          // 获取所有时间的模型统计数据
+          const monthlyKeys = await client.keys(`usage:${apiKey.id}:model:monthly:*:*`);
+        const modelStatsMap = new Map();
+        
+        // 汇总所有月份的数据
+        for (const key of monthlyKeys) {
+          const match = key.match(/usage:.+:model:monthly:(.+):\d{4}-\d{2}$/);
+          if (!match) continue;
+          
+          const model = match[1];
+          const data = await client.hgetall(key);
+          
+          if (data && Object.keys(data).length > 0) {
+            if (!modelStatsMap.has(model)) {
+              modelStatsMap.set(model, {
+                inputTokens: 0,
+                outputTokens: 0,
+                cacheCreateTokens: 0,
+                cacheReadTokens: 0
+              });
+            }
+            
+            const stats = modelStatsMap.get(model);
+            stats.inputTokens += parseInt(data.totalInputTokens) || parseInt(data.inputTokens) || 0;
+            stats.outputTokens += parseInt(data.totalOutputTokens) || parseInt(data.outputTokens) || 0;
+            stats.cacheCreateTokens += parseInt(data.totalCacheCreateTokens) || parseInt(data.cacheCreateTokens) || 0;
+            stats.cacheReadTokens += parseInt(data.totalCacheReadTokens) || parseInt(data.cacheReadTokens) || 0;
+          }
+        }
+        
+        let totalCost = 0;
+        
+        // 计算每个模型的费用
+        for (const [model, stats] of modelStatsMap) {
+          const usage = {
+            input_tokens: stats.inputTokens,
+            output_tokens: stats.outputTokens,
+            cache_creation_input_tokens: stats.cacheCreateTokens,
+            cache_read_input_tokens: stats.cacheReadTokens
+          };
+          
+          const costResult = CostCalculator.calculateCost(usage, model);
+          totalCost += costResult.costs.total;
+        }
+        
+        // 如果没有详细的模型数据，使用总量数据和默认模型计算
+        if (modelStatsMap.size === 0) {
+          const usage = {
+            input_tokens: apiKey.usage.total.inputTokens || 0,
+            output_tokens: apiKey.usage.total.outputTokens || 0,
+            cache_creation_input_tokens: apiKey.usage.total.cacheCreateTokens || 0,
+            cache_read_input_tokens: apiKey.usage.total.cacheReadTokens || 0
+          };
+          
+          const costResult = CostCalculator.calculateCost(usage, 'claude-3-5-haiku-20241022');
+          totalCost = costResult.costs.total;
+        }
+        
+          // 添加格式化的费用到响应数据
+          apiKey.usage.total.cost = totalCost;
+          apiKey.usage.total.formattedCost = CostCalculator.formatCost(totalCost);
+        }
+      } else {
+        // 7天或本月：重新计算统计数据
+        const tempUsage = {
+          requests: 0,
+          tokens: 0,
+          allTokens: 0, // 添加allTokens字段
+          inputTokens: 0,
+          outputTokens: 0,
+          cacheCreateTokens: 0,
+          cacheReadTokens: 0
+        };
+        
+        // 获取指定时间范围的统计数据
+        for (const pattern of searchPatterns) {
+          const keys = await client.keys(pattern.replace('*', apiKey.id));
+          
+          for (const key of keys) {
+            const data = await client.hgetall(key);
+            if (data && Object.keys(data).length > 0) {
+              // 使用与 redis.js incrementTokenUsage 中相同的字段名
+              tempUsage.requests += parseInt(data.totalRequests) || parseInt(data.requests) || 0;
+              tempUsage.tokens += parseInt(data.totalTokens) || parseInt(data.tokens) || 0;
+              tempUsage.allTokens += parseInt(data.totalAllTokens) || parseInt(data.allTokens) || 0; // 读取包含所有Token的字段
+              tempUsage.inputTokens += parseInt(data.totalInputTokens) || parseInt(data.inputTokens) || 0;
+              tempUsage.outputTokens += parseInt(data.totalOutputTokens) || parseInt(data.outputTokens) || 0;
+              tempUsage.cacheCreateTokens += parseInt(data.totalCacheCreateTokens) || parseInt(data.cacheCreateTokens) || 0;
+              tempUsage.cacheReadTokens += parseInt(data.totalCacheReadTokens) || parseInt(data.cacheReadTokens) || 0;
+            }
+          }
+        }
+        
+        // 计算指定时间范围的费用
+        let totalCost = 0;
+        const redis = require('../models/redis');
+        const tzToday = redis.getDateStringInTimezone(now);
+        const tzDate = redis.getDateInTimezone(now);
+        const tzMonth = `${tzDate.getFullYear()}-${String(tzDate.getMonth() + 1).padStart(2, '0')}`;
+        
+        const modelKeys = timeRange === 'today' 
+          ? await client.keys(`usage:${apiKey.id}:model:daily:*:${tzToday}`)
+          : timeRange === '7days' 
+          ? await client.keys(`usage:${apiKey.id}:model:daily:*:*`)
+          : await client.keys(`usage:${apiKey.id}:model:monthly:*:${tzMonth}`);
+        
+        const modelStatsMap = new Map();
+        
+        // 过滤和汇总相应时间范围的模型数据
+        for (const key of modelKeys) {
+          if (timeRange === '7days') {
+            // 检查是否在最近7天内
+            const dateMatch = key.match(/\d{4}-\d{2}-\d{2}$/);
+            if (dateMatch) {
+              const keyDate = new Date(dateMatch[0]);
+              const daysDiff = Math.floor((now - keyDate) / (1000 * 60 * 60 * 24));
+              if (daysDiff > 6) continue;
+            }
+          } else if (timeRange === 'today') {
+            // today选项已经在查询时过滤了，不需要额外处理
+          }
+          
+          const modelMatch = key.match(/usage:.+:model:(?:daily|monthly):(.+):\d{4}-\d{2}(?:-\d{2})?$/);
+          if (!modelMatch) continue;
+          
+          const model = modelMatch[1];
+          const data = await client.hgetall(key);
+          
+          if (data && Object.keys(data).length > 0) {
+            if (!modelStatsMap.has(model)) {
+              modelStatsMap.set(model, {
+                inputTokens: 0,
+                outputTokens: 0,
+                cacheCreateTokens: 0,
+                cacheReadTokens: 0
+              });
+            }
+            
+            const stats = modelStatsMap.get(model);
+            stats.inputTokens += parseInt(data.totalInputTokens) || parseInt(data.inputTokens) || 0;
+            stats.outputTokens += parseInt(data.totalOutputTokens) || parseInt(data.outputTokens) || 0;
+            stats.cacheCreateTokens += parseInt(data.totalCacheCreateTokens) || parseInt(data.cacheCreateTokens) || 0;
+            stats.cacheReadTokens += parseInt(data.totalCacheReadTokens) || parseInt(data.cacheReadTokens) || 0;
+          }
+        }
+        
+        // 计算费用
+        for (const [model, stats] of modelStatsMap) {
+          const usage = {
+            input_tokens: stats.inputTokens,
+            output_tokens: stats.outputTokens,
+            cache_creation_input_tokens: stats.cacheCreateTokens,
+            cache_read_input_tokens: stats.cacheReadTokens
+          };
+          
+          const costResult = CostCalculator.calculateCost(usage, model);
+          totalCost += costResult.costs.total;
+        }
+        
+        // 如果没有模型数据，使用临时统计数据计算
+        if (modelStatsMap.size === 0 && tempUsage.tokens > 0) {
+          const usage = {
+            input_tokens: tempUsage.inputTokens,
+            output_tokens: tempUsage.outputTokens,
+            cache_creation_input_tokens: tempUsage.cacheCreateTokens,
+            cache_read_input_tokens: tempUsage.cacheReadTokens
+          };
+          
+          const costResult = CostCalculator.calculateCost(usage, 'claude-3-5-haiku-20241022');
+          totalCost = costResult.costs.total;
+        }
+        
+        // 使用从Redis读取的allTokens，如果没有则计算
+        const allTokens = tempUsage.allTokens || (tempUsage.inputTokens + tempUsage.outputTokens + tempUsage.cacheCreateTokens + tempUsage.cacheReadTokens);
+        
+        // 更新API Key的usage数据为指定时间范围的数据
+        apiKey.usage[timeRange] = {
+          ...tempUsage,
+          tokens: allTokens, // 使用包含所有Token的总数
+          allTokens: allTokens,
+          cost: totalCost,
+          formattedCost: CostCalculator.formatCost(totalCost)
+        };
+        
+        // 为了保持兼容性，也更新total字段
+        apiKey.usage.total = apiKey.usage[timeRange];
+      }
+    }
+    
     res.json({ success: true, data: apiKeys });
   } catch (error) {
     logger.error('❌ Failed to get API keys:', error);
     res.status(500).json({ error: 'Failed to get API keys', message: error.message });
+  }
+});
+
+// 获取支持的客户端列表
+router.get('/supported-clients', authenticateAdmin, async (req, res) => {
+  try {
+    const clients = config.clientRestrictions.predefinedClients.map(client => ({
+      id: client.id,
+      name: client.name,
+      description: client.description
+    }));
+    res.json({ success: true, data: clients });
+  } catch (error) {
+    logger.error('❌ Failed to get supported clients:', error);
+    res.status(500).json({ error: 'Failed to get supported clients', message: error.message });
   }
 });
 
@@ -43,7 +317,10 @@ router.post('/api-keys', authenticateAdmin, async (req, res) => {
       rateLimitWindow,
       rateLimitRequests,
       enableModelRestriction,
-      restrictedModels
+      restrictedModels,
+      enableClientRestriction,
+      allowedClients,
+      dailyCostLimit
     } = req.body;
 
     // 输入验证
@@ -85,6 +362,15 @@ router.post('/api-keys', authenticateAdmin, async (req, res) => {
       return res.status(400).json({ error: 'Restricted models must be an array' });
     }
 
+    // 验证客户端限制字段
+    if (enableClientRestriction !== undefined && typeof enableClientRestriction !== 'boolean') {
+      return res.status(400).json({ error: 'Enable client restriction must be a boolean' });
+    }
+
+    if (allowedClients !== undefined && !Array.isArray(allowedClients)) {
+      return res.status(400).json({ error: 'Allowed clients must be an array' });
+    }
+
     const newKey = await apiKeyService.generateApiKey({
       name,
       description,
@@ -97,7 +383,10 @@ router.post('/api-keys', authenticateAdmin, async (req, res) => {
       rateLimitWindow,
       rateLimitRequests,
       enableModelRestriction,
-      restrictedModels
+      restrictedModels,
+      enableClientRestriction,
+      allowedClients,
+      dailyCostLimit
     });
 
     logger.success(`🔑 Admin created new API key: ${name}`);
@@ -112,7 +401,7 @@ router.post('/api-keys', authenticateAdmin, async (req, res) => {
 router.put('/api-keys/:keyId', authenticateAdmin, async (req, res) => {
   try {
     const { keyId } = req.params;
-    const { tokenLimit, concurrencyLimit, rateLimitWindow, rateLimitRequests, claudeAccountId, geminiAccountId, permissions, enableModelRestriction, restrictedModels } = req.body;
+    const { tokenLimit, concurrencyLimit, rateLimitWindow, rateLimitRequests, claudeAccountId, geminiAccountId, permissions, enableModelRestriction, restrictedModels, enableClientRestriction, allowedClients, expiresAt, dailyCostLimit } = req.body;
 
     // 只允许更新指定字段
     const updates = {};
@@ -176,6 +465,45 @@ router.put('/api-keys/:keyId', authenticateAdmin, async (req, res) => {
         return res.status(400).json({ error: 'Restricted models must be an array' });
       }
       updates.restrictedModels = restrictedModels;
+    }
+
+    // 处理客户端限制字段
+    if (enableClientRestriction !== undefined) {
+      if (typeof enableClientRestriction !== 'boolean') {
+        return res.status(400).json({ error: 'Enable client restriction must be a boolean' });
+      }
+      updates.enableClientRestriction = enableClientRestriction;
+    }
+
+    if (allowedClients !== undefined) {
+      if (!Array.isArray(allowedClients)) {
+        return res.status(400).json({ error: 'Allowed clients must be an array' });
+      }
+      updates.allowedClients = allowedClients;
+    }
+
+    // 处理过期时间字段
+    if (expiresAt !== undefined) {
+      if (expiresAt === null) {
+        // null 表示永不过期
+        updates.expiresAt = null;
+      } else {
+        // 验证日期格式
+        const expireDate = new Date(expiresAt);
+        if (isNaN(expireDate.getTime())) {
+          return res.status(400).json({ error: 'Invalid expiration date format' });
+        }
+        updates.expiresAt = expiresAt;
+      }
+    }
+
+    // 处理每日费用限制
+    if (dailyCostLimit !== undefined && dailyCostLimit !== null && dailyCostLimit !== '') {
+      const costLimit = Number(dailyCostLimit);
+      if (isNaN(costLimit) || costLimit < 0) {
+        return res.status(400).json({ error: 'Daily cost limit must be a non-negative number' });
+      }
+      updates.dailyCostLimit = costLimit;
     }
 
     await apiKeyService.updateApiKey(keyId, updates);
@@ -308,7 +636,34 @@ router.post('/claude-accounts/exchange-code', authenticateAdmin, async (req, res
 router.get('/claude-accounts', authenticateAdmin, async (req, res) => {
   try {
     const accounts = await claudeAccountService.getAllAccounts();
-    res.json({ success: true, data: accounts });
+    
+    // 为每个账户添加使用统计信息
+    const accountsWithStats = await Promise.all(accounts.map(async (account) => {
+      try {
+        const usageStats = await redis.getAccountUsageStats(account.id);
+        return {
+          ...account,
+          usage: {
+            daily: usageStats.daily,
+            total: usageStats.total,
+            averages: usageStats.averages
+          }
+        };
+      } catch (statsError) {
+        logger.warn(`⚠️ Failed to get usage stats for account ${account.id}:`, statsError.message);
+        // 如果获取统计失败，返回空统计
+        return {
+          ...account,
+          usage: {
+            daily: { tokens: 0, requests: 0, allTokens: 0 },
+            total: { tokens: 0, requests: 0, allTokens: 0 },
+            averages: { rpm: 0, tpm: 0 }
+          }
+        };
+      }
+    }));
+    
+    res.json({ success: true, data: accountsWithStats });
   } catch (error) {
     logger.error('❌ Failed to get Claude accounts:', error);
     res.status(500).json({ error: 'Failed to get Claude accounts', message: error.message });
@@ -495,7 +850,18 @@ router.post('/gemini-accounts/exchange-code', authenticateAdmin, async (req, res
 router.get('/gemini-accounts', authenticateAdmin, async (req, res) => {
   try {
     const accounts = await geminiAccountService.getAllAccounts();
-    res.json({ success: true, data: accounts });
+    
+    // 为Gemini账户添加空的使用统计（暂时）
+    const accountsWithStats = accounts.map(account => ({
+      ...account,
+      usage: {
+        daily: { tokens: 0, requests: 0, allTokens: 0 },
+        total: { tokens: 0, requests: 0, allTokens: 0 },
+        averages: { rpm: 0, tpm: 0 }
+      }
+    }));
+    
+    res.json({ success: true, data: accountsWithStats });
   } catch (error) {
     logger.error('❌ Failed to get Gemini accounts:', error);
     res.status(500).json({ error: 'Failed to get accounts', message: error.message });
@@ -568,6 +934,73 @@ router.post('/gemini-accounts/:accountId/refresh', authenticateAdmin, async (req
   }
 });
 
+// 📊 账户使用统计
+
+// 获取所有账户的使用统计
+router.get('/accounts/usage-stats', authenticateAdmin, async (req, res) => {
+  try {
+    const accountsStats = await redis.getAllAccountsUsageStats();
+    
+    res.json({
+      success: true,
+      data: accountsStats,
+      summary: {
+        totalAccounts: accountsStats.length,
+        activeToday: accountsStats.filter(account => account.daily.requests > 0).length,
+        totalDailyTokens: accountsStats.reduce((sum, account) => sum + (account.daily.allTokens || 0), 0),
+        totalDailyRequests: accountsStats.reduce((sum, account) => sum + (account.daily.requests || 0), 0)
+      },
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    logger.error('❌ Failed to get accounts usage stats:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to get accounts usage stats',
+      message: error.message
+    });
+  }
+});
+
+// 获取单个账户的使用统计
+router.get('/accounts/:accountId/usage-stats', authenticateAdmin, async (req, res) => {
+  try {
+    const { accountId } = req.params;
+    const accountStats = await redis.getAccountUsageStats(accountId);
+    
+    // 获取账户基本信息
+    const accountData = await claudeAccountService.getAccount(accountId);
+    if (!accountData) {
+      return res.status(404).json({
+        success: false,
+        error: 'Account not found'
+      });
+    }
+    
+    res.json({
+      success: true,
+      data: {
+        ...accountStats,
+        accountInfo: {
+          name: accountData.name,
+          email: accountData.email,
+          status: accountData.status,
+          isActive: accountData.isActive,
+          createdAt: accountData.createdAt
+        }
+      },
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    logger.error('❌ Failed to get account usage stats:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to get account usage stats',
+      message: error.message
+    });
+  }
+});
+
 // 📊 系统统计
 
 // 获取系统概览
@@ -582,8 +1015,8 @@ router.get('/dashboard', authenticateAdmin, async (req, res) => {
       redis.getSystemAverages()
     ]);
 
-    // 计算使用统计（包含cache tokens）
-    const totalTokensUsed = apiKeys.reduce((sum, key) => sum + (key.usage?.total?.tokens || 0), 0);
+    // 计算使用统计（统一使用allTokens）
+    const totalTokensUsed = apiKeys.reduce((sum, key) => sum + (key.usage?.total?.allTokens || 0), 0);
     const totalRequestsUsed = apiKeys.reduce((sum, key) => sum + (key.usage?.total?.requests || 0), 0);
     const totalInputTokensUsed = apiKeys.reduce((sum, key) => sum + (key.usage?.total?.inputTokens || 0), 0);
     const totalOutputTokensUsed = apiKeys.reduce((sum, key) => sum + (key.usage?.total?.outputTokens || 0), 0);
@@ -1793,5 +2226,92 @@ function compareVersions(current, latest) {
   }
   return currentV.patch - latestV.patch;
 }
+
+// 🎨 OEM设置管理
+
+// 获取OEM设置（公开接口，用于显示）
+router.get('/oem-settings', async (req, res) => {
+  try {
+    const client = redis.getClient();
+    const oemSettings = await client.get('oem:settings');
+    
+    // 默认设置
+    const defaultSettings = {
+      siteName: 'Claude Relay Service',
+      siteIcon: '',
+      siteIconData: '', // Base64编码的图标数据
+      updatedAt: new Date().toISOString()
+    };
+    
+    let settings = defaultSettings;
+    if (oemSettings) {
+      try {
+        settings = { ...defaultSettings, ...JSON.parse(oemSettings) };
+      } catch (err) {
+        logger.warn('⚠️ Failed to parse OEM settings, using defaults:', err.message);
+      }
+    }
+    
+    res.json({
+      success: true,
+      data: settings
+    });
+  } catch (error) {
+    logger.error('❌ Failed to get OEM settings:', error);
+    res.status(500).json({ error: 'Failed to get OEM settings', message: error.message });
+  }
+});
+
+// 更新OEM设置
+router.put('/oem-settings', authenticateAdmin, async (req, res) => {
+  try {
+    const { siteName, siteIcon, siteIconData } = req.body;
+    
+    // 验证输入
+    if (!siteName || typeof siteName !== 'string' || siteName.trim().length === 0) {
+      return res.status(400).json({ error: 'Site name is required' });
+    }
+    
+    if (siteName.length > 100) {
+      return res.status(400).json({ error: 'Site name must be less than 100 characters' });
+    }
+    
+    // 验证图标数据大小（如果是base64）
+    if (siteIconData && siteIconData.length > 500000) { // 约375KB
+      return res.status(400).json({ error: 'Icon file must be less than 350KB' });
+    }
+    
+    // 验证图标URL（如果提供）
+    if (siteIcon && !siteIconData) {
+      // 简单验证URL格式
+      try {
+        new URL(siteIcon);
+      } catch (err) {
+        return res.status(400).json({ error: 'Invalid icon URL format' });
+      }
+    }
+    
+    const settings = {
+      siteName: siteName.trim(),
+      siteIcon: (siteIcon || '').trim(),
+      siteIconData: (siteIconData || '').trim(), // Base64数据
+      updatedAt: new Date().toISOString()
+    };
+    
+    const client = redis.getClient();
+    await client.set('oem:settings', JSON.stringify(settings));
+    
+    logger.info(`✅ OEM settings updated: ${siteName}`);
+    
+    res.json({
+      success: true,
+      message: 'OEM settings updated successfully',
+      data: settings
+    });
+  } catch (error) {
+    logger.error('❌ Failed to update OEM settings:', error);
+    res.status(500).json({ error: 'Failed to update OEM settings', message: error.message });
+  }
+});
 
 module.exports = router;

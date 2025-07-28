@@ -6,7 +6,7 @@
 [![Node.js](https://img.shields.io/badge/Node.js-18+-green.svg)](https://nodejs.org/)
 [![Redis](https://img.shields.io/badge/Redis-6+-red.svg)](https://redis.io/)
 [![Docker](https://img.shields.io/badge/Docker-Ready-blue.svg)](https://www.docker.com/)
-[![Docker Build](https://github.com/Wei-Shaw/claude-relay-service/actions/workflows/docker-publish.yml/badge.svg)](https://github.com/Wei-Shaw/claude-relay-service/actions/workflows/docker-publish.yml)
+[![Docker Build](https://github.com/Wei-Shaw/claude-relay-service/actions/workflows/auto-release-pipeline.yml/badge.svg)](https://github.com/Wei-Shaw/claude-relay-service/actions/workflows/auto-release-pipeline.yml)
 [![Docker Pulls](https://img.shields.io/docker/pulls/weishaw/claude-relay-service)](https://hub.docker.com/r/weishaw/claude-relay-service)
 
 **🔐 自行搭建Claude API中转服务，支持多账户管理** 
@@ -106,7 +106,7 @@
 - 🔄 **智能切换**: 账户出问题自动换下一个
 - 🚀 **性能优化**: 连接池、缓存，减少延迟
 - 📊 **监控面板**: Web界面查看所有数据
-- 🛡️ **安全控制**: 访问限制、速率控制
+- 🛡️ **安全控制**: 访问限制、速率控制、客户端限制
 - 🌐 **代理支持**: 支持HTTP/SOCKS5代理
 
 ---
@@ -232,17 +232,31 @@ npm run service:status
 # 拉取镜像（支持 amd64 和 arm64）
 docker pull weishaw/claude-relay-service:latest
 
-# 使用 docker run 运行
+# 使用 docker run 运行（注意设置必需的环境变量）
 docker run -d \
   --name claude-relay \
   -p 3000:3000 \
   -v $(pwd)/data:/app/data \
   -v $(pwd)/logs:/app/logs \
+  -e JWT_SECRET=your-random-secret-key-at-least-32-chars \
+  -e ENCRYPTION_KEY=your-32-character-encryption-key \
+  -e REDIS_HOST=redis \
   -e ADMIN_USERNAME=my_admin \
   -e ADMIN_PASSWORD=my_secure_password \
   weishaw/claude-relay-service:latest
 
 # 或使用 docker-compose（推荐）
+# 创建 .env 文件用于 docker-compose 的环境变量：
+cat > .env << 'EOF'
+# 必填：安全密钥（请修改为随机值）
+JWT_SECRET=your-random-secret-key-at-least-32-chars
+ENCRYPTION_KEY=your-32-character-encryption-key
+
+# 可选：管理员凭据
+ADMIN_USERNAME=cr_admin
+ADMIN_PASSWORD=your-secure-password
+EOF
+
 # 创建 docker-compose.yml 文件：
 cat > docker-compose.yml << 'EOF'
 version: '3.8'
@@ -254,6 +268,8 @@ services:
     ports:
       - "3000:3000"
     environment:
+      - JWT_SECRET=${JWT_SECRET}
+      - ENCRYPTION_KEY=${ENCRYPTION_KEY}
       - REDIS_HOST=redis
       - ADMIN_USERNAME=${ADMIN_USERNAME:-}
       - ADMIN_PASSWORD=${ADMIN_PASSWORD:-}
@@ -285,16 +301,21 @@ docker-compose up -d
 git clone https://github.com/Wei-Shaw//claude-relay-service.git
 cd claude-relay-service
 
-# 2. 设置管理员账号密码（可选）
-# 方式一：自动生成（查看容器日志获取）
+# 2. 创建环境变量文件
+cat > .env << 'EOF'
+# 必填：安全密钥（请修改为随机值）
+JWT_SECRET=your-random-secret-key-at-least-32-chars
+ENCRYPTION_KEY=your-32-character-encryption-key
+
+# 可选：管理员凭据
+ADMIN_USERNAME=cr_admin_custom
+ADMIN_PASSWORD=your-secure-password
+EOF
+
+# 3. 启动服务
 docker-compose up -d
 
-# 方式二：预设账号密码
-export ADMIN_USERNAME=cr_admin_custom
-export ADMIN_PASSWORD=your-secure-password
-docker-compose up -d
-
-# 3. 查看管理员凭据
+# 4. 查看管理员凭据
 # 自动生成的情况下：
 docker logs claude-relay-service | grep "管理员"
 
@@ -310,6 +331,19 @@ docker-compose.yml 已包含：
 - ✅ Redis数据库
 - ✅ 健康检查
 - ✅ 自动重启
+- ✅ 所有配置通过环境变量管理
+
+### 环境变量说明
+
+#### 必填项
+- `JWT_SECRET`: JWT密钥，至少32个字符
+- `ENCRYPTION_KEY`: 加密密钥，必须是32个字符
+
+#### 可选项
+- `ADMIN_USERNAME`: 管理员用户名（不设置则自动生成）
+- `ADMIN_PASSWORD`: 管理员密码（不设置则自动生成）
+- `LOG_LEVEL`: 日志级别（默认：info）
+- 更多配置项请参考 `.env.example` 文件
 
 ### 管理员凭据获取方式
 
@@ -364,7 +398,11 @@ docker-compose.yml 已包含：
 1. 点击「API Keys」标签
 2. 点击「创建新Key」
 3. 给Key起个名字，比如「张三的Key」
-4. 设置使用限制（可选）
+4. 设置使用限制（可选）：
+   - **速率限制**: 限制每个时间窗口的请求次数和Token使用量
+   - **并发限制**: 限制同时处理的请求数
+   - **模型限制**: 限制可访问的模型列表
+   - **客户端限制**: 限制只允许特定客户端使用（如ClaudeCode、Gemini-CLI等）
 5. 保存，记下生成的Key
 
 ### 4. 开始使用Claude code
@@ -463,6 +501,63 @@ npm run service:status
 - 升级前建议备份重要配置文件（.env, config/config.js）
 - 查看更新日志了解是否有破坏性变更
 - 如果有数据库结构变更，会自动迁移
+
+---
+
+## 🔒 客户端限制功能
+
+### 功能说明
+
+客户端限制功能允许你控制每个API Key可以被哪些客户端使用，通过User-Agent识别客户端，提高API的安全性。
+
+### 使用方法
+
+1. **在创建或编辑API Key时启用客户端限制**：
+   - 勾选"启用客户端限制"
+   - 选择允许的客户端（支持多选）
+
+2. **预定义客户端**：
+   - **ClaudeCode**: 官方Claude CLI（匹配 `claude-cli/x.x.x (external, cli)` 格式）
+   - **Gemini-CLI**: Gemini命令行工具（匹配 `GeminiCLI/vx.x.x (platform; arch)` 格式）
+
+3. **调试和诊断**：
+   - 系统会在日志中记录所有请求的User-Agent
+   - 客户端验证失败时会返回403错误并记录详细信息
+   - 通过日志可以查看实际的User-Agent格式，方便配置自定义客户端
+
+### 自定义客户端配置
+
+如需添加自定义客户端，可以修改 `config/config.js` 文件：
+
+```javascript
+clientRestrictions: {
+  predefinedClients: [
+    // ... 现有客户端配置
+    {
+      id: 'my_custom_client',
+      name: 'My Custom Client',
+      description: '我的自定义客户端',
+      userAgentPattern: /^MyClient\/[\d\.]+/i
+    }
+  ]
+}
+```
+
+### 日志示例
+
+认证成功时的日志：
+```
+🔓 Authenticated request from key: 测试Key (key-id) in 5ms
+   User-Agent: "claude-cli/1.0.58 (external, cli)"
+```
+
+客户端限制检查日志：
+```
+🔍 Checking client restriction for key: key-id (测试Key)
+   User-Agent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
+   Allowed clients: claude_code, gemini_cli
+🚫 Client restriction failed for key: key-id (测试Key) from 127.0.0.1, User-Agent: Mozilla/5.0...
+```
 
 ### 常见问题处理
 
