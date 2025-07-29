@@ -33,7 +33,7 @@ export const useAuthStore = defineStore('auth', () => {
       
       if (result.success) {
         authToken.value = result.token
-        username.value = credentials.username
+        username.value = result.username || credentials.username
         isLoggedIn.value = true
         localStorage.setItem('authToken', result.token)
         
@@ -66,6 +66,12 @@ export const useAuthStore = defineStore('auth', () => {
 
   async function verifyToken() {
     try {
+      // 获取当前用户信息
+      const userResult = await apiClient.get('/web/auth/user')
+      if (userResult.success && userResult.user) {
+        username.value = userResult.user.username
+      }
+      
       // 使用 dashboard 端点来验证 token
       // 如果 token 无效，会抛出错误
       const result = await apiClient.get('/admin/dashboard')
