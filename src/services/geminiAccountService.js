@@ -654,7 +654,7 @@ async function refreshAccountToken(accountId) {
           errorMessage: error.message
         });
       } catch (updateError) {
-        logger.error(`Failed to update account status after refresh error:`, updateError);
+        logger.error('Failed to update account status after refresh error:', updateError);
       }
     }
     
