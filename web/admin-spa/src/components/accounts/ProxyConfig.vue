@@ -115,7 +115,7 @@
 </template>
 
 <script setup>
-import { ref, computed, watch } from 'vue'
+import { ref, computed, watch, onUnmounted } from 'vue'
 
 const props = defineProps({
   modelValue: {
@@ -140,27 +140,75 @@ const proxy = ref({ ...props.modelValue })
 const showAuth = ref(!!(proxy.value.username || proxy.value.password))
 const showPassword = ref(false)
 
-// 监听modelValue变化
+// 监听modelValue变化，只在真正需要更新时才更新
 watch(() => props.modelValue, (newVal) => {
-  proxy.value = { ...newVal }
-  showAuth.value = !!(newVal.username || newVal.password)
+  // 只有当值真正不同时才更新，避免循环
+  if (JSON.stringify(newVal) !== JSON.stringify(proxy.value)) {
+    proxy.value = { ...newVal }
+    showAuth.value = !!(newVal.username || newVal.password)
+  }
 }, { deep: true })
 
-// 监听proxy变化，更新父组件
-watch(proxy, (newVal) => {
-  // 如果不需要认证，清空用户名密码
-  if (!showAuth.value) {
-    newVal.username = ''
-    newVal.password = ''
-  }
-  emit('update:modelValue', { ...newVal })
-}, { deep: true })
+// 监听各个字段单独变化，而不是整个对象
+watch(() => proxy.value.enabled, (newVal) => {
+  emitUpdate()
+})
+
+watch(() => proxy.value.type, (newVal) => {
+  emitUpdate()
+})
+
+watch(() => proxy.value.host, (newVal) => {
+  emitUpdate()
+})
+
+watch(() => proxy.value.port, (newVal) => {
+  emitUpdate()
+})
+
+watch(() => proxy.value.username, (newVal) => {
+  emitUpdate()
+})
+
+watch(() => proxy.value.password, (newVal) => {
+  emitUpdate()
+})
 
 // 监听认证开关
 watch(showAuth, (newVal) => {
   if (!newVal) {
     proxy.value.username = ''
     proxy.value.password = ''
+    emitUpdate()
+  }
+})
+
+// 防抖的更新函数
+let updateTimer = null
+function emitUpdate() {
+  // 清除之前的定时器
+  if (updateTimer) {
+    clearTimeout(updateTimer)
+  }
+  
+  // 设置新的定时器，延迟发送更新
+  updateTimer = setTimeout(() => {
+    const data = { ...proxy.value }
+    
+    // 如果不需要认证，清空用户名密码
+    if (!showAuth.value) {
+      data.username = ''
+      data.password = ''
+    }
+    
+    emit('update:modelValue', data)
+  }, 100) // 100ms 延迟
+}
+
+// 组件销毁时清理定时器
+onUnmounted(() => {
+  if (updateTimer) {
+    clearTimeout(updateTimer)
   }
 })
 </script>

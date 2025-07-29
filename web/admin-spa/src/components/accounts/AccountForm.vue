@@ -96,8 +96,10 @@
                 type="text" 
                 required 
                 class="form-input w-full"
+                :class="{ 'border-red-500': errors.name }"
                 placeholder="为账户设置一个易识别的名称"
               >
+              <p v-if="errors.name" class="text-red-500 text-xs mt-1">{{ errors.name }}</p>
             </div>
             
             <div>
@@ -204,8 +206,10 @@
                   rows="4" 
                   required
                   class="form-input w-full resize-none font-mono text-xs"
+                  :class="{ 'border-red-500': errors.accessToken }"
                   placeholder="请输入 Access Token..."
                 ></textarea>
+                <p v-if="errors.accessToken" class="text-red-500 text-xs mt-1">{{ errors.accessToken }}</p>
               </div>
               
               <div>
@@ -234,7 +238,7 @@
                 v-if="form.addType === 'oauth'"
                 type="button" 
                 @click="nextStep"
-                :disabled="!canProceed"
+                :disabled="loading"
                 class="btn btn-primary flex-1 py-3 px-6 font-semibold"
               >
                 下一步
@@ -243,7 +247,7 @@
                 v-else
                 type="button" 
                 @click="createAccount"
-                :disabled="loading || !canCreate"
+                :disabled="loading"
                 class="btn btn-primary flex-1 py-3 px-6 font-semibold"
               >
                 <div v-if="loading" class="loading-spinner mr-2"></div>
@@ -450,24 +454,33 @@ const form = ref({
   }
 })
 
+// 表单验证错误
+const errors = ref({
+  name: '',
+  accessToken: ''
+})
+
 // 计算是否可以进入下一步
 const canProceed = computed(() => {
-  return form.value.name && form.value.platform
+  return form.value.name?.trim() && form.value.platform
 })
 
 // 计算是否可以创建
 const canCreate = computed(() => {
   if (form.value.addType === 'manual') {
-    return form.value.name && form.value.accessToken
+    return form.value.name?.trim() && form.value.accessToken?.trim()
   }
-  return form.value.name
+  return form.value.name?.trim()
 })
 
 // 下一步
 const nextStep = async () => {
+  // 清除之前的错误
+  errors.value.name = ''
+  
   if (!canProceed.value) {
     if (!form.value.name || form.value.name.trim() === '') {
-      showToast('请填写账户名称', 'error')
+      errors.value.name = '请填写账户名称'
     }
     return
   }
@@ -499,14 +512,24 @@ const handleOAuthSuccess = async (tokenInfo) => {
       name: form.value.name,
       description: form.value.description,
       accountType: form.value.accountType,
-      accessToken: tokenInfo.access_token,
-      refreshToken: tokenInfo.refresh_token,
-      scopes: tokenInfo.scopes || [],
-      proxy: form.value.proxy.enabled ? form.value.proxy : null
+      proxy: form.value.proxy.enabled ? {
+        type: form.value.proxy.type,
+        host: form.value.proxy.host,
+        port: parseInt(form.value.proxy.port),
+        username: form.value.proxy.username || null,
+        password: form.value.proxy.password || null
+      } : null
     }
     
-    if (form.value.platform === 'gemini' && form.value.projectId) {
-      data.projectId = form.value.projectId
+    if (form.value.platform === 'claude') {
+      // Claude使用claudeAiOauth字段
+      data.claudeAiOauth = tokenInfo.claudeAiOauth || tokenInfo
+    } else if (form.value.platform === 'gemini') {
+      // Gemini使用geminiOauth字段
+      data.geminiOauth = tokenInfo.tokens || tokenInfo
+      if (form.value.projectId) {
+        data.projectId = form.value.projectId
+      }
     }
     
     let result
@@ -516,7 +539,6 @@ const handleOAuthSuccess = async (tokenInfo) => {
       result = await accountsStore.createGeminiAccount(data)
     }
     
-    showToast('账户创建成功', 'success')
     emit('success', result)
   } catch (error) {
     showToast(error.message || '账户创建失败', 'error')
@@ -527,12 +549,23 @@ const handleOAuthSuccess = async (tokenInfo) => {
 
 // 创建账户（手动模式）
 const createAccount = async () => {
-  if (!canCreate.value) {
-    if (!form.value.name || form.value.name.trim() === '') {
-      showToast('请填写账户名称', 'error')
-    } else if (!form.value.accessToken || form.value.accessToken.trim() === '') {
-      showToast('请填写 Access Token', 'error')
-    }
+  // 清除之前的错误
+  errors.value.name = ''
+  errors.value.accessToken = ''
+  
+  let hasError = false
+  
+  if (!form.value.name || form.value.name.trim() === '') {
+    errors.value.name = '请填写账户名称'
+    hasError = true
+  }
+  
+  if (form.value.addType === 'manual' && (!form.value.accessToken || form.value.accessToken.trim() === '')) {
+    errors.value.accessToken = '请填写 Access Token'
+    hasError = true
+  }
+  
+  if (hasError) {
     return
   }
   
@@ -542,13 +575,44 @@ const createAccount = async () => {
       name: form.value.name,
       description: form.value.description,
       accountType: form.value.accountType,
-      accessToken: form.value.accessToken,
-      refreshToken: form.value.refreshToken || undefined,
-      proxy: form.value.proxy.enabled ? form.value.proxy : null
+      proxy: form.value.proxy.enabled ? {
+        type: form.value.proxy.type,
+        host: form.value.proxy.host,
+        port: parseInt(form.value.proxy.port),
+        username: form.value.proxy.username || null,
+        password: form.value.proxy.password || null
+      } : null
     }
     
-    if (form.value.platform === 'gemini' && form.value.projectId) {
-      data.projectId = form.value.projectId
+    if (form.value.platform === 'claude') {
+      // Claude手动模式需要构建claudeAiOauth对象
+      const expiresInMs = form.value.refreshToken 
+        ? (10 * 60 * 1000) // 10分钟
+        : (365 * 24 * 60 * 60 * 1000) // 1年
+      
+      data.claudeAiOauth = {
+        accessToken: form.value.accessToken,
+        refreshToken: form.value.refreshToken || '',
+        expiresAt: Date.now() + expiresInMs,
+        scopes: ['user:inference']
+      }
+    } else if (form.value.platform === 'gemini') {
+      // Gemini手动模式需要构建geminiOauth对象
+      const expiresInMs = form.value.refreshToken 
+        ? (10 * 60 * 1000) // 10分钟
+        : (365 * 24 * 60 * 60 * 1000) // 1年
+      
+      data.geminiOauth = {
+        access_token: form.value.accessToken,
+        refresh_token: form.value.refreshToken || '',
+        scope: 'https://www.googleapis.com/auth/cloud-platform',
+        token_type: 'Bearer',
+        expiry_date: Date.now() + expiresInMs
+      }
+      
+      if (form.value.projectId) {
+        data.projectId = form.value.projectId
+      }
     }
     
     let result
@@ -558,7 +622,6 @@ const createAccount = async () => {
       result = await accountsStore.createGeminiAccount(data)
     }
     
-    showToast('账户创建成功', 'success')
     emit('success', result)
   } catch (error) {
     showToast(error.message || '账户创建失败', 'error')
@@ -569,6 +632,15 @@ const createAccount = async () => {
 
 // 更新账户
 const updateAccount = async () => {
+  // 清除之前的错误
+  errors.value.name = ''
+  
+  // 验证账户名称
+  if (!form.value.name || form.value.name.trim() === '') {
+    errors.value.name = '请填写账户名称'
+    return
+  }
+  
   // 对于Gemini账户，检查项目编号
   if (form.value.platform === 'gemini') {
     if (!form.value.projectId || form.value.projectId.trim() === '') {
@@ -591,15 +663,43 @@ const updateAccount = async () => {
       name: form.value.name,
       description: form.value.description,
       accountType: form.value.accountType,
-      proxy: form.value.proxy.enabled ? form.value.proxy : null
+      proxy: form.value.proxy.enabled ? {
+        type: form.value.proxy.type,
+        host: form.value.proxy.host,
+        port: parseInt(form.value.proxy.port),
+        username: form.value.proxy.username || null,
+        password: form.value.proxy.password || null
+      } : null
     }
     
     // 只有非空时才更新token
-    if (form.value.accessToken) {
-      data.accessToken = form.value.accessToken
-    }
-    if (form.value.refreshToken) {
-      data.refreshToken = form.value.refreshToken
+    if (form.value.accessToken || form.value.refreshToken) {
+      if (props.account.platform === 'claude') {
+        // Claude需要构建claudeAiOauth对象
+        const expiresInMs = form.value.refreshToken 
+          ? (10 * 60 * 1000) // 10分钟
+          : (365 * 24 * 60 * 60 * 1000) // 1年
+        
+        data.claudeAiOauth = {
+          accessToken: form.value.accessToken || '',
+          refreshToken: form.value.refreshToken || '',
+          expiresAt: Date.now() + expiresInMs,
+          scopes: ['user:inference']
+        }
+      } else if (props.account.platform === 'gemini') {
+        // Gemini需要构建geminiOauth对象
+        const expiresInMs = form.value.refreshToken 
+          ? (10 * 60 * 1000) // 10分钟
+          : (365 * 24 * 60 * 60 * 1000) // 1年
+        
+        data.geminiOauth = {
+          access_token: form.value.accessToken || '',
+          refresh_token: form.value.refreshToken || '',
+          scope: 'https://www.googleapis.com/auth/cloud-platform',
+          token_type: 'Bearer',
+          expiry_date: Date.now() + expiresInMs
+        }
+      }
     }
     
     if (props.account.platform === 'gemini' && form.value.projectId) {
@@ -619,6 +719,20 @@ const updateAccount = async () => {
     loading.value = false
   }
 }
+
+// 监听表单名称变化，清除错误
+watch(() => form.value.name, () => {
+  if (errors.value.name && form.value.name?.trim()) {
+    errors.value.name = ''
+  }
+})
+
+// 监听Access Token变化，清除错误
+watch(() => form.value.accessToken, () => {
+  if (errors.value.accessToken && form.value.accessToken?.trim()) {
+    errors.value.accessToken = ''
+  }
+})
 
 // 监听账户变化，更新表单
 watch(() => props.account, (newAccount) => {

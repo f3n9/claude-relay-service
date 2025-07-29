@@ -21,6 +21,7 @@ dist-ssr
 .env.*.local
 .env
 vite.config.js.timestamp-*.mjs
+web/admin/
 
 # Editor directories and files
 .vscode/*

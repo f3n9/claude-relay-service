@@ -253,7 +253,7 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { showToast } from '@/utils/toast'
 import { useAccountsStore } from '@/stores/accounts'
 
@@ -278,10 +278,67 @@ const exchanging = ref(false)
 const authUrl = ref('')
 const authCode = ref('')
 const copied = ref(false)
+const sessionId = ref('') // 保存sessionId用于后续交换
 
 // 计算是否可以交换code
 const canExchange = computed(() => {
   return authUrl.value && authCode.value.trim()
+})
+
+// 监听授权码输入，自动提取URL中的code参数
+watch(authCode, (newValue) => {
+  if (!newValue || typeof newValue !== 'string') return
+  
+  const trimmedValue = newValue.trim()
+  
+  // 如果内容为空，不处理
+  if (!trimmedValue) return
+  
+  // 检查是否是 URL 格式（包含 http:// 或 https://）
+  const isUrl = trimmedValue.startsWith('http://') || trimmedValue.startsWith('https://')
+  
+  // 如果是 URL 格式
+  if (isUrl) {
+    // 检查是否是正确的 localhost:45462 开头的 URL
+    if (trimmedValue.startsWith('http://localhost:45462')) {
+      try {
+        const url = new URL(trimmedValue)
+        const code = url.searchParams.get('code')
+        
+        if (code) {
+          // 成功提取授权码
+          authCode.value = code
+          showToast('成功提取授权码！', 'success')
+          console.log('Successfully extracted authorization code from URL')
+        } else {
+          // URL 中没有 code 参数
+          showToast('URL 中未找到授权码参数，请检查链接是否正确', 'error')
+        }
+      } catch (error) {
+        // URL 解析失败
+        console.error('Failed to parse URL:', error)
+        showToast('链接格式错误，请检查是否为完整的 URL', 'error')
+      }
+    } else if (props.platform === 'gemini') {
+      // Gemini 平台可能使用不同的回调URL
+      // 尝试从任何URL中提取code参数
+      try {
+        const url = new URL(trimmedValue)
+        const code = url.searchParams.get('code')
+        
+        if (code) {
+          authCode.value = code
+          showToast('成功提取授权码！', 'success')
+        }
+      } catch (error) {
+        // 不是有效的URL，保持原值
+      }
+    } else {
+      // 错误的 URL（不是 localhost:45462 开头）
+      showToast('请粘贴以 http://localhost:45462 开头的链接', 'error')
+    }
+  }
+  // 如果不是 URL，保持原值（兼容直接输入授权码）
 })
 
 // 生成授权URL
@@ -289,17 +346,23 @@ const generateAuthUrl = async () => {
   loading.value = true
   try {
     const proxyConfig = props.proxy?.enabled ? {
-      type: props.proxy.type,
-      host: props.proxy.host,
-      port: props.proxy.port,
-      username: props.proxy.username,
-      password: props.proxy.password
-    } : null
+      proxy: {
+        type: props.proxy.type,
+        host: props.proxy.host,
+        port: parseInt(props.proxy.port),
+        username: props.proxy.username || null,
+        password: props.proxy.password || null
+      }
+    } : {}
     
     if (props.platform === 'claude') {
-      authUrl.value = await accountsStore.generateClaudeAuthUrl(proxyConfig)
+      const result = await accountsStore.generateClaudeAuthUrl(proxyConfig)
+      authUrl.value = result.authUrl
+      sessionId.value = result.sessionId
     } else if (props.platform === 'gemini') {
-      authUrl.value = await accountsStore.generateGeminiAuthUrl(proxyConfig)
+      const result = await accountsStore.generateGeminiAuthUrl(proxyConfig)
+      authUrl.value = result.authUrl
+      sessionId.value = result.sessionId
     }
   } catch (error) {
     showToast(error.message || '生成授权链接失败', 'error')
@@ -346,17 +409,30 @@ const exchangeCode = async () => {
   
   exchanging.value = true
   try {
-    const data = {
-      code: authCode.value.trim()
+    let data = {}
+    
+    if (props.platform === 'claude') {
+      // Claude使用sessionId和callbackUrl（即授权码）
+      data = {
+        sessionId: sessionId.value,
+        callbackUrl: authCode.value.trim()
+      }
+    } else if (props.platform === 'gemini') {
+      // Gemini使用code和sessionId
+      data = {
+        code: authCode.value.trim(),
+        sessionId: sessionId.value
+      }
     }
     
+    // 添加代理配置（如果启用）
     if (props.proxy?.enabled) {
       data.proxy = {
         type: props.proxy.type,
         host: props.proxy.host,
-        port: props.proxy.port,
-        username: props.proxy.username,
-        password: props.proxy.password
+        port: parseInt(props.proxy.port),
+        username: props.proxy.username || null,
+        password: props.proxy.password || null
       }
     }
     

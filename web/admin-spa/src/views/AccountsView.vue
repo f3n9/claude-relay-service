@@ -232,6 +232,17 @@
       @close="showEditAccountModal = false"
       @success="handleEditSuccess"
     />
+    
+    <!-- 确认弹窗 -->
+    <ConfirmModal
+      :show="showConfirmModal"
+      :title="confirmOptions.title"
+      :message="confirmOptions.message"
+      :confirm-text="confirmOptions.confirmText"
+      :cancel-text="confirmOptions.cancelText"
+      @confirm="handleConfirm"
+      @cancel="handleCancel"
+    />
   </div>
 </template>
 
@@ -239,7 +250,12 @@
 import { ref, computed, onMounted, watch } from 'vue'
 import { showToast } from '@/utils/toast'
 import { apiClient } from '@/config/api'
+import { useConfirm } from '@/composables/useConfirm'
 import AccountForm from '@/components/accounts/AccountForm.vue'
+import ConfirmModal from '@/components/common/ConfirmModal.vue'
+
+// 使用确认弹窗
+const { showConfirmModal, confirmOptions, showConfirm, handleConfirm, handleCancel } = useConfirm()
 
 // 数据状态
 const accounts = ref([])
@@ -375,6 +391,18 @@ const formatLastUsed = (dateString) => {
   return date.toLocaleDateString('zh-CN')
 }
 
+// 加载API Keys列表
+const loadApiKeys = async () => {
+  try {
+    const response = await apiClient.get('/admin/api-keys')
+    if (response.success) {
+      apiKeys.value = response.data
+    }
+  } catch (error) {
+    console.error('Failed to load API keys:', error)
+  }
+}
+
 // 格式化会话窗口时间
 const formatSessionWindow = (windowStart, windowEnd) => {
   if (!windowStart || !windowEnd) return '--'
@@ -417,7 +445,24 @@ const editAccount = (account) => {
 
 // 删除账户
 const deleteAccount = async (account) => {
-  if (!confirm(`确定要删除账户 "${account.name}" 吗？此操作不可恢复。`)) return
+  // 检查是否有API Key绑定到此账号
+  const boundKeysCount = apiKeys.value.filter(key => 
+    key.claudeAccountId === account.id || key.geminiAccountId === account.id
+  ).length
+  
+  if (boundKeysCount > 0) {
+    showToast(`无法删除此账号，有 ${boundKeysCount} 个API Key绑定到此账号，请先解绑所有API Key`, 'error')
+    return
+  }
+  
+  const confirmed = await showConfirm(
+    '删除账户',
+    `确定要删除账户 "${account.name}" 吗？\n\n此操作不可恢复。`,
+    '删除',
+    '取消'
+  )
+  
+  if (!confirmed) return
   
   try {
     const endpoint = account.platform === 'claude' 
@@ -489,6 +534,7 @@ watch(accountSortBy, (newVal) => {
 
 onMounted(() => {
   loadAccounts()
+  loadApiKeys()
 })
 </script>
 

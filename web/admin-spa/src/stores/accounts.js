@@ -229,7 +229,7 @@ export const useAccountsStore = defineStore('accounts', () => {
     try {
       const response = await apiClient.post('/admin/claude-accounts/generate-auth-url', proxyConfig)
       if (response.success) {
-        return response.data.authUrl // 返回authUrl字符串而不是整个对象
+        return response.data // 返回整个对象，包含authUrl和sessionId
       } else {
         throw new Error(response.message || '生成授权URL失败')
       }
@@ -259,7 +259,7 @@ export const useAccountsStore = defineStore('accounts', () => {
     try {
       const response = await apiClient.post('/admin/gemini-accounts/generate-auth-url', proxyConfig)
       if (response.success) {
-        return response.data.authUrl // 返回authUrl字符串而不是整个对象
+        return response.data // 返回整个对象，包含authUrl和sessionId
       } else {
         throw new Error(response.message || '生成授权URL失败')
       }

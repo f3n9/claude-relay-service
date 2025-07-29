@@ -23,15 +23,13 @@
 </template>
 
 <script setup>
-import { ref, watch, onMounted } from 'vue'
+import { ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { useAuthStore } from '@/stores/auth'
 import AppHeader from './AppHeader.vue'
 import TabBar from './TabBar.vue'
 
 const route = useRoute()
 const router = useRouter()
-const authStore = useAuthStore()
 
 // 根据路由设置当前激活的标签
 const activeTab = ref('dashboard')
@@ -60,10 +58,7 @@ const handleTabChange = (tabKey) => {
   router.push(tabRouteMap[tabKey])
 }
 
-// 加载OEM设置
-onMounted(() => {
-  authStore.loadOemSettings()
-})
+// OEM设置已在App.vue中加载，无需重复加载
 </script>
 
 <style scoped>

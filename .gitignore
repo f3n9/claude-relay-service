@@ -229,3 +229,7 @@ out/
 
 # Runtime files
 *.sock
+
+# Old admin interface (deprecated)
+web/admin/
+web/apiStats/

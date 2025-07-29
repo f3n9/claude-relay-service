@@ -92,11 +92,11 @@ export const useAuthStore = defineStore('auth', () => {
         oemSettings.value = { ...oemSettings.value, ...result.data }
         
         // 设置favicon
-        if (result.data.faviconData) {
+        if (result.data.siteIconData || result.data.siteIcon) {
           const link = document.querySelector("link[rel*='icon']") || document.createElement('link')
           link.type = 'image/x-icon'
           link.rel = 'shortcut icon'
-          link.href = result.data.faviconData
+          link.href = result.data.siteIconData || result.data.siteIcon
           document.getElementsByTagName('head')[0].appendChild(link)
         }
         
