@@ -1,7 +1,7 @@
 <template>
   <Teleport to="body">
     <div class="fixed inset-0 modal z-50 flex items-center justify-center p-4">
-      <div class="modal-content w-full max-w-md p-6 mx-auto max-h-[85vh] flex flex-col">
+      <div class="modal-content w-full max-w-lg p-6 mx-auto max-h-[90vh] flex flex-col">
       <div class="flex items-center justify-between mb-4">
         <div class="flex items-center gap-3">
           <div class="w-10 h-10 bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl flex items-center justify-center">
@@ -75,38 +75,54 @@
             <h4 class="font-semibold text-gray-800 text-sm">速率限制设置 (可选)</h4>
           </div>
           
-          <div class="grid grid-cols-3 gap-3">
-            <div>
-              <label class="block text-xs font-medium text-gray-700 mb-1">时间窗口(分钟)</label>
-              <input 
-                v-model="form.rateLimitWindow" 
-                type="number" 
-                min="1"
-                placeholder="无限制" 
-                class="form-input w-full text-sm"
-              >
+          <div class="space-y-2">
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-2">
+              <div>
+                <label class="block text-xs font-medium text-gray-700 mb-1">时间窗口 (分钟)</label>
+                <input 
+                  v-model="form.rateLimitWindow" 
+                  type="number" 
+                  min="1"
+                  placeholder="无限制" 
+                  class="form-input w-full text-sm"
+                >
+                <p class="text-xs text-gray-500 mt-0.5">时间段单位</p>
+              </div>
+              
+              <div>
+                <label class="block text-xs font-medium text-gray-700 mb-1">请求次数限制</label>
+                <input 
+                  v-model="form.rateLimitRequests" 
+                  type="number" 
+                  min="1"
+                  placeholder="无限制" 
+                  class="form-input w-full text-sm"
+                >
+                <p class="text-xs text-gray-500 mt-0.5">窗口内最大请求</p>
+              </div>
+              
+              <div>
+                <label class="block text-xs font-medium text-gray-700 mb-1">Token 限制</label>
+                <input 
+                  v-model="form.tokenLimit" 
+                  type="number" 
+                  placeholder="无限制" 
+                  class="form-input w-full text-sm"
+                >
+                <p class="text-xs text-gray-500 mt-0.5">窗口内最大Token</p>
+              </div>
             </div>
-            <div>
-              <label class="block text-xs font-medium text-gray-700 mb-1">请求次数限制</label>
-              <input 
-                v-model="form.rateLimitRequests" 
-                type="number" 
-                min="1"
-                placeholder="无限制" 
-                class="form-input w-full text-sm"
-              >
-            </div>
-            <div>
-              <label class="block text-xs font-medium text-gray-700 mb-1">Token限制</label>
-              <input 
-                v-model="form.tokenLimit" 
-                type="number" 
-                placeholder="无限制" 
-                class="form-input w-full text-sm"
-              >
+            
+            <!-- 示例说明 -->
+            <div class="bg-blue-100 rounded-lg p-2">
+              <h5 class="text-xs font-semibold text-blue-800 mb-1">💡 使用示例</h5>
+              <div class="text-xs text-blue-700 space-y-0.5">
+                <div><strong>示例1:</strong> 时间窗口=60，请求次数=1000 → 每60分钟最多1000次请求</div>
+                <div><strong>示例2:</strong> 时间窗口=1，Token=10000 → 每分钟最多10,000个Token</div>
+                <div><strong>示例3:</strong> 窗口=30，请求=50，Token=100000 → 每30分钟50次请求且不超10万Token</div>
+              </div>
             </div>
           </div>
-          <p class="text-xs text-gray-500 mt-2">设置时间窗口内的请求次数和Token使用量限制</p>
         </div>
         
         <div>
