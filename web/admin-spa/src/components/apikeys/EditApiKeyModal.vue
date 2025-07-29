@@ -29,6 +29,40 @@
           <p class="text-xs text-gray-500 mt-2">名称不可修改</p>
         </div>
         
+        <!-- 标签 -->
+        <div>
+          <label class="block text-sm font-semibold text-gray-700 mb-3">标签</label>
+          <div class="space-y-3">
+            <!-- 已添加的标签 -->
+            <div v-if="form.tags.length > 0" class="flex flex-wrap gap-2">
+              <span v-for="(tag, index) in form.tags" :key="index" 
+                    class="inline-flex items-center gap-1 px-3 py-1 bg-blue-100 text-blue-800 text-sm rounded-full">
+                {{ tag }}
+                <button type="button" @click="removeTag(index)" 
+                        class="ml-1 hover:text-blue-900">
+                  <i class="fas fa-times text-xs"></i>
+                </button>
+              </span>
+            </div>
+            
+            <!-- 标签输入 -->
+            <div class="flex gap-2">
+              <input 
+                v-model="newTag" 
+                type="text" 
+                class="form-input flex-1"
+                placeholder="输入新标签名称"
+                @keypress.enter.prevent="addTag"
+              >
+              <button type="button" @click="addTag" 
+                      class="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors">
+                <i class="fas fa-plus"></i>
+              </button>
+            </div>
+            <p class="text-xs text-gray-500">用于标记不同团队或用途，方便筛选管理</p>
+          </div>
+        </div>
+        
         <!-- 速率限制设置 -->
         <div class="bg-blue-50 border border-blue-200 rounded-lg p-4 space-y-4">
           <div class="flex items-start gap-3 mb-3">
@@ -343,6 +377,9 @@ const loading = ref(false)
 // 支持的客户端列表
 const supportedClients = ref([])
 
+// 标签相关
+const newTag = ref('')
+
 // 表单数据
 const form = reactive({
   name: '',
@@ -358,7 +395,8 @@ const form = reactive({
   restrictedModels: [],
   modelInput: '',
   enableClientRestriction: false,
-  allowedClients: []
+  allowedClients: [],
+  tags: []
 })
 
 
@@ -375,6 +413,21 @@ const removeRestrictedModel = (index) => {
   form.restrictedModels.splice(index, 1)
 }
 
+// 标签管理方法
+const addTag = () => {
+  if (newTag.value && newTag.value.trim()) {
+    const tag = newTag.value.trim()
+    if (!form.tags.includes(tag)) {
+      form.tags.push(tag)
+    }
+    newTag.value = ''
+  }
+}
+
+const removeTag = (index) => {
+  form.tags.splice(index, 1)
+}
+
 // 更新 API Key
 const updateApiKey = async () => {
   loading.value = true
@@ -389,7 +442,8 @@ const updateApiKey = async () => {
       dailyCostLimit: form.dailyCostLimit !== '' && form.dailyCostLimit !== null ? parseFloat(form.dailyCostLimit) : 0,
       permissions: form.permissions,
       claudeAccountId: form.claudeAccountId || null,
-      geminiAccountId: form.geminiAccountId || null
+      geminiAccountId: form.geminiAccountId || null,
+      tags: form.tags
     }
     
     // 模型限制
@@ -437,6 +491,7 @@ onMounted(async () => {
   form.geminiAccountId = props.apiKey.geminiAccountId || ''
   form.restrictedModels = props.apiKey.restrictedModels || []
   form.allowedClients = props.apiKey.allowedClients || []
+  form.tags = props.apiKey.tags || []
   form.enableModelRestriction = form.restrictedModels.length > 0
   form.enableClientRestriction = form.allowedClients.length > 0
 })

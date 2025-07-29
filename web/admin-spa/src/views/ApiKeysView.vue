@@ -18,6 +18,14 @@
             <option value="monthly">本月</option>
             <option value="all">全部时间</option>
           </select>
+          <!-- 标签筛选器 -->
+          <select 
+            v-model="selectedTagFilter" 
+            class="form-input px-3 py-2 text-sm"
+          >
+            <option value="">所有标签</option>
+            <option v-for="tag in availableTags" :key="tag" :value="tag">{{ tag }}</option>
+          </select>
           <button 
             @click.stop="openCreateApiKeyModal"
             class="btn btn-primary px-6 py-3 flex items-center gap-2"
@@ -49,6 +57,7 @@
                 <i v-if="apiKeysSortBy === 'name'" :class="['fas', apiKeysSortOrder === 'asc' ? 'fa-sort-up' : 'fa-sort-down', 'ml-1']"></i>
                 <i v-else class="fas fa-sort ml-1 text-gray-400"></i>
               </th>
+              <th class="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">标签</th>
               <th class="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider">API Key</th>
               <th class="px-6 py-4 text-left text-xs font-bold text-gray-700 uppercase tracking-wider cursor-pointer hover:bg-gray-100" @click="sortApiKeys('status')">
                 状态
@@ -99,6 +108,16 @@
                         </span>
                       </div>
                     </div>
+                  </div>
+                </td>
+                <td class="px-6 py-4">
+                  <div class="flex flex-wrap gap-1">
+                    <span v-for="tag in (key.tags || [])" :key="tag" 
+                          class="inline-flex items-center px-2 py-0.5 bg-blue-100 text-blue-800 text-xs rounded-full">
+                      {{ tag }}
+                    </span>
+                    <span v-if="!key.tags || key.tags.length === 0" 
+                          class="text-xs text-gray-400">无标签</span>
                   </div>
                 </td>
                 <td class="px-6 py-4 whitespace-nowrap">
@@ -473,6 +492,10 @@ const apiKeyDateFilters = ref({})
 const defaultTime = ref([new Date(2000, 1, 1, 0, 0, 0), new Date(2000, 2, 1, 23, 59, 59)])
 const accounts = ref({ claude: [], gemini: [] })
 
+// 标签相关
+const selectedTagFilter = ref('')
+const availableTags = ref([])
+
 // 模态框状态
 const showCreateApiKeyModal = ref(false)
 const showEditApiKeyModal = ref(false)
@@ -484,9 +507,19 @@ const newApiKeyData = ref(null)
 
 // 计算排序后的API Keys
 const sortedApiKeys = computed(() => {
-  if (!apiKeysSortBy.value) return apiKeys.value
+  // 先进行标签筛选
+  let filteredKeys = apiKeys.value
+  if (selectedTagFilter.value) {
+    filteredKeys = apiKeys.value.filter(key => 
+      key.tags && key.tags.includes(selectedTagFilter.value)
+    )
+  }
   
-  const sorted = [...apiKeys.value].sort((a, b) => {
+  // 如果没有排序字段，返回筛选后的结果
+  if (!apiKeysSortBy.value) return filteredKeys
+  
+  // 排序
+  const sorted = [...filteredKeys].sort((a, b) => {
     let aVal = a[apiKeysSortBy.value]
     let bVal = b[apiKeysSortBy.value]
     
@@ -537,6 +570,15 @@ const loadApiKeys = async () => {
     const data = await apiClient.get(`/admin/api-keys?timeRange=${apiKeyStatsTimeRange.value}`)
     if (data.success) {
       apiKeys.value = data.data || []
+      
+      // 更新可用标签列表
+      const tagsSet = new Set()
+      apiKeys.value.forEach(key => {
+        if (key.tags && Array.isArray(key.tags)) {
+          key.tags.forEach(tag => tagsSet.add(tag))
+        }
+      })
+      availableTags.value = Array.from(tagsSet).sort()
     }
   } catch (error) {
     showToast('加载 API Keys 失败', 'error')
