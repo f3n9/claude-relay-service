@@ -130,8 +130,8 @@
                 </div>
               </td>
               <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
-                <div v-if="account.proxy" class="text-xs bg-blue-50 px-2 py-1 rounded">
-                  {{ account.proxy.type }}://{{ account.proxy.host }}:{{ account.proxy.port }}
+                <div v-if="formatProxyDisplay(account.proxy)" class="text-xs bg-blue-50 px-2 py-1 rounded font-mono">
+                  {{ formatProxyDisplay(account.proxy) }}
                 </div>
                 <div v-else class="text-gray-400">无代理</div>
               </td>
@@ -401,6 +401,24 @@ const loadApiKeys = async () => {
   } catch (error) {
     console.error('Failed to load API keys:', error)
   }
+}
+
+// 格式化代理信息显示
+const formatProxyDisplay = (proxy) => {
+  if (!proxy || !proxy.host || !proxy.port) return null
+  
+  let display = `${proxy.type}://${proxy.host}:${proxy.port}`
+  
+  // 如果有用户名密码，添加认证信息（部分隐藏）
+  if (proxy.username) {
+    const maskedUsername = proxy.username.length > 2 
+      ? proxy.username[0] + '***' + proxy.username[proxy.username.length - 1]
+      : '***'
+    const maskedPassword = proxy.password ? '****' : ''
+    display = `${proxy.type}://${maskedUsername}:${maskedPassword}@${proxy.host}:${proxy.port}`
+  }
+  
+  return display
 }
 
 // 格式化会话窗口时间

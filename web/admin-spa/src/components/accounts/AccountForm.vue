@@ -434,6 +434,28 @@ const show = ref(true)
 const oauthStep = ref(1)
 const loading = ref(false)
 
+// 初始化代理配置
+const initProxyConfig = () => {
+  if (props.account?.proxy && props.account.proxy.host && props.account.proxy.port) {
+    return {
+      enabled: true,
+      type: props.account.proxy.type || 'socks5',
+      host: props.account.proxy.host,
+      port: props.account.proxy.port,
+      username: props.account.proxy.username || '',
+      password: props.account.proxy.password || ''
+    }
+  }
+  return {
+    enabled: false,
+    type: 'socks5',
+    host: '',
+    port: '',
+    username: '',
+    password: ''
+  }
+}
+
 // 表单数据
 const form = ref({
   platform: props.account?.platform || 'claude',
@@ -444,14 +466,7 @@ const form = ref({
   projectId: props.account?.projectId || '',
   accessToken: '',
   refreshToken: '',
-  proxy: props.account?.proxy || {
-    enabled: false,
-    type: 'socks5',
-    host: '',
-    port: '',
-    username: '',
-    password: ''
-  }
+  proxy: initProxyConfig()
 })
 
 // 表单验证错误
@@ -737,6 +752,25 @@ watch(() => form.value.accessToken, () => {
 // 监听账户变化，更新表单
 watch(() => props.account, (newAccount) => {
   if (newAccount) {
+    // 重新初始化代理配置
+    const proxyConfig = newAccount.proxy && newAccount.proxy.host && newAccount.proxy.port
+      ? {
+          enabled: true,
+          type: newAccount.proxy.type || 'socks5',
+          host: newAccount.proxy.host,
+          port: newAccount.proxy.port,
+          username: newAccount.proxy.username || '',
+          password: newAccount.proxy.password || ''
+        }
+      : {
+          enabled: false,
+          type: 'socks5',
+          host: '',
+          port: '',
+          username: '',
+          password: ''
+        }
+    
     form.value = {
       platform: newAccount.platform,
       addType: 'oauth',
@@ -746,14 +780,7 @@ watch(() => props.account, (newAccount) => {
       projectId: newAccount.projectId || '',
       accessToken: '',
       refreshToken: '',
-      proxy: newAccount.proxy || {
-        enabled: false,
-        type: 'socks5',
-        host: '',
-        port: '',
-        username: '',
-        password: ''
-      }
+      proxy: proxyConfig
     }
   }
 }, { immediate: true })
