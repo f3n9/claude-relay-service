@@ -20,6 +20,8 @@
           <h1 :class="['text-2xl font-bold header-title leading-tight', titleClass]">{{ title }}</h1>
         </template>
         <div v-else-if="loading" class="h-8 w-64 bg-gray-300/50 rounded animate-pulse"></div>
+        <!-- 插槽用于版本信息等额外内容 -->
+        <slot name="after-title"></slot>
       </div>
       <p v-if="subtitle" class="text-gray-600 text-sm leading-tight mt-0.5">{{ subtitle }}</p>
     </div>

@@ -556,17 +556,13 @@ const createApiKey = async () => {
       tags: form.tags.length > 0 ? form.tags : undefined
     }
     
-    // 模型限制
+    // 模型限制 - 始终提交这些字段
     data.enableModelRestriction = form.enableModelRestriction
-    if (form.enableModelRestriction && form.restrictedModels.length > 0) {
-      data.restrictedModels = form.restrictedModels
-    }
+    data.restrictedModels = form.restrictedModels
     
-    // 客户端限制
+    // 客户端限制 - 始终提交这些字段
     data.enableClientRestriction = form.enableClientRestriction
-    if (form.enableClientRestriction && form.allowedClients.length > 0) {
-      data.allowedClients = form.allowedClients
-    }
+    data.allowedClients = form.allowedClients
     
     const result = await apiClient.post('/admin/api-keys', data)
     

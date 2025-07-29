@@ -9,22 +9,25 @@
           subtitle="管理后台"
           :logo-src="oemSettings.siteIconData || oemSettings.siteIcon"
           title-class="text-white"
-        />
-        <!-- 版本信息 -->
-        <div class="flex items-center gap-2">
-          <span class="text-sm text-gray-400 font-mono">v{{ versionInfo.current || '...' }}</span>
-          <!-- 更新提示 -->
-          <a 
-            v-if="versionInfo.hasUpdate" 
-            :href="versionInfo.releaseInfo?.htmlUrl || '#'"
-            target="_blank"
-            class="inline-flex items-center gap-1 px-2 py-0.5 bg-green-500 border border-green-600 rounded-full text-xs text-white hover:bg-green-600 transition-colors animate-pulse"
-            title="有新版本可用"
-          >
-            <i class="fas fa-arrow-up text-[10px]"></i>
-            <span>新版本</span>
-          </a>
-        </div>
+        >
+          <template #after-title>
+            <!-- 版本信息 -->
+            <div class="flex items-center gap-2">
+              <span class="text-sm text-gray-400 font-mono">v{{ versionInfo.current || '...' }}</span>
+              <!-- 更新提示 -->
+              <a 
+                v-if="versionInfo.hasUpdate" 
+                :href="versionInfo.releaseInfo?.htmlUrl || '#'"
+                target="_blank"
+                class="inline-flex items-center gap-1 px-2 py-0.5 bg-green-500 border border-green-600 rounded-full text-xs text-white hover:bg-green-600 transition-colors animate-pulse"
+                title="有新版本可用"
+              >
+                <i class="fas fa-arrow-up text-[10px]"></i>
+                <span>新版本</span>
+              </a>
+            </div>
+          </template>
+        </LogoTitle>
       </div>
       <!-- 用户菜单 -->
       <div class="relative user-menu-container">
