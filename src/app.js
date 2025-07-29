@@ -62,6 +62,11 @@ class Application {
         logger.info(`💰 Cost initialization completed: ${result.processed} processed, ${result.errors} errors`);
       }
       
+      // 🕐 初始化Claude账户会话窗口
+      logger.info('🕐 Initializing Claude account session windows...');
+      const claudeAccountService = require('./services/claudeAccountService');
+      await claudeAccountService.initializeSessionWindows();
+      
       // 🛡️ 安全中间件
       this.app.use(helmet({
         contentSecurityPolicy: false, // 允许内联样式和脚本
