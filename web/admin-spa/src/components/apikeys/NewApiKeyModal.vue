@@ -13,8 +13,9 @@
           </div>
         </div>
         <button 
-          @click="handleClose"
+          @click="handleDirectClose"
           class="text-gray-400 hover:text-gray-600 transition-colors"
+          title="直接关闭（不推荐）"
         >
           <i class="fas fa-times text-xl"></i>
         </button>
@@ -158,7 +159,7 @@ const copyApiKey = async () => {
   }
 }
 
-// 关闭弹窗
+// 关闭弹窗（带确认）
 const handleClose = async () => {
   if (window.showConfirm) {
     const confirmed = await window.showConfirm(
@@ -174,6 +175,29 @@ const handleClose = async () => {
     // 降级方案
     const confirmed = confirm(
       '关闭后将无法再次查看完整的API Key，请确保已经妥善保存。\n\n确定要关闭吗？'
+    )
+    if (confirmed) {
+      emit('close')
+    }
+  }
+}
+
+// 直接关闭（不带确认）
+const handleDirectClose = async () => {
+  if (window.showConfirm) {
+    const confirmed = await window.showConfirm(
+      '确定要关闭吗？',
+      '您还没有保存API Key，关闭后将无法再次查看。\n\n建议您先复制API Key再关闭。',
+      '仍然关闭',
+      '返回复制'
+    )
+    if (confirmed) {
+      emit('close')
+    }
+  } else {
+    // 降级方案
+    const confirmed = confirm(
+      '您还没有保存API Key，关闭后将无法再次查看。\n\n确定要关闭吗？'
     )
     if (confirmed) {
       emit('close')
