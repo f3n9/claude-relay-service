@@ -85,7 +85,7 @@
         </button>
         <button 
           @click="handleClose" 
-          class="px-6 py-3 bg-gray-100 text-gray-700 rounded-xl font-semibold hover:bg-gray-200 transition-colors"
+          class="px-6 py-3 bg-gray-200 text-gray-800 rounded-xl font-semibold hover:bg-gray-300 transition-colors border border-gray-300"
         >
           我已保存
         </button>
@@ -159,12 +159,25 @@ const copyApiKey = async () => {
 }
 
 // 关闭弹窗
-const handleClose = () => {
-  const confirmed = confirm(
-    '关闭后将无法再次查看完整的API Key，请确保已经妥善保存。\n\n确定要关闭吗？'
-  )
-  if (confirmed) {
-    emit('close')
+const handleClose = async () => {
+  if (window.showConfirm) {
+    const confirmed = await window.showConfirm(
+      '关闭提醒',
+      '关闭后将无法再次查看完整的API Key，请确保已经妥善保存。\n\n确定要关闭吗？',
+      '确定关闭',
+      '取消'
+    )
+    if (confirmed) {
+      emit('close')
+    }
+  } else {
+    // 降级方案
+    const confirmed = confirm(
+      '关闭后将无法再次查看完整的API Key，请确保已经妥善保存。\n\n确定要关闭吗？'
+    )
+    if (confirmed) {
+      emit('close')
+    }
   }
 }
 </script>
