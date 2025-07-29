@@ -463,7 +463,7 @@
     
     <NewApiKeyModal 
       v-if="showNewApiKeyModal"
-      :apiKeyData="newApiKeyData"
+      :apiKey="newApiKeyData"
       @close="showNewApiKeyModal = false"
     />
   </div>

@@ -557,11 +557,13 @@ const createApiKey = async () => {
     }
     
     // 模型限制
+    data.enableModelRestriction = form.enableModelRestriction
     if (form.enableModelRestriction && form.restrictedModels.length > 0) {
       data.restrictedModels = form.restrictedModels
     }
     
     // 客户端限制
+    data.enableClientRestriction = form.enableClientRestriction
     if (form.enableClientRestriction && form.allowedClients.length > 0) {
       data.allowedClients = form.allowedClients
     }
@@ -570,7 +572,7 @@ const createApiKey = async () => {
     
     if (result.success) {
       showToast('API Key 创建成功', 'success')
-      emit('success', result.apiKey)
+      emit('success', result.data)
       emit('close')
     } else {
       showToast(result.message || '创建失败', 'error')

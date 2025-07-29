@@ -447,6 +447,7 @@ const updateApiKey = async () => {
     }
     
     // 模型限制
+    data.enableModelRestriction = form.enableModelRestriction
     if (form.enableModelRestriction && form.restrictedModels.length > 0) {
       data.restrictedModels = form.restrictedModels
     } else {
@@ -454,6 +455,7 @@ const updateApiKey = async () => {
     }
     
     // 客户端限制
+    data.enableClientRestriction = form.enableClientRestriction
     if (form.enableClientRestriction && form.allowedClients.length > 0) {
       data.allowedClients = form.allowedClients
     } else {
