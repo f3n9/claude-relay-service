@@ -62,8 +62,9 @@ async function handleMessagesRequest(req, res) {
       // 生成会话哈希用于sticky会话
       const sessionHash = sessionHelper.generateSessionHash(req.body);
       
-      // 使用统一调度选择账号
-      const { accountId, accountType } = await unifiedClaudeScheduler.selectAccountForApiKey(req.apiKey, sessionHash);
+      // 使用统一调度选择账号（传递请求的模型）
+      const requestedModel = req.body.model;
+      const { accountId, accountType } = await unifiedClaudeScheduler.selectAccountForApiKey(req.apiKey, sessionHash, requestedModel);
       
       // 根据账号类型选择对应的转发服务并调用
       if (accountType === 'claude-official') {
@@ -152,16 +153,22 @@ async function handleMessagesRequest(req, res) {
       // 生成会话哈希用于sticky会话
       const sessionHash = sessionHelper.generateSessionHash(req.body);
       
-      // 使用统一调度选择账号
-      const { accountId, accountType } = await unifiedClaudeScheduler.selectAccountForApiKey(req.apiKey, sessionHash);
+      // 使用统一调度选择账号（传递请求的模型）
+      const requestedModel = req.body.model;
+      const { accountId, accountType } = await unifiedClaudeScheduler.selectAccountForApiKey(req.apiKey, sessionHash, requestedModel);
       
       // 根据账号类型选择对应的转发服务
       let response;
+      logger.debug(`[DEBUG] Request query params: ${JSON.stringify(req.query)}`);
+      logger.debug(`[DEBUG] Request URL: ${req.url}`);
+      logger.debug(`[DEBUG] Request path: ${req.path}`);
+      
       if (accountType === 'claude-official') {
         // 官方Claude账号使用原有的转发服务
         response = await claudeRelayService.relayRequest(req.body, req.apiKey, req, res, req.headers);
       } else {
         // Claude Console账号使用Console转发服务
+        logger.debug(`[DEBUG] Calling claudeConsoleRelayService.relayRequest with accountId: ${accountId}`);
         response = await claudeConsoleRelayService.relayRequest(req.body, req.apiKey, req, res, req.headers, accountId);
       }
       

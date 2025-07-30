@@ -9,7 +9,7 @@ class UnifiedClaudeScheduler {
   }
 
   // 🎯 统一调度Claude账号（官方和Console）
-  async selectAccountForApiKey(apiKeyData, sessionHash = null) {
+  async selectAccountForApiKey(apiKeyData, sessionHash = null, requestedModel = null) {
     try {
       // 如果API Key绑定了专属账户，优先使用
       if (apiKeyData.claudeAccountId) {
@@ -41,11 +41,16 @@ class UnifiedClaudeScheduler {
         }
       }
 
-      // 获取所有可用账户
-      const availableAccounts = await this._getAllAvailableAccounts(apiKeyData);
+      // 获取所有可用账户（传递请求的模型进行过滤）
+      const availableAccounts = await this._getAllAvailableAccounts(apiKeyData, requestedModel);
       
       if (availableAccounts.length === 0) {
-        throw new Error('No available Claude accounts (neither official nor console)');
+        // 提供更详细的错误信息
+        if (requestedModel) {
+          throw new Error(`No available Claude accounts support the requested model: ${requestedModel}`);
+        } else {
+          throw new Error('No available Claude accounts (neither official nor console)');
+        }
       }
 
       // 按优先级和最后使用时间排序
@@ -73,7 +78,7 @@ class UnifiedClaudeScheduler {
   }
 
   // 📋 获取所有可用账户（合并官方和Console）
-  async _getAllAvailableAccounts(apiKeyData) {
+  async _getAllAvailableAccounts(apiKeyData, requestedModel = null) {
     const availableAccounts = [];
 
     // 如果API Key绑定了专属Claude账户，优先返回
@@ -129,6 +134,14 @@ class UnifiedClaudeScheduler {
       if (account.isActive === true && 
           account.status === 'active' &&
           account.accountType === 'shared') {
+        
+        // 检查模型支持（如果有请求的模型）
+        if (requestedModel && account.supportedModels && account.supportedModels.length > 0) {
+          if (!account.supportedModels.includes(requestedModel)) {
+            logger.info(`🚫 Claude Console account ${account.name} does not support model ${requestedModel}`);
+            continue;
+          }
+        }
         
         // 检查是否被限流
         const isRateLimited = await claudeConsoleAccountService.isAccountRateLimited(account.id);

@@ -21,28 +21,11 @@ class ClaudeConsoleRelayService {
 
       logger.info(`📤 Processing Claude Console API request for key: ${apiKeyData.name || apiKeyData.id}, account: ${account.name} (${accountId})`);
       logger.debug(`🌐 Account API URL: ${account.apiUrl}`);
+      logger.debug(`🔍 Account supportedModels: ${JSON.stringify(account.supportedModels)}`);
+      logger.debug(`🔑 Account has apiKey: ${!!account.apiKey}`);
+      logger.debug(`📝 Request model: ${requestBody.model}`);
 
-      // 检查模型支持
-      if (account.supportedModels && account.supportedModels.length > 0) {
-        const requestedModel = requestBody.model;
-        if (requestedModel && !account.supportedModels.includes(requestedModel)) {
-          logger.warn(`🚫 Model not supported by Claude Console account ${account.name}: ${requestedModel}`);
-          
-          // 标记账户为blocked
-          await claudeConsoleAccountService.blockAccount(accountId, `Model ${requestedModel} not supported`);
-          
-          return {
-            statusCode: 400,
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              error: {
-                type: 'invalid_request_error',
-                message: `Model ${requestedModel} is not supported by this account`
-              }
-            })
-          };
-        }
-      }
+      // 模型兼容性检查已经在调度器中完成，这里不需要再检查
 
       // 创建代理agent
       const proxyAgent = claudeConsoleAccountService._createProxyAgent(account.proxy);
@@ -73,6 +56,12 @@ class ClaudeConsoleRelayService {
         : `${cleanUrl}/v1/messages`;
       
       logger.debug(`🎯 Final API endpoint: ${apiEndpoint}`);
+      logger.debug(`[DEBUG] Options passed to relayRequest: ${JSON.stringify(options)}`);
+      logger.debug(`[DEBUG] Client headers received: ${JSON.stringify(clientHeaders)}`);
+      
+      // 过滤客户端请求头
+      const filteredHeaders = this._filterClientHeaders(clientHeaders);
+      logger.debug(`[DEBUG] Filtered client headers: ${JSON.stringify(filteredHeaders)}`);
       
       // 准备请求配置
       const requestConfig = {
@@ -84,7 +73,7 @@ class ClaudeConsoleRelayService {
           'x-api-key': account.apiKey,
           'anthropic-version': '2023-06-01',
           'User-Agent': account.userAgent || this.defaultUserAgent,
-          ...this._filterClientHeaders(clientHeaders)
+          ...filteredHeaders
         },
         httpsAgent: proxyAgent,
         timeout: config.proxy.timeout || 60000,
@@ -92,12 +81,18 @@ class ClaudeConsoleRelayService {
         validateStatus: () => true // 接受所有状态码
       };
 
+      logger.debug(`[DEBUG] Initial headers before beta: ${JSON.stringify(requestConfig.headers, null, 2)}`);
+      
       // 添加beta header如果需要
       if (options.betaHeader) {
+        logger.debug(`[DEBUG] Adding beta header: ${options.betaHeader}`);
         requestConfig.headers['anthropic-beta'] = options.betaHeader;
+      } else {
+        logger.debug(`[DEBUG] No beta header to add`);
       }
 
       // 发送请求
+      logger.debug(`📤 Sending request to Claude Console API with headers:`, JSON.stringify(requestConfig.headers, null, 2));
       const response = await axios(requestConfig);
 
       // 移除监听器（请求成功完成）
@@ -109,6 +104,10 @@ class ClaudeConsoleRelayService {
       }
 
       logger.debug(`🔗 Claude Console API response: ${response.status}`);
+      logger.debug(`[DEBUG] Response headers: ${JSON.stringify(response.headers)}`);
+      logger.debug(`[DEBUG] Response data type: ${typeof response.data}`);
+      logger.debug(`[DEBUG] Response data length: ${response.data ? (typeof response.data === 'string' ? response.data.length : JSON.stringify(response.data).length) : 0}`);
+      logger.debug(`[DEBUG] Response data preview: ${typeof response.data === 'string' ? response.data.substring(0, 200) : JSON.stringify(response.data).substring(0, 200)}`);
 
       // 检查是否为限流错误
       if (response.status === 429) {
@@ -125,10 +124,13 @@ class ClaudeConsoleRelayService {
       // 更新最后使用时间
       await this._updateLastUsedTime(accountId);
 
+      const responseBody = typeof response.data === 'string' ? response.data : JSON.stringify(response.data);
+      logger.debug(`[DEBUG] Final response body to return: ${responseBody}`);
+
       return {
         statusCode: response.status,
         headers: response.headers,
-        body: typeof response.data === 'string' ? response.data : JSON.stringify(response.data),
+        body: responseBody,
         accountId
       };
 
@@ -141,13 +143,7 @@ class ClaudeConsoleRelayService {
 
       logger.error('❌ Claude Console Claude relay request failed:', error.message);
       
-      // 检查是否是模型不支持导致的错误
-      if (error.response && error.response.data && error.response.data.error) {
-        const errorMessage = error.response.data.error.message || '';
-        if (errorMessage.includes('model') && errorMessage.includes('not supported')) {
-          await claudeConsoleAccountService.blockAccount(accountId, errorMessage);
-        }
-      }
+      // 不再因为模型不支持而block账号
 
       throw error;
     }
@@ -165,28 +161,7 @@ class ClaudeConsoleRelayService {
       logger.info(`📡 Processing streaming Claude Console API request for key: ${apiKeyData.name || apiKeyData.id}, account: ${account.name} (${accountId})`);
       logger.debug(`🌐 Account API URL: ${account.apiUrl}`);
 
-      // 检查模型支持
-      if (account.supportedModels && account.supportedModels.length > 0) {
-        const requestedModel = requestBody.model;
-        if (requestedModel && !account.supportedModels.includes(requestedModel)) {
-          logger.warn(`🚫 Model not supported by Claude Console account ${account.name}: ${requestedModel}`);
-          
-          // 标记账户为blocked
-          await claudeConsoleAccountService.blockAccount(accountId, `Model ${requestedModel} not supported`);
-          
-          // 对于流式响应，需要写入错误并结束流
-          const errorResponse = JSON.stringify({
-            error: {
-              type: 'invalid_request_error',
-              message: `Model ${requestedModel} is not supported by this account`
-            }
-          });
-          
-          responseStream.writeHead(400, { 'Content-Type': 'application/json' });
-          responseStream.end(errorResponse);
-          return;
-        }
-      }
+      // 模型兼容性检查已经在调度器中完成，这里不需要再检查
 
       // 创建代理agent
       const proxyAgent = claudeConsoleAccountService._createProxyAgent(account.proxy);
@@ -355,13 +330,7 @@ class ClaudeConsoleRelayService {
                       }
                     }
 
-                    // 检查错误
-                    if (data.type === 'error' && data.error) {
-                      const errorMessage = data.error.message || '';
-                      if (errorMessage.includes('model') && errorMessage.includes('not supported')) {
-                        claudeConsoleAccountService.blockAccount(accountId, errorMessage);
-                      }
-                    }
+                    // 不再因为模型不支持而block账号
                   } catch (e) {
                     // 忽略解析错误
                   }

@@ -45,7 +45,7 @@ class ClaudeConsoleAccountService {
       platform: 'claude-console',
       name,
       description,
-      apiUrl: this._encryptSensitiveData(apiUrl),
+      apiUrl: apiUrl,
       apiKey: this._encryptSensitiveData(apiKey),
       priority: priority.toString(),
       supportedModels: JSON.stringify(supportedModels),
@@ -64,6 +64,9 @@ class ClaudeConsoleAccountService {
     };
 
     const client = redis.getClientSafe();
+    logger.debug(`[DEBUG] Saving account data to Redis with key: ${this.ACCOUNT_KEY_PREFIX}${accountId}`);
+    logger.debug(`[DEBUG] Account data to save: ${JSON.stringify(accountData, null, 2)}`);
+    
     await client.hset(
       `${this.ACCOUNT_KEY_PREFIX}${accountId}`,
       accountData
@@ -111,7 +114,7 @@ class ClaudeConsoleAccountService {
             platform: accountData.platform,
             name: accountData.name,
             description: accountData.description,
-            apiUrl: this._maskApiUrl(this._decryptSensitiveData(accountData.apiUrl)),
+            apiUrl: accountData.apiUrl,
             priority: parseInt(accountData.priority) || 50,
             supportedModels: JSON.parse(accountData.supportedModels || '[]'),
             userAgent: accountData.userAgent,
@@ -138,18 +141,28 @@ class ClaudeConsoleAccountService {
   // 🔍 获取单个账户（内部使用，包含敏感信息）
   async getAccount(accountId) {
     const client = redis.getClientSafe();
+    logger.debug(`[DEBUG] Getting account data for ID: ${accountId}`);
     const accountData = await client.hgetall(`${this.ACCOUNT_KEY_PREFIX}${accountId}`);
     
     if (!accountData || Object.keys(accountData).length === 0) {
+      logger.debug(`[DEBUG] No account data found for ID: ${accountId}`);
       return null;
     }
     
-    // 解密敏感字段
-    accountData.apiUrl = this._decryptSensitiveData(accountData.apiUrl);
-    accountData.apiKey = this._decryptSensitiveData(accountData.apiKey);
+    logger.debug(`[DEBUG] Raw account data keys: ${Object.keys(accountData).join(', ')}`);
+    logger.debug(`[DEBUG] Raw supportedModels value: ${accountData.supportedModels}`);
+    
+    // 解密敏感字段（只解密apiKey，apiUrl不加密）
+    const decryptedKey = this._decryptSensitiveData(accountData.apiKey);
+    logger.debug(`[DEBUG] URL exists: ${!!accountData.apiUrl}, Decrypted key exists: ${!!decryptedKey}`);
+    
+    accountData.apiKey = decryptedKey;
     
     // 解析JSON字段
-    accountData.supportedModels = JSON.parse(accountData.supportedModels || '[]');
+    const parsedModels = JSON.parse(accountData.supportedModels || '[]');
+    logger.debug(`[DEBUG] Parsed supportedModels: ${JSON.stringify(parsedModels)}`);
+    
+    accountData.supportedModels = parsedModels;
     accountData.priority = parseInt(accountData.priority) || 50;
     accountData.rateLimitDuration = parseInt(accountData.rateLimitDuration) || 60;
     accountData.isActive = accountData.isActive === 'true';
@@ -157,6 +170,8 @@ class ClaudeConsoleAccountService {
     if (accountData.proxy) {
       accountData.proxy = JSON.parse(accountData.proxy);
     }
+    
+    logger.debug(`[DEBUG] Final account data - name: ${accountData.name}, hasApiUrl: ${!!accountData.apiUrl}, hasApiKey: ${!!accountData.apiKey}, supportedModels: ${JSON.stringify(accountData.supportedModels)}`);
     
     return accountData;
   }
@@ -173,12 +188,24 @@ class ClaudeConsoleAccountService {
       const updatedData = {};
 
       // 处理各个字段的更新
+      logger.debug(`[DEBUG] Update request received with fields: ${Object.keys(updates).join(', ')}`);
+      logger.debug(`[DEBUG] Updates content: ${JSON.stringify(updates, null, 2)}`);
+      
       if (updates.name !== undefined) updatedData.name = updates.name;
       if (updates.description !== undefined) updatedData.description = updates.description;
-      if (updates.apiUrl !== undefined) updatedData.apiUrl = this._encryptSensitiveData(updates.apiUrl);
-      if (updates.apiKey !== undefined) updatedData.apiKey = this._encryptSensitiveData(updates.apiKey);
+      if (updates.apiUrl !== undefined) {
+        logger.debug(`[DEBUG] Updating apiUrl from frontend: ${updates.apiUrl}`);
+        updatedData.apiUrl = updates.apiUrl;
+      }
+      if (updates.apiKey !== undefined) {
+        logger.debug(`[DEBUG] Updating apiKey (length: ${updates.apiKey?.length})`);
+        updatedData.apiKey = this._encryptSensitiveData(updates.apiKey);
+      }
       if (updates.priority !== undefined) updatedData.priority = updates.priority.toString();
-      if (updates.supportedModels !== undefined) updatedData.supportedModels = JSON.stringify(updates.supportedModels);
+      if (updates.supportedModels !== undefined) {
+        logger.debug(`[DEBUG] Updating supportedModels: ${JSON.stringify(updates.supportedModels)}`);
+        updatedData.supportedModels = JSON.stringify(updates.supportedModels);
+      }
       if (updates.userAgent !== undefined) updatedData.userAgent = updates.userAgent;
       if (updates.rateLimitDuration !== undefined) updatedData.rateLimitDuration = updates.rateLimitDuration.toString();
       if (updates.proxy !== undefined) updatedData.proxy = updates.proxy ? JSON.stringify(updates.proxy) : '';
@@ -196,6 +223,9 @@ class ClaudeConsoleAccountService {
       }
 
       updatedData.updatedAt = new Date().toISOString();
+      
+      logger.debug(`[DEBUG] Final updatedData to save: ${JSON.stringify(updatedData, null, 2)}`);
+      logger.debug(`[DEBUG] Updating Redis key: ${this.ACCOUNT_KEY_PREFIX}${accountId}`);
       
       await client.hset(
         `${this.ACCOUNT_KEY_PREFIX}${accountId}`,
