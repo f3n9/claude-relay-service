@@ -1123,8 +1123,9 @@ router.get('/usage-stats', authenticateAdmin, async (req, res) => {
 router.get('/model-stats', authenticateAdmin, async (req, res) => {
   try {
     const { period = 'daily' } = req.query; // daily, monthly
-    const today = new Date().toISOString().split('T')[0];
-    const currentMonth = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`;
+    const today = redis.getDateStringInTimezone();
+    const tzDate = redis.getDateInTimezone();
+    const currentMonth = `${tzDate.getFullYear()}-${String(tzDate.getMonth() + 1).padStart(2, '0')}`;
     
     logger.info(`📊 Getting global model stats, period: ${period}, today: ${today}, currentMonth: ${currentMonth}`);
     
@@ -1265,8 +1266,10 @@ router.get('/usage-trend', authenticateAdmin, async (req, res) => {
       currentHour.setMinutes(0, 0, 0);
       
       while (currentHour <= endTime) {
-        const dateStr = currentHour.toISOString().split('T')[0];
-        const hour = String(currentHour.getHours()).padStart(2, '0');
+        // 使用时区转换后的时间来生成键
+        const tzCurrentHour = redis.getDateInTimezone(currentHour);
+        const dateStr = redis.getDateStringInTimezone(currentHour);
+        const hour = String(tzCurrentHour.getHours()).padStart(2, '0');
         const hourKey = `${dateStr}:${hour}`;
         
         // 获取当前小时的模型统计数据
@@ -1338,7 +1341,7 @@ router.get('/usage-trend', authenticateAdmin, async (req, res) => {
         }
         
         trendData.push({
-          date: hourKey,
+          date: dateStr, // 保持日期格式一致
           hour: currentHour.toISOString(),
           inputTokens: hourInputTokens,
           outputTokens: hourOutputTokens,
@@ -1362,7 +1365,7 @@ router.get('/usage-trend', authenticateAdmin, async (req, res) => {
       for (let i = 0; i < daysCount; i++) {
         const date = new Date(today);
         date.setDate(date.getDate() - i);
-        const dateStr = date.toISOString().split('T')[0];
+        const dateStr = redis.getDateStringInTimezone(date);
         
         // 汇总当天所有API Key的使用数据
         const pattern = `usage:daily:*:${dateStr}`;
@@ -1478,8 +1481,9 @@ router.get('/api-keys/:keyId/model-stats', authenticateAdmin, async (req, res) =
     logger.info(`📊 Getting model stats for API key: ${keyId}, period: ${period}, startDate: ${startDate}, endDate: ${endDate}`);
     
     const client = redis.getClientSafe();
-    const today = new Date().toISOString().split('T')[0];
-    const currentMonth = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`;
+    const today = redis.getDateStringInTimezone();
+    const tzDate = redis.getDateInTimezone();
+    const currentMonth = `${tzDate.getFullYear()}-${String(tzDate.getMonth() + 1).padStart(2, '0')}`;
     
     let searchPatterns = [];
     
@@ -1501,7 +1505,7 @@ router.get('/api-keys/:keyId/model-stats', authenticateAdmin, async (req, res) =
       
       // 生成日期范围内所有日期的搜索模式
       for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
-        const dateStr = d.toISOString().split('T')[0];
+        const dateStr = redis.getDateStringInTimezone(d);
         searchPatterns.push(`usage:${keyId}:model:daily:*:${dateStr}`);
       }
       
@@ -1695,7 +1699,11 @@ router.get('/api-keys-usage-trend', authenticateAdmin, async (req, res) => {
       currentHour.setMinutes(0, 0, 0);
       
       while (currentHour <= endTime) {
-        const hourKey = currentHour.toISOString().split(':')[0].replace('T', ':');
+        // 使用时区转换后的时间来生成键
+        const tzCurrentHour = redis.getDateInTimezone(currentHour);
+        const dateStr = redis.getDateStringInTimezone(currentHour);
+        const hour = String(tzCurrentHour.getHours()).padStart(2, '0');
+        const hourKey = `${dateStr}:${hour}`;
         
         // 获取这个小时所有API Key的数据
         const pattern = `usage:hourly:*:${hourKey}`;
@@ -1740,7 +1748,7 @@ router.get('/api-keys-usage-trend', authenticateAdmin, async (req, res) => {
       for (let i = 0; i < daysCount; i++) {
         const date = new Date(today);
         date.setDate(date.getDate() - i);
-        const dateStr = date.toISOString().split('T')[0];
+        const dateStr = redis.getDateStringInTimezone(date);
         
         // 获取这一天所有API Key的数据
         const pattern = `usage:daily:*:${dateStr}`;
@@ -1832,8 +1840,9 @@ router.get('/usage-costs', authenticateAdmin, async (req, res) => {
     
     // 按模型统计费用
     const client = redis.getClientSafe();
-    const today = new Date().toISOString().split('T')[0];
-    const currentMonth = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`;
+    const today = redis.getDateStringInTimezone();
+    const tzDate = redis.getDateInTimezone();
+    const currentMonth = `${tzDate.getFullYear()}-${String(tzDate.getMonth() + 1).padStart(2, '0')}`;
     
     let pattern;
     if (period === 'today') {

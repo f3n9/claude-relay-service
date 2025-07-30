@@ -144,12 +144,49 @@ export const useDashboardStore = defineStore('dashboard', () => {
         // 小时粒度，计算时间范围
         url += `granularity=hour`
         
-        // 根据days参数计算时间范围
-        const endTime = new Date()
-        const startTime = new Date(endTime.getTime() - days * 24 * 60 * 60 * 1000)
-        
-        url += `&startDate=${encodeURIComponent(startTime.toISOString())}`
-        url += `&endDate=${encodeURIComponent(endTime.toISOString())}`
+        if (dateFilter.value.customRange && dateFilter.value.customRange.length === 2) {
+          // 使用自定义时间范围
+          url += `&startDate=${encodeURIComponent(dateFilter.value.customRange[0])}`
+          url += `&endDate=${encodeURIComponent(dateFilter.value.customRange[1])}`
+        } else {
+          // 使用预设计算时间范围，与loadApiKeysTrend保持一致
+          const now = new Date()
+          let startTime, endTime
+          
+          if (dateFilter.value.type === 'preset') {
+            switch (dateFilter.value.preset) {
+              case 'last24h':
+                startTime = new Date(now.getTime() - 24 * 60 * 60 * 1000)
+                endTime = now
+                break
+              case 'yesterday':
+                startTime = new Date(now)
+                startTime.setDate(now.getDate() - 1)
+                startTime.setHours(0, 0, 0, 0)
+                endTime = new Date(startTime)
+                endTime.setHours(23, 59, 59, 999)
+                break
+              case 'dayBefore':
+                startTime = new Date(now)
+                startTime.setDate(now.getDate() - 2)
+                startTime.setHours(0, 0, 0, 0)
+                endTime = new Date(startTime)
+                endTime.setHours(23, 59, 59, 999)
+                break
+              default:
+                // 默认近24小时
+                startTime = new Date(now.getTime() - 24 * 60 * 60 * 1000)
+                endTime = now
+            }
+          } else {
+            // 默认使用days参数计算
+            startTime = new Date(now.getTime() - days * 24 * 60 * 60 * 1000)
+            endTime = now
+          }
+          
+          url += `&startDate=${encodeURIComponent(startTime.toISOString())}`
+          url += `&endDate=${encodeURIComponent(endTime.toISOString())}`
+        }
       } else {
         // 天粒度，传递天数
         url += `granularity=day&days=${days}`
@@ -178,17 +215,58 @@ export const useDashboardStore = defineStore('dashboard', () => {
   async function loadApiKeysTrend(metric = 'requests') {
     try {
       let url = '/admin/api-keys-usage-trend?'
+      let days = 7
       
       if (trendGranularity.value === 'hour') {
-        // 小时粒度，传递开始和结束时间
+        // 小时粒度，计算时间范围
         url += `granularity=hour`
+        
         if (dateFilter.value.customRange && dateFilter.value.customRange.length === 2) {
+          // 使用自定义时间范围
           url += `&startDate=${encodeURIComponent(dateFilter.value.customRange[0])}`
           url += `&endDate=${encodeURIComponent(dateFilter.value.customRange[1])}`
+        } else {
+          // 使用预设计算时间范围，与setDateFilterPreset保持一致
+          const now = new Date()
+          let startTime, endTime
+          
+          if (dateFilter.value.type === 'preset') {
+            switch (dateFilter.value.preset) {
+              case 'last24h':
+                startTime = new Date(now.getTime() - 24 * 60 * 60 * 1000)
+                endTime = now
+                break
+              case 'yesterday':
+                startTime = new Date(now)
+                startTime.setDate(now.getDate() - 1)
+                startTime.setHours(0, 0, 0, 0)
+                endTime = new Date(startTime)
+                endTime.setHours(23, 59, 59, 999)
+                break
+              case 'dayBefore':
+                startTime = new Date(now)
+                startTime.setDate(now.getDate() - 2)
+                startTime.setHours(0, 0, 0, 0)
+                endTime = new Date(startTime)
+                endTime.setHours(23, 59, 59, 999)
+                break
+              default:
+                // 默认近24小时
+                startTime = new Date(now.getTime() - 24 * 60 * 60 * 1000)
+                endTime = now
+            }
+          } else {
+            // 默认近24小时
+            startTime = new Date(now.getTime() - 24 * 60 * 60 * 1000)
+            endTime = now
+          }
+          
+          url += `&startDate=${encodeURIComponent(startTime.toISOString())}`
+          url += `&endDate=${encodeURIComponent(endTime.toISOString())}`
         }
       } else {
         // 天粒度，传递天数
-        const days = dateFilter.value.type === 'preset' 
+        days = dateFilter.value.type === 'preset' 
           ? (dateFilter.value.preset === 'today' ? 1 : dateFilter.value.preset === '7days' ? 7 : 30)
           : calculateDaysBetween(dateFilter.value.customStart, dateFilter.value.customEnd)
         url += `granularity=day&days=${days}`
