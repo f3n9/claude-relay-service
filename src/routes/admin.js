@@ -1341,8 +1341,8 @@ router.get('/usage-trend', authenticateAdmin, async (req, res) => {
         }
         
         trendData.push({
-          date: dateStr, // 保持日期格式一致
-          hour: currentHour.toISOString(),
+          // 对于小时粒度，只返回hour字段，不返回date字段
+          hour: tzCurrentHour.toISOString(), // 使用转换后的时区时间
           inputTokens: hourInputTokens,
           outputTokens: hourOutputTokens,
           requests: hourRequests,
@@ -1710,7 +1710,7 @@ router.get('/api-keys-usage-trend', authenticateAdmin, async (req, res) => {
         const keys = await client.keys(pattern);
         
         const hourData = {
-          hour: currentHour.toISOString(),
+          hour: tzCurrentHour.toISOString(), // 使用转换后的时区时间
           apiKeys: {}
         };
         

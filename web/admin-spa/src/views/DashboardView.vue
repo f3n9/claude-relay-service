@@ -452,6 +452,14 @@ function createUsageTrendChart() {
       const hour = String(date.getHours()).padStart(2, '0')
       return `${month}/${day} ${hour}:00`
     }
+    // 按天显示时，只显示月/日，不显示年份
+    const dateStr = d.date
+    if (dateStr && dateStr.includes('-')) {
+      const parts = dateStr.split('-')
+      if (parts.length >= 3) {
+        return `${parts[1]}/${parts[2]}`
+      }
+    }
     return d.date
   })
   
@@ -654,6 +662,14 @@ function createApiKeysUsageTrendChart() {
         const day = String(date.getDate()).padStart(2, '0')
         const hour = String(date.getHours()).padStart(2, '0')
         return `${month}/${day} ${hour}:00`
+      }
+      // 按天显示时，只显示月/日，不显示年份
+      const dateStr = d.date
+      if (dateStr && dateStr.includes('-')) {
+        const parts = dateStr.split('-')
+        if (parts.length >= 3) {
+          return `${parts[1]}/${parts[2]}`
+        }
       }
       return d.date
     }),

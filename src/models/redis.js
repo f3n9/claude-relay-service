@@ -5,8 +5,9 @@ const logger = require('../utils/logger');
 // 时区辅助函数
 function getDateInTimezone(date = new Date()) {
   const offset = config.system.timezoneOffset || 8; // 默认UTC+8
-  const utcTime = date.getTime() + (date.getTimezoneOffset() * 60000);
-  const targetTime = new Date(utcTime + (offset * 3600000));
+  // 直接基于UTC时间计算目标时区时间
+  // 不需要考虑本地时区，因为我们总是基于UTC
+  const targetTime = new Date(date.getTime() + (offset * 3600000));
   return targetTime;
 }
 
