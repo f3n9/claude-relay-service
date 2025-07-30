@@ -444,6 +444,11 @@ function createUsageTrendChart() {
   // 根据数据类型确定标签字段和格式
   const labelField = data[0]?.date ? 'date' : 'hour'
   const labels = data.map(d => {
+    // 优先使用后端提供的label字段
+    if (d.label) {
+      return d.label
+    }
+    
     if (labelField === 'hour') {
       // 格式化小时显示
       const date = new Date(d.hour)
@@ -655,6 +660,11 @@ function createApiKeysUsageTrendChart() {
   
   const chartData = {
     labels: data.map(d => {
+      // 优先使用后端提供的label字段
+      if (d.label) {
+        return d.label
+      }
+      
       if (labelField === 'hour') {
         // 格式化小时显示
         const date = new Date(d.hour)

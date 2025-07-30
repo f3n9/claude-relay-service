@@ -63,7 +63,7 @@ router.get('/api-keys', authenticateAdmin, async (req, res) => {
       // 今日 - 使用时区日期
       const redis = require('../models/redis');
       const tzDate = redis.getDateInTimezone(now);
-      const dateStr = `${tzDate.getFullYear()}-${String(tzDate.getMonth() + 1).padStart(2, '0')}-${String(tzDate.getDate()).padStart(2, '0')}`;
+      const dateStr = `${tzDate.getUTCFullYear()}-${String(tzDate.getUTCMonth() + 1).padStart(2, '0')}-${String(tzDate.getUTCDate()).padStart(2, '0')}`;
       searchPatterns.push(`usage:daily:*:${dateStr}`);
     } else if (timeRange === '7days') {
       // 最近7天
@@ -72,14 +72,14 @@ router.get('/api-keys', authenticateAdmin, async (req, res) => {
         const date = new Date(now);
         date.setDate(date.getDate() - i);
         const tzDate = redis.getDateInTimezone(date);
-        const dateStr = `${tzDate.getFullYear()}-${String(tzDate.getMonth() + 1).padStart(2, '0')}-${String(tzDate.getDate()).padStart(2, '0')}`;
+        const dateStr = `${tzDate.getUTCFullYear()}-${String(tzDate.getUTCMonth() + 1).padStart(2, '0')}-${String(tzDate.getUTCDate()).padStart(2, '0')}`;
         searchPatterns.push(`usage:daily:*:${dateStr}`);
       }
     } else if (timeRange === 'monthly') {
       // 本月
       const redis = require('../models/redis');
       const tzDate = redis.getDateInTimezone(now);
-      const currentMonth = `${tzDate.getFullYear()}-${String(tzDate.getMonth() + 1).padStart(2, '0')}`;
+      const currentMonth = `${tzDate.getUTCFullYear()}-${String(tzDate.getUTCMonth() + 1).padStart(2, '0')}`;
       searchPatterns.push(`usage:monthly:*:${currentMonth}`);
     }
     
@@ -189,7 +189,7 @@ router.get('/api-keys', authenticateAdmin, async (req, res) => {
         const redis = require('../models/redis');
         const tzToday = redis.getDateStringInTimezone(now);
         const tzDate = redis.getDateInTimezone(now);
-        const tzMonth = `${tzDate.getFullYear()}-${String(tzDate.getMonth() + 1).padStart(2, '0')}`;
+        const tzMonth = `${tzDate.getUTCFullYear()}-${String(tzDate.getUTCMonth() + 1).padStart(2, '0')}`;
         
         const modelKeys = timeRange === 'today' 
           ? await client.keys(`usage:${apiKey.id}:model:daily:*:${tzToday}`)
@@ -1125,7 +1125,7 @@ router.get('/model-stats', authenticateAdmin, async (req, res) => {
     const { period = 'daily' } = req.query; // daily, monthly
     const today = redis.getDateStringInTimezone();
     const tzDate = redis.getDateInTimezone();
-    const currentMonth = `${tzDate.getFullYear()}-${String(tzDate.getMonth() + 1).padStart(2, '0')}`;
+    const currentMonth = `${tzDate.getUTCFullYear()}-${String(tzDate.getUTCMonth() + 1).padStart(2, '0')}`;
     
     logger.info(`📊 Getting global model stats, period: ${period}, today: ${today}, currentMonth: ${currentMonth}`);
     
@@ -1269,7 +1269,7 @@ router.get('/usage-trend', authenticateAdmin, async (req, res) => {
         // 使用时区转换后的时间来生成键
         const tzCurrentHour = redis.getDateInTimezone(currentHour);
         const dateStr = redis.getDateStringInTimezone(currentHour);
-        const hour = String(tzCurrentHour.getHours()).padStart(2, '0');
+        const hour = String(tzCurrentHour.getUTCHours()).padStart(2, '0');
         const hourKey = `${dateStr}:${hour}`;
         
         // 获取当前小时的模型统计数据
@@ -1340,9 +1340,16 @@ router.get('/usage-trend', authenticateAdmin, async (req, res) => {
           hourCost = costResult.costs.total;
         }
         
+        // 格式化时间标签
+        const tzDate = redis.getDateInTimezone(currentHour);
+        const month = String(tzDate.getUTCMonth() + 1).padStart(2, '0');
+        const day = String(tzDate.getUTCDate()).padStart(2, '0');
+        const hourStr = String(tzDate.getUTCHours()).padStart(2, '0');
+        
         trendData.push({
           // 对于小时粒度，只返回hour字段，不返回date字段
-          hour: tzCurrentHour.toISOString(), // 使用转换后的时区时间
+          hour: currentHour.toISOString(), // 保留原始ISO时间用于排序
+          label: `${month}/${day} ${hourStr}:00`, // 添加格式化的标签
           inputTokens: hourInputTokens,
           outputTokens: hourOutputTokens,
           requests: hourRequests,
@@ -1483,7 +1490,7 @@ router.get('/api-keys/:keyId/model-stats', authenticateAdmin, async (req, res) =
     const client = redis.getClientSafe();
     const today = redis.getDateStringInTimezone();
     const tzDate = redis.getDateInTimezone();
-    const currentMonth = `${tzDate.getFullYear()}-${String(tzDate.getMonth() + 1).padStart(2, '0')}`;
+    const currentMonth = `${tzDate.getUTCFullYear()}-${String(tzDate.getUTCMonth() + 1).padStart(2, '0')}`;
     
     let searchPatterns = [];
     
@@ -1702,15 +1709,22 @@ router.get('/api-keys-usage-trend', authenticateAdmin, async (req, res) => {
         // 使用时区转换后的时间来生成键
         const tzCurrentHour = redis.getDateInTimezone(currentHour);
         const dateStr = redis.getDateStringInTimezone(currentHour);
-        const hour = String(tzCurrentHour.getHours()).padStart(2, '0');
+        const hour = String(tzCurrentHour.getUTCHours()).padStart(2, '0');
         const hourKey = `${dateStr}:${hour}`;
         
         // 获取这个小时所有API Key的数据
         const pattern = `usage:hourly:*:${hourKey}`;
         const keys = await client.keys(pattern);
         
+        // 格式化时间标签
+        const tzDateForLabel = redis.getDateInTimezone(currentHour);
+        const monthLabel = String(tzDateForLabel.getUTCMonth() + 1).padStart(2, '0');
+        const dayLabel = String(tzDateForLabel.getUTCDate()).padStart(2, '0');
+        const hourLabel = String(tzDateForLabel.getUTCHours()).padStart(2, '0');
+        
         const hourData = {
-          hour: tzCurrentHour.toISOString(), // 使用转换后的时区时间
+          hour: currentHour.toISOString(), // 使用原始时间，不进行时区转换
+          label: `${monthLabel}/${dayLabel} ${hourLabel}:00`, // 添加格式化的标签
           apiKeys: {}
         };
         
@@ -1842,7 +1856,7 @@ router.get('/usage-costs', authenticateAdmin, async (req, res) => {
     const client = redis.getClientSafe();
     const today = redis.getDateStringInTimezone();
     const tzDate = redis.getDateInTimezone();
-    const currentMonth = `${tzDate.getFullYear()}-${String(tzDate.getMonth() + 1).padStart(2, '0')}`;
+    const currentMonth = `${tzDate.getUTCFullYear()}-${String(tzDate.getUTCMonth() + 1).padStart(2, '0')}`;
     
     let pattern;
     if (period === 'today') {
