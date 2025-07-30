@@ -27,7 +27,8 @@ export const useDashboardStore = defineStore('dashboard', () => {
     systemRPM: 0,
     systemTPM: 0,
     systemStatus: '正常',
-    uptime: 0
+    uptime: 0,
+    systemTimezone: 8 // 默认 UTC+8
   })
   
   const costsData = ref({
@@ -81,6 +82,41 @@ export const useDashboardStore = defineStore('dashboard', () => {
     }
   })
   
+  // 辅助函数：基于系统时区计算时间
+  function getDateInSystemTimezone(date = new Date()) {
+    const offset = dashboardData.value.systemTimezone || 8
+    // 将本地时间转换为UTC时间，然后加上系统时区偏移
+    const utcTime = date.getTime() + (date.getTimezoneOffset() * 60000)
+    return new Date(utcTime + (offset * 3600000))
+  }
+  
+  // 辅助函数：获取系统时区某一天的起止UTC时间
+  // 输入：系统时区的日期（使用getDateInSystemTimezone转换后的）
+  // 输出：对应的UTC时间
+  function getSystemTimezoneDay(systemTzDate, startOfDay = true) {
+    const offset = dashboardData.value.systemTimezone || 8
+    
+    // 使用UTC方法获取系统时区日期的年月日
+    const year = systemTzDate.getUTCFullYear()
+    const month = systemTzDate.getUTCMonth()
+    const day = systemTzDate.getUTCDate()
+    
+    // 创建一个新的Date对象
+    const result = new Date()
+    
+    if (startOfDay) {
+      // 设置为系统时区的0点（UTC时间）
+      result.setUTCFullYear(year, month, day)
+      result.setUTCHours(0 - offset, 0, 0, 0)
+    } else {
+      // 设置为系统时区的23:59:59.999（UTC时间）
+      result.setUTCFullYear(year, month, day)
+      result.setUTCHours(23 - offset, 59, 59, 999)
+    }
+    
+    return result
+  }
+  
   // 方法
   async function loadDashboardData() {
     loading.value = true
@@ -118,7 +154,8 @@ export const useDashboardStore = defineStore('dashboard', () => {
           systemRPM: systemAverages.rpm || 0,
           systemTPM: systemAverages.tpm || 0,
           systemStatus: systemHealth.redisConnected ? '正常' : '异常',
-          uptime: systemHealth.uptime || 0
+          uptime: systemHealth.uptime || 0,
+          systemTimezone: dashboardResponse.data.systemTimezone || 8
         }
       }
       
@@ -161,28 +198,20 @@ export const useDashboardStore = defineStore('dashboard', () => {
                 startTime = new Date(now.getTime() - 24 * 60 * 60 * 1000)
                 break
               case 'yesterday':
-                // 昨天：使用UTC时间，避免时区双重转换
-                startTime = new Date(now)
-                startTime.setUTCDate(now.getUTCDate() - 1)
-                startTime.setUTCHours(0, 0, 0, 0)
-                endTime = new Date(startTime)
-                endTime.setUTCHours(23, 59, 59, 999)
-                
-                // 由于后端会加8小时，我们需要减去8小时
-                startTime = new Date(startTime.getTime() - 8 * 60 * 60 * 1000)
-                endTime = new Date(endTime.getTime() - 8 * 60 * 60 * 1000)
+                // 昨天：基于系统时区的昨天
+                const systemNow = getDateInSystemTimezone(now)
+                const yesterday = new Date(systemNow)
+                yesterday.setUTCDate(yesterday.getUTCDate() - 1)
+                startTime = getSystemTimezoneDay(yesterday, true)
+                endTime = getSystemTimezoneDay(yesterday, false)
                 break
               case 'dayBefore':
-                // 前天：使用UTC时间
-                startTime = new Date(now)
-                startTime.setUTCDate(now.getUTCDate() - 2)
-                startTime.setUTCHours(0, 0, 0, 0)
-                endTime = new Date(startTime)
-                endTime.setUTCHours(23, 59, 59, 999)
-                
-                // 由于后端会加8小时，我们需要减去8小时
-                startTime = new Date(startTime.getTime() - 8 * 60 * 60 * 1000)
-                endTime = new Date(endTime.getTime() - 8 * 60 * 60 * 1000)
+                // 前天：基于系统时区的前天
+                const systemNow2 = getDateInSystemTimezone(now)
+                const dayBefore = new Date(systemNow2)
+                dayBefore.setUTCDate(dayBefore.getUTCDate() - 2)
+                startTime = getSystemTimezoneDay(dayBefore, true)
+                endTime = getSystemTimezoneDay(dayBefore, false)
                 break
               default:
                 // 默认近24小时
@@ -249,28 +278,20 @@ export const useDashboardStore = defineStore('dashboard', () => {
                 startTime = new Date(now.getTime() - 24 * 60 * 60 * 1000)
                 break
               case 'yesterday':
-                // 昨天：使用UTC时间，避免时区双重转换
-                startTime = new Date(now)
-                startTime.setUTCDate(now.getUTCDate() - 1)
-                startTime.setUTCHours(0, 0, 0, 0)
-                endTime = new Date(startTime)
-                endTime.setUTCHours(23, 59, 59, 999)
-                
-                // 由于后端会加8小时，我们需要减去8小时
-                startTime = new Date(startTime.getTime() - 8 * 60 * 60 * 1000)
-                endTime = new Date(endTime.getTime() - 8 * 60 * 60 * 1000)
+                // 昨天：基于系统时区的昨天
+                const systemNow3 = getDateInSystemTimezone(now)
+                const yesterday = new Date(systemNow3)
+                yesterday.setUTCDate(yesterday.getUTCDate() - 1)
+                startTime = getSystemTimezoneDay(yesterday, true)
+                endTime = getSystemTimezoneDay(yesterday, false)
                 break
               case 'dayBefore':
-                // 前天：使用UTC时间
-                startTime = new Date(now)
-                startTime.setUTCDate(now.getUTCDate() - 2)
-                startTime.setUTCHours(0, 0, 0, 0)
-                endTime = new Date(startTime)
-                endTime.setUTCHours(23, 59, 59, 999)
-                
-                // 由于后端会加8小时，我们需要减去8小时
-                startTime = new Date(startTime.getTime() - 8 * 60 * 60 * 1000)
-                endTime = new Date(endTime.getTime() - 8 * 60 * 60 * 1000)
+                // 前天：基于系统时区的前天
+                const systemNow4 = getDateInSystemTimezone(now)
+                const dayBefore = new Date(systemNow4)
+                dayBefore.setUTCDate(dayBefore.getUTCDate() - 2)
+                startTime = getSystemTimezoneDay(dayBefore, true)
+                endTime = getSystemTimezoneDay(dayBefore, false)
                 break
               default:
                 // 默认近24小时
@@ -329,28 +350,20 @@ export const useDashboardStore = defineStore('dashboard', () => {
             startDate = new Date(now.getTime() - 24 * 60 * 60 * 1000)
             break
           case 'yesterday':
-            // 昨天：使用UTC时间，避免时区双重转换
-            startDate = new Date(now)
-            startDate.setUTCDate(now.getUTCDate() - 1)
-            startDate.setUTCHours(0, 0, 0, 0)
-            endDate = new Date(startDate)
-            endDate.setUTCHours(23, 59, 59, 999)
-            
-            // 由于后端会加8小时，我们需要减去8小时
-            startDate = new Date(startDate.getTime() - 8 * 60 * 60 * 1000)
-            endDate = new Date(endDate.getTime() - 8 * 60 * 60 * 1000)
+            // 昨天：基于系统时区的昨天
+            const systemNow5 = getDateInSystemTimezone(now)
+            const yesterday2 = new Date(systemNow5)
+            yesterday2.setUTCDate(yesterday2.getUTCDate() - 1)
+            startDate = getSystemTimezoneDay(yesterday2, true)
+            endDate = getSystemTimezoneDay(yesterday2, false)
             break
           case 'dayBefore':
-            // 前天：使用UTC时间
-            startDate = new Date(now)
-            startDate.setUTCDate(now.getUTCDate() - 2)
-            startDate.setUTCHours(0, 0, 0, 0)
-            endDate = new Date(startDate)
-            endDate.setUTCHours(23, 59, 59, 999)
-            
-            // 由于后端会加8小时，我们需要减去8小时
-            startDate = new Date(startDate.getTime() - 8 * 60 * 60 * 1000)
-            endDate = new Date(endDate.getTime() - 8 * 60 * 60 * 1000)
+            // 前天：基于系统时区的前天
+            const systemNow6 = getDateInSystemTimezone(now)
+            const dayBefore2 = new Date(systemNow6)
+            dayBefore2.setUTCDate(dayBefore2.getUTCDate() - 2)
+            startDate = getSystemTimezoneDay(dayBefore2, true)
+            endDate = getSystemTimezoneDay(dayBefore2, false)
             break
         }
       } else {

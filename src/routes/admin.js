@@ -1293,7 +1293,8 @@ router.get('/dashboard', authenticateAdmin, async (req, res) => {
         claudeAccountsHealthy: activeClaudeAccounts > 0,
         geminiAccountsHealthy: activeGeminiAccounts > 0,
         uptime: process.uptime()
-      }
+      },
+      systemTimezone: config.system.timezoneOffset || 8
     };
 
     res.json({ success: true, data: dashboard });
@@ -1452,6 +1453,14 @@ router.get('/usage-trend', authenticateAdmin, async (req, res) => {
         // 使用自定义时间范围
         startTime = new Date(startDate);
         endTime = new Date(endDate);
+        
+        // 调试日志
+        logger.info(`📊 Usage trend hour granularity - received times:`);
+        logger.info(`  startDate (raw): ${startDate}`);
+        logger.info(`  endDate (raw): ${endDate}`);
+        logger.info(`  startTime (parsed): ${startTime.toISOString()}`);
+        logger.info(`  endTime (parsed): ${endTime.toISOString()}`);
+        logger.info(`  System timezone offset: ${config.system.timezoneOffset || 8}`);
       } else {
         // 默认最近24小时
         endTime = new Date();
@@ -1471,7 +1480,8 @@ router.get('/usage-trend', authenticateAdmin, async (req, res) => {
       currentHour.setMinutes(0, 0, 0);
       
       while (currentHour <= endTime) {
-        // 使用时区转换后的时间来生成键
+        // 注意：前端发送的时间已经是UTC时间，不需要再次转换
+        // 直接从currentHour生成对应系统时区的日期和小时
         const tzCurrentHour = redis.getDateInTimezone(currentHour);
         const dateStr = redis.getDateStringInTimezone(currentHour);
         const hour = String(tzCurrentHour.getUTCHours()).padStart(2, '0');
@@ -1545,11 +1555,11 @@ router.get('/usage-trend', authenticateAdmin, async (req, res) => {
           hourCost = costResult.costs.total;
         }
         
-        // 格式化时间标签
-        const tzDate = redis.getDateInTimezone(currentHour);
-        const month = String(tzDate.getUTCMonth() + 1).padStart(2, '0');
-        const day = String(tzDate.getUTCDate()).padStart(2, '0');
-        const hourStr = String(tzDate.getUTCHours()).padStart(2, '0');
+        // 格式化时间标签 - 使用系统时区的显示
+        const tzDateForLabel = redis.getDateInTimezone(currentHour);
+        const month = String(tzDateForLabel.getUTCMonth() + 1).padStart(2, '0');
+        const day = String(tzDateForLabel.getUTCDate()).padStart(2, '0');
+        const hourStr = String(tzDateForLabel.getUTCHours()).padStart(2, '0');
         
         trendData.push({
           // 对于小时粒度，只返回hour字段，不返回date字段
