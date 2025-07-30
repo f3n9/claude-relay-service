@@ -91,27 +91,26 @@ export const useDashboardStore = defineStore('dashboard', () => {
   }
   
   // 辅助函数：获取系统时区某一天的起止UTC时间
-  // 输入：一个系统时区的日期对象
+  // 输入：一个本地时间的日期对象（如用户选择的日期）
   // 输出：该日期在系统时区的0点/23:59对应的UTC时间
-  function getSystemTimezoneDay(systemTzDate, startOfDay = true) {
-    const offset = dashboardData.value.systemTimezone || 8
+  function getSystemTimezoneDay(localDate, startOfDay = true) {
+    const systemTz = dashboardData.value.systemTimezone || 8
     
-    // 获取系统时区日期的年月日
-    const year = systemTzDate.getFullYear()
-    const month = systemTzDate.getMonth()
-    const day = systemTzDate.getDate()
+    // 获取本地日期的年月日（这是用户想要查看的日期）
+    const year = localDate.getFullYear()
+    const month = localDate.getMonth()
+    const day = localDate.getDate()
     
-    // 创建系统时区的日期时间
     if (startOfDay) {
-      // 系统时区 YYYY-MM-DD 00:00:00
-      const systemDateTime = new Date(year, month, day, 0, 0, 0, 0)
-      // 转换为UTC时间：减去时区偏移
-      return new Date(systemDateTime.getTime() - offset * 3600000)
+      // 创建UTC时间，使其在系统时区(UTC+8)显示为 YYYY-MM-DD 00:00:00
+      // 例如：要在UTC+8显示为 2025-07-28 00:00:00，UTC时间应该是 2025-07-27 16:00:00
+      const utcDate = new Date(Date.UTC(year, month, day, 0 - systemTz, 0, 0, 0))
+      return utcDate
     } else {
-      // 系统时区 YYYY-MM-DD 23:59:59.999
-      const systemDateTime = new Date(year, month, day, 23, 59, 59, 999)
-      // 转换为UTC时间：减去时区偏移
-      return new Date(systemDateTime.getTime() - offset * 3600000)
+      // 创建UTC时间，使其在系统时区(UTC+8)显示为 YYYY-MM-DD 23:59:59.999
+      // 例如：要在UTC+8显示为 2025-07-28 23:59:59，UTC时间应该是 2025-07-28 15:59:59
+      const utcDate = new Date(Date.UTC(year, month, day, 24 - systemTz - 1, 59, 59, 999))
+      return utcDate
     }
   }
   
@@ -188,12 +187,11 @@ export const useDashboardStore = defineStore('dashboard', () => {
             const [year, month, day] = datePart.split('-').map(Number)
             const [hours, minutes, seconds] = timePart.split(':').map(Number)
             
-            // 创建系统时区的Date对象
-            const systemDate = new Date(year, month - 1, day, hours, minutes, seconds)
-            
-            // 转换为UTC
-            const utcTime = systemDate.getTime() - (systemTz * 3600000)
-            return new Date(utcTime).toISOString()
+            // 创建UTC时间，使其在系统时区显示为用户选择的时间
+            // 例如：用户选择 UTC+8 的 2025-07-25 00:00:00
+            // 对应的UTC时间是 2025-07-24 16:00:00
+            const utcDate = new Date(Date.UTC(year, month - 1, day, hours - systemTz, minutes, seconds))
+            return utcDate.toISOString()
           }
           
           url += `&startDate=${encodeURIComponent(convertToUTC(dateFilter.value.customRange[0]))}`
@@ -281,12 +279,11 @@ export const useDashboardStore = defineStore('dashboard', () => {
             const [year, month, day] = datePart.split('-').map(Number)
             const [hours, minutes, seconds] = timePart.split(':').map(Number)
             
-            // 创建系统时区的Date对象
-            const systemDate = new Date(year, month - 1, day, hours, minutes, seconds)
-            
-            // 转换为UTC
-            const utcTime = systemDate.getTime() - (systemTz * 3600000)
-            return new Date(utcTime).toISOString()
+            // 创建UTC时间，使其在系统时区显示为用户选择的时间
+            // 例如：用户选择 UTC+8 的 2025-07-25 00:00:00
+            // 对应的UTC时间是 2025-07-24 16:00:00
+            const utcDate = new Date(Date.UTC(year, month - 1, day, hours - systemTz, minutes, seconds))
+            return utcDate.toISOString()
           }
           
           url += `&startDate=${encodeURIComponent(convertToUTC(dateFilter.value.customRange[0]))}`
