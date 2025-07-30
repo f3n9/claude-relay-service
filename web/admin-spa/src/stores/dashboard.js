@@ -103,15 +103,15 @@ export const useDashboardStore = defineStore('dashboard', () => {
     const day = localDate.getDate()
     
     if (startOfDay) {
-      // 创建UTC时间，使其在系统时区(UTC+8)显示为 YYYY-MM-DD 00:00:00
-      // 例如：要在UTC+8显示为 2025-07-29 00:00:00，UTC时间应该是 2025-07-28 16:00:00
-      const utcDate = new Date(Date.UTC(year, month, day - 1, 24 - systemTz, 0, 0, 0))
-      return utcDate
+      // 系统时区（UTC+8）的 YYYY-MM-DD 00:00:00
+      // 对应的UTC时间是前一天的16:00
+      // 例如：UTC+8的2025-07-29 00:00:00 = UTC的2025-07-28 16:00:00
+      return new Date(Date.UTC(year, month, day - 1, 16, 0, 0, 0))
     } else {
-      // 创建UTC时间，使其在系统时区(UTC+8)显示为 YYYY-MM-DD 23:59:59.999
-      // 例如：要在UTC+8显示为 2025-07-29 23:59:59，UTC时间应该是 2025-07-29 15:59:59
-      const utcDate = new Date(Date.UTC(year, month, day, 24 - systemTz - 1, 59, 59, 999))
-      return utcDate
+      // 系统时区（UTC+8）的 YYYY-MM-DD 23:59:59
+      // 对应的UTC时间是当天的15:59:59
+      // 例如：UTC+8的2025-07-29 23:59:59 = UTC的2025-07-29 15:59:59
+      return new Date(Date.UTC(year, month, day, 15, 59, 59, 999))
     }
   }
   
@@ -411,22 +411,47 @@ export const useDashboardStore = defineStore('dashboard', () => {
       dateFilter.value.customEnd = endDate.toISOString().split('T')[0]
       
       // 设置 customRange 为 Element Plus 需要的格式
-      // 显示系统时区的时间
-      const formatDateForDisplay = (utcDate) => {
-        const systemTzDate = getDateInSystemTimezone(utcDate)
-        const year = systemTzDate.getUTCFullYear()
-        const month = String(systemTzDate.getUTCMonth() + 1).padStart(2, '0')
-        const day = String(systemTzDate.getUTCDate()).padStart(2, '0')
-        const hours = String(systemTzDate.getUTCHours()).padStart(2, '0')
-        const minutes = String(systemTzDate.getUTCMinutes()).padStart(2, '0')
-        const seconds = String(systemTzDate.getUTCSeconds()).padStart(2, '0')
-        return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`
+      // 对于小时粒度的昨天/前天，需要特殊处理显示
+      if (trendGranularity.value === 'hour' && (preset === 'yesterday' || preset === 'dayBefore')) {
+        // 获取本地日期
+        const targetDate = new Date()
+        if (preset === 'yesterday') {
+          targetDate.setDate(targetDate.getDate() - 1)
+        } else {
+          targetDate.setDate(targetDate.getDate() - 2)
+        }
+        
+        // 显示系统时区的完整一天
+        const year = targetDate.getFullYear()
+        const month = String(targetDate.getMonth() + 1).padStart(2, '0')
+        const day = String(targetDate.getDate()).padStart(2, '0')
+        
+        dateFilter.value.customRange = [
+          `${year}-${month}-${day} 00:00:00`,
+          `${year}-${month}-${day} 23:59:59`
+        ]
+      } else {
+        // 其他情况：近24小时或天粒度
+        const formatDateForDisplay = (date) => {
+          // 固定使用UTC+8来显示时间
+          const systemTz = 8
+          const tzOffset = systemTz * 60 * 60 * 1000
+          const localTime = new Date(date.getTime() + tzOffset)
+          
+          const year = localTime.getUTCFullYear()
+          const month = String(localTime.getUTCMonth() + 1).padStart(2, '0')
+          const day = String(localTime.getUTCDate()).padStart(2, '0')
+          const hours = String(localTime.getUTCHours()).padStart(2, '0')
+          const minutes = String(localTime.getUTCMinutes()).padStart(2, '0')
+          const seconds = String(localTime.getUTCSeconds()).padStart(2, '0')
+          return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`
+        }
+        
+        dateFilter.value.customRange = [
+          formatDateForDisplay(startDate),
+          formatDateForDisplay(endDate)
+        ]
       }
-      
-      dateFilter.value.customRange = [
-        formatDateForDisplay(startDate),
-        formatDateForDisplay(endDate)
-      ]
     }
     
     // 触发数据刷新
