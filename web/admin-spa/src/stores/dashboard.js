@@ -91,30 +91,30 @@ export const useDashboardStore = defineStore('dashboard', () => {
   }
   
   // 辅助函数：获取系统时区某一天的起止UTC时间
-  // 输入：系统时区的日期（使用getDateInSystemTimezone转换后的）
-  // 输出：对应的UTC时间
-  function getSystemTimezoneDay(systemTzDate, startOfDay = true) {
+  // 输入：一个日期（以用户本地时间表示）
+  // 输出：该日期在系统时区的0点/23:59对应的UTC时间
+  function getSystemTimezoneDay(localDate, startOfDay = true) {
     const offset = dashboardData.value.systemTimezone || 8
     
-    // 使用UTC方法获取系统时区日期的年月日
-    const year = systemTzDate.getUTCFullYear()
-    const month = systemTzDate.getUTCMonth()
-    const day = systemTzDate.getUTCDate()
+    // 获取用户本地日期的年月日
+    const year = localDate.getFullYear()
+    const month = localDate.getMonth()
+    const day = localDate.getDate()
     
-    // 创建一个新的Date对象
-    const result = new Date()
-    
+    // 创建UTC时间，表示系统时区的该日期
     if (startOfDay) {
-      // 设置为系统时区的0点（UTC时间）
-      result.setUTCFullYear(year, month, day)
-      result.setUTCHours(0 - offset, 0, 0, 0)
+      // 系统时区YYYY-MM-DD 00:00:00 对应的UTC时间
+      const utcDate = new Date(Date.UTC(year, month, day, 0, 0, 0, 0))
+      // 减去系统时区偏移得到UTC时间
+      utcDate.setUTCHours(utcDate.getUTCHours() - offset)
+      return utcDate
     } else {
-      // 设置为系统时区的23:59:59.999（UTC时间）
-      result.setUTCFullYear(year, month, day)
-      result.setUTCHours(23 - offset, 59, 59, 999)
+      // 系统时区YYYY-MM-DD 23:59:59.999 对应的UTC时间
+      const utcDate = new Date(Date.UTC(year, month, day, 23, 59, 59, 999))
+      // 减去系统时区偏移得到UTC时间
+      utcDate.setUTCHours(utcDate.getUTCHours() - offset)
+      return utcDate
     }
-    
-    return result
   }
   
   // 方法
@@ -199,17 +199,15 @@ export const useDashboardStore = defineStore('dashboard', () => {
                 break
               case 'yesterday':
                 // 昨天：基于系统时区的昨天
-                const systemNow = getDateInSystemTimezone(now)
-                const yesterday = new Date(systemNow)
-                yesterday.setUTCDate(yesterday.getUTCDate() - 1)
+                const yesterday = new Date(now)
+                yesterday.setDate(yesterday.getDate() - 1)
                 startTime = getSystemTimezoneDay(yesterday, true)
                 endTime = getSystemTimezoneDay(yesterday, false)
                 break
               case 'dayBefore':
                 // 前天：基于系统时区的前天
-                const systemNow2 = getDateInSystemTimezone(now)
-                const dayBefore = new Date(systemNow2)
-                dayBefore.setUTCDate(dayBefore.getUTCDate() - 2)
+                const dayBefore = new Date(now)
+                dayBefore.setDate(dayBefore.getDate() - 2)
                 startTime = getSystemTimezoneDay(dayBefore, true)
                 endTime = getSystemTimezoneDay(dayBefore, false)
                 break
@@ -279,17 +277,15 @@ export const useDashboardStore = defineStore('dashboard', () => {
                 break
               case 'yesterday':
                 // 昨天：基于系统时区的昨天
-                const systemNow3 = getDateInSystemTimezone(now)
-                const yesterday = new Date(systemNow3)
-                yesterday.setUTCDate(yesterday.getUTCDate() - 1)
+                const yesterday = new Date(now)
+                yesterday.setDate(yesterday.getDate() - 1)
                 startTime = getSystemTimezoneDay(yesterday, true)
                 endTime = getSystemTimezoneDay(yesterday, false)
                 break
               case 'dayBefore':
                 // 前天：基于系统时区的前天
-                const systemNow4 = getDateInSystemTimezone(now)
-                const dayBefore = new Date(systemNow4)
-                dayBefore.setUTCDate(dayBefore.getUTCDate() - 2)
+                const dayBefore = new Date(now)
+                dayBefore.setDate(dayBefore.getDate() - 2)
                 startTime = getSystemTimezoneDay(dayBefore, true)
                 endTime = getSystemTimezoneDay(dayBefore, false)
                 break
@@ -351,17 +347,15 @@ export const useDashboardStore = defineStore('dashboard', () => {
             break
           case 'yesterday':
             // 昨天：基于系统时区的昨天
-            const systemNow5 = getDateInSystemTimezone(now)
-            const yesterday2 = new Date(systemNow5)
-            yesterday2.setUTCDate(yesterday2.getUTCDate() - 1)
+            const yesterday2 = new Date(now)
+            yesterday2.setDate(yesterday2.getDate() - 1)
             startDate = getSystemTimezoneDay(yesterday2, true)
             endDate = getSystemTimezoneDay(yesterday2, false)
             break
           case 'dayBefore':
             // 前天：基于系统时区的前天
-            const systemNow6 = getDateInSystemTimezone(now)
-            const dayBefore2 = new Date(systemNow6)
-            dayBefore2.setUTCDate(dayBefore2.getUTCDate() - 2)
+            const dayBefore2 = new Date(now)
+            dayBefore2.setDate(dayBefore2.getDate() - 2)
             startDate = getSystemTimezoneDay(dayBefore2, true)
             endDate = getSystemTimezoneDay(dayBefore2, false)
             break
