@@ -156,22 +156,33 @@ export const useDashboardStore = defineStore('dashboard', () => {
           if (dateFilter.value.type === 'preset') {
             switch (dateFilter.value.preset) {
               case 'last24h':
+                // 近24小时：从当前时间往前推24小时
+                endTime = new Date(now)
                 startTime = new Date(now.getTime() - 24 * 60 * 60 * 1000)
-                endTime = now
                 break
               case 'yesterday':
+                // 昨天：使用UTC时间，避免时区双重转换
                 startTime = new Date(now)
-                startTime.setDate(now.getDate() - 1)
-                startTime.setHours(0, 0, 0, 0)
+                startTime.setUTCDate(now.getUTCDate() - 1)
+                startTime.setUTCHours(0, 0, 0, 0)
                 endTime = new Date(startTime)
-                endTime.setHours(23, 59, 59, 999)
+                endTime.setUTCHours(23, 59, 59, 999)
+                
+                // 由于后端会加8小时，我们需要减去8小时
+                startTime = new Date(startTime.getTime() - 8 * 60 * 60 * 1000)
+                endTime = new Date(endTime.getTime() - 8 * 60 * 60 * 1000)
                 break
               case 'dayBefore':
+                // 前天：使用UTC时间
                 startTime = new Date(now)
-                startTime.setDate(now.getDate() - 2)
-                startTime.setHours(0, 0, 0, 0)
+                startTime.setUTCDate(now.getUTCDate() - 2)
+                startTime.setUTCHours(0, 0, 0, 0)
                 endTime = new Date(startTime)
-                endTime.setHours(23, 59, 59, 999)
+                endTime.setUTCHours(23, 59, 59, 999)
+                
+                // 由于后端会加8小时，我们需要减去8小时
+                startTime = new Date(startTime.getTime() - 8 * 60 * 60 * 1000)
+                endTime = new Date(endTime.getTime() - 8 * 60 * 60 * 1000)
                 break
               default:
                 // 默认近24小时
@@ -233,22 +244,33 @@ export const useDashboardStore = defineStore('dashboard', () => {
           if (dateFilter.value.type === 'preset') {
             switch (dateFilter.value.preset) {
               case 'last24h':
+                // 近24小时：从当前时间往前推24小时
+                endTime = new Date(now)
                 startTime = new Date(now.getTime() - 24 * 60 * 60 * 1000)
-                endTime = now
                 break
               case 'yesterday':
+                // 昨天：使用UTC时间，避免时区双重转换
                 startTime = new Date(now)
-                startTime.setDate(now.getDate() - 1)
-                startTime.setHours(0, 0, 0, 0)
+                startTime.setUTCDate(now.getUTCDate() - 1)
+                startTime.setUTCHours(0, 0, 0, 0)
                 endTime = new Date(startTime)
-                endTime.setHours(23, 59, 59, 999)
+                endTime.setUTCHours(23, 59, 59, 999)
+                
+                // 由于后端会加8小时，我们需要减去8小时
+                startTime = new Date(startTime.getTime() - 8 * 60 * 60 * 1000)
+                endTime = new Date(endTime.getTime() - 8 * 60 * 60 * 1000)
                 break
               case 'dayBefore':
+                // 前天：使用UTC时间
                 startTime = new Date(now)
-                startTime.setDate(now.getDate() - 2)
-                startTime.setHours(0, 0, 0, 0)
+                startTime.setUTCDate(now.getUTCDate() - 2)
+                startTime.setUTCHours(0, 0, 0, 0)
                 endTime = new Date(startTime)
-                endTime.setHours(23, 59, 59, 999)
+                endTime.setUTCHours(23, 59, 59, 999)
+                
+                // 由于后端会加8小时，我们需要减去8小时
+                startTime = new Date(startTime.getTime() - 8 * 60 * 60 * 1000)
+                endTime = new Date(endTime.getTime() - 8 * 60 * 60 * 1000)
                 break
               default:
                 // 默认近24小时
@@ -302,22 +324,33 @@ export const useDashboardStore = defineStore('dashboard', () => {
         // 小时粒度的预设
         switch (preset) {
           case 'last24h':
+            // 近24小时：从当前时间往前推24小时
+            endDate = new Date(now)
             startDate = new Date(now.getTime() - 24 * 60 * 60 * 1000)
-            endDate = now
             break
           case 'yesterday':
+            // 昨天：使用UTC时间，避免时区双重转换
             startDate = new Date(now)
-            startDate.setDate(now.getDate() - 1)
-            startDate.setHours(0, 0, 0, 0)
+            startDate.setUTCDate(now.getUTCDate() - 1)
+            startDate.setUTCHours(0, 0, 0, 0)
             endDate = new Date(startDate)
-            endDate.setHours(23, 59, 59, 999)
+            endDate.setUTCHours(23, 59, 59, 999)
+            
+            // 由于后端会加8小时，我们需要减去8小时
+            startDate = new Date(startDate.getTime() - 8 * 60 * 60 * 1000)
+            endDate = new Date(endDate.getTime() - 8 * 60 * 60 * 1000)
             break
           case 'dayBefore':
+            // 前天：使用UTC时间
             startDate = new Date(now)
-            startDate.setDate(now.getDate() - 2)
-            startDate.setHours(0, 0, 0, 0)
+            startDate.setUTCDate(now.getUTCDate() - 2)
+            startDate.setUTCHours(0, 0, 0, 0)
             endDate = new Date(startDate)
-            endDate.setHours(23, 59, 59, 999)
+            endDate.setUTCHours(23, 59, 59, 999)
+            
+            // 由于后端会加8小时，我们需要减去8小时
+            startDate = new Date(startDate.getTime() - 8 * 60 * 60 * 1000)
+            endDate = new Date(endDate.getTime() - 8 * 60 * 60 * 1000)
             break
         }
       } else {
