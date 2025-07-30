@@ -141,12 +141,15 @@ export const useDashboardStore = defineStore('dashboard', () => {
       let url = '/admin/usage-trend?'
       
       if (granularity === 'hour') {
-        // 小时粒度，传递开始和结束时间
+        // 小时粒度，计算时间范围
         url += `granularity=hour`
-        if (dateFilter.value.customRange && dateFilter.value.customRange.length === 2) {
-          url += `&startDate=${encodeURIComponent(dateFilter.value.customRange[0])}`
-          url += `&endDate=${encodeURIComponent(dateFilter.value.customRange[1])}`
-        }
+        
+        // 根据days参数计算时间范围
+        const endTime = new Date()
+        const startTime = new Date(endTime.getTime() - days * 24 * 60 * 60 * 1000)
+        
+        url += `&startDate=${encodeURIComponent(startTime.toISOString())}`
+        url += `&endDate=${encodeURIComponent(endTime.toISOString())}`
       } else {
         // 天粒度，传递天数
         url += `granularity=day&days=${days}`
