@@ -1261,10 +1261,11 @@ router.get('/accounts/:accountId/usage-stats', authenticateAdmin, async (req, re
 // 获取系统概览
 router.get('/dashboard', authenticateAdmin, async (req, res) => {
   try {
-    const [, apiKeys, claudeAccounts, geminiAccounts, todayStats, systemAverages, realtimeMetrics] = await Promise.all([
+    const [, apiKeys, claudeAccounts, claudeConsoleAccounts, geminiAccounts, todayStats, systemAverages, realtimeMetrics] = await Promise.all([
       redis.getSystemStats(),
       apiKeyService.getAllApiKeys(),
       claudeAccountService.getAllAccounts(),
+      claudeConsoleAccountService.getAllAccounts(),
       geminiAccountService.getAllAccounts(),
       redis.getTodayStats(),
       redis.getSystemAverages(),
@@ -1283,6 +1284,8 @@ router.get('/dashboard', authenticateAdmin, async (req, res) => {
     const activeApiKeys = apiKeys.filter(key => key.isActive).length;
     const activeClaudeAccounts = claudeAccounts.filter(acc => acc.isActive && acc.status === 'active').length;
     const rateLimitedClaudeAccounts = claudeAccounts.filter(acc => acc.rateLimitStatus && acc.rateLimitStatus.isRateLimited).length;
+    const activeClaudeConsoleAccounts = claudeConsoleAccounts.filter(acc => acc.isActive && acc.status === 'active').length;
+    const rateLimitedClaudeConsoleAccounts = claudeConsoleAccounts.filter(acc => acc.rateLimitStatus && acc.rateLimitStatus.isRateLimited).length;
     const activeGeminiAccounts = geminiAccounts.filter(acc => acc.isActive && acc.status === 'active').length;
     const rateLimitedGeminiAccounts = geminiAccounts.filter(acc => acc.rateLimitStatus === 'limited').length;
 
@@ -1290,9 +1293,9 @@ router.get('/dashboard', authenticateAdmin, async (req, res) => {
       overview: {
         totalApiKeys: apiKeys.length,
         activeApiKeys,
-        totalClaudeAccounts: claudeAccounts.length,
-        activeClaudeAccounts: activeClaudeAccounts,
-        rateLimitedClaudeAccounts: rateLimitedClaudeAccounts,
+        totalClaudeAccounts: claudeAccounts.length + claudeConsoleAccounts.length,
+        activeClaudeAccounts: activeClaudeAccounts + activeClaudeConsoleAccounts,
+        rateLimitedClaudeAccounts: rateLimitedClaudeAccounts + rateLimitedClaudeConsoleAccounts,
         totalGeminiAccounts: geminiAccounts.length,
         activeGeminiAccounts: activeGeminiAccounts,
         rateLimitedGeminiAccounts: rateLimitedGeminiAccounts,
@@ -1325,7 +1328,7 @@ router.get('/dashboard', authenticateAdmin, async (req, res) => {
       },
       systemHealth: {
         redisConnected: redis.isConnected,
-        claudeAccountsHealthy: activeClaudeAccounts > 0,
+        claudeAccountsHealthy: (activeClaudeAccounts + activeClaudeConsoleAccounts) > 0,
         geminiAccountsHealthy: activeGeminiAccounts > 0,
         uptime: process.uptime()
       },
