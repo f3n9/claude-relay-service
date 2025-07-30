@@ -206,7 +206,7 @@
               </div>
               
               <div>
-                <label class="block text-sm font-semibold text-gray-700 mb-3">支持的模型 (可选)</label>
+                <label class="block text-sm font-semibold text-gray-700 mb-3">支持的模型 (可选)--注意,ClaudeCode必须加上hiku模型！</label>
                 <div class="mb-2 flex gap-2">
                   <button
                     type="button"
@@ -234,7 +234,7 @@
                   v-model="form.supportedModels" 
                   rows="3" 
                   class="form-input w-full resize-none"
-                  placeholder="每行一个模型，例如：&#10;claude-3-opus-20240229&#10;claude-3-sonnet-20240229&#10;留空表示支持所有模型"
+                  placeholder="每行一个模型，留空表示支持所有模型。特别注意,ClaudeCode必须加上hiku模型！"
                 ></textarea>
                 <p class="text-xs text-gray-500 mt-1">留空表示支持所有模型。如果指定模型，请求中的模型不在列表内将不会调度到此账号</p>
               </div>
@@ -494,12 +494,19 @@
                 >
                   + claude-opus-4-20250514
                 </button>
+                <button
+                    type="button"
+                    @click="addPresetModel('claude-3-5-haiku-20241022')"
+                    class="px-3 py-1 text-xs bg-green-100 text-green-700 rounded-lg hover:bg-purple-200 transition-colors"
+                  >
+                    + claude-3-5-haiku-20241022
+                  </button>
               </div>
               <textarea 
                 v-model="form.supportedModels" 
                 rows="3" 
                 class="form-input w-full resize-none"
-                placeholder="每行一个模型，留空表示支持所有模型"
+                placeholder="每行一个模型，留空表示支持所有模型。特别注意,ClaudeCode必须加上hiku模型！"
               ></textarea>
             </div>
             
