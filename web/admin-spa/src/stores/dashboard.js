@@ -91,29 +91,27 @@ export const useDashboardStore = defineStore('dashboard', () => {
   }
   
   // 辅助函数：获取系统时区某一天的起止UTC时间
-  // 输入：一个日期（以用户本地时间表示）
+  // 输入：一个系统时区的日期对象
   // 输出：该日期在系统时区的0点/23:59对应的UTC时间
-  function getSystemTimezoneDay(localDate, startOfDay = true) {
+  function getSystemTimezoneDay(systemTzDate, startOfDay = true) {
     const offset = dashboardData.value.systemTimezone || 8
     
-    // 获取用户本地日期的年月日
-    const year = localDate.getFullYear()
-    const month = localDate.getMonth()
-    const day = localDate.getDate()
+    // 获取系统时区日期的年月日
+    const year = systemTzDate.getFullYear()
+    const month = systemTzDate.getMonth()
+    const day = systemTzDate.getDate()
     
-    // 创建UTC时间，表示系统时区的该日期
+    // 创建系统时区的日期时间
     if (startOfDay) {
-      // 系统时区YYYY-MM-DD 00:00:00 对应的UTC时间
-      const utcDate = new Date(Date.UTC(year, month, day, 0, 0, 0, 0))
-      // 减去系统时区偏移得到UTC时间
-      utcDate.setUTCHours(utcDate.getUTCHours() - offset)
-      return utcDate
+      // 系统时区 YYYY-MM-DD 00:00:00
+      const systemDateTime = new Date(year, month, day, 0, 0, 0, 0)
+      // 转换为UTC时间：减去时区偏移
+      return new Date(systemDateTime.getTime() - offset * 3600000)
     } else {
-      // 系统时区YYYY-MM-DD 23:59:59.999 对应的UTC时间
-      const utcDate = new Date(Date.UTC(year, month, day, 23, 59, 59, 999))
-      // 减去系统时区偏移得到UTC时间
-      utcDate.setUTCHours(utcDate.getUTCHours() - offset)
-      return utcDate
+      // 系统时区 YYYY-MM-DD 23:59:59.999
+      const systemDateTime = new Date(year, month, day, 23, 59, 59, 999)
+      // 转换为UTC时间：减去时区偏移
+      return new Date(systemDateTime.getTime() - offset * 3600000)
     }
   }
   
@@ -182,9 +180,24 @@ export const useDashboardStore = defineStore('dashboard', () => {
         url += `granularity=hour`
         
         if (dateFilter.value.customRange && dateFilter.value.customRange.length === 2) {
-          // 使用自定义时间范围
-          url += `&startDate=${encodeURIComponent(dateFilter.value.customRange[0])}`
-          url += `&endDate=${encodeURIComponent(dateFilter.value.customRange[1])}`
+          // 使用自定义时间范围 - 需要将系统时区时间转换为UTC
+          const convertToUTC = (systemTzTimeStr) => {
+            const systemTz = dashboardData.value.systemTimezone || 8
+            // 解析系统时区时间字符串
+            const [datePart, timePart] = systemTzTimeStr.split(' ')
+            const [year, month, day] = datePart.split('-').map(Number)
+            const [hours, minutes, seconds] = timePart.split(':').map(Number)
+            
+            // 创建系统时区的Date对象
+            const systemDate = new Date(year, month - 1, day, hours, minutes, seconds)
+            
+            // 转换为UTC
+            const utcTime = systemDate.getTime() - (systemTz * 3600000)
+            return new Date(utcTime).toISOString()
+          }
+          
+          url += `&startDate=${encodeURIComponent(convertToUTC(dateFilter.value.customRange[0]))}`
+          url += `&endDate=${encodeURIComponent(convertToUTC(dateFilter.value.customRange[1]))}`
         } else {
           // 使用预设计算时间范围，与loadApiKeysTrend保持一致
           const now = new Date()
@@ -199,14 +212,14 @@ export const useDashboardStore = defineStore('dashboard', () => {
                 break
               case 'yesterday':
                 // 昨天：基于系统时区的昨天
-                const yesterday = new Date(now)
+                const yesterday = new Date()
                 yesterday.setDate(yesterday.getDate() - 1)
                 startTime = getSystemTimezoneDay(yesterday, true)
                 endTime = getSystemTimezoneDay(yesterday, false)
                 break
               case 'dayBefore':
                 // 前天：基于系统时区的前天
-                const dayBefore = new Date(now)
+                const dayBefore = new Date()
                 dayBefore.setDate(dayBefore.getDate() - 2)
                 startTime = getSystemTimezoneDay(dayBefore, true)
                 endTime = getSystemTimezoneDay(dayBefore, false)
@@ -260,9 +273,24 @@ export const useDashboardStore = defineStore('dashboard', () => {
         url += `granularity=hour`
         
         if (dateFilter.value.customRange && dateFilter.value.customRange.length === 2) {
-          // 使用自定义时间范围
-          url += `&startDate=${encodeURIComponent(dateFilter.value.customRange[0])}`
-          url += `&endDate=${encodeURIComponent(dateFilter.value.customRange[1])}`
+          // 使用自定义时间范围 - 需要将系统时区时间转换为UTC
+          const convertToUTC = (systemTzTimeStr) => {
+            const systemTz = dashboardData.value.systemTimezone || 8
+            // 解析系统时区时间字符串
+            const [datePart, timePart] = systemTzTimeStr.split(' ')
+            const [year, month, day] = datePart.split('-').map(Number)
+            const [hours, minutes, seconds] = timePart.split(':').map(Number)
+            
+            // 创建系统时区的Date对象
+            const systemDate = new Date(year, month - 1, day, hours, minutes, seconds)
+            
+            // 转换为UTC
+            const utcTime = systemDate.getTime() - (systemTz * 3600000)
+            return new Date(utcTime).toISOString()
+          }
+          
+          url += `&startDate=${encodeURIComponent(convertToUTC(dateFilter.value.customRange[0]))}`
+          url += `&endDate=${encodeURIComponent(convertToUTC(dateFilter.value.customRange[1]))}`
         } else {
           // 使用预设计算时间范围，与setDateFilterPreset保持一致
           const now = new Date()
@@ -277,14 +305,14 @@ export const useDashboardStore = defineStore('dashboard', () => {
                 break
               case 'yesterday':
                 // 昨天：基于系统时区的昨天
-                const yesterday = new Date(now)
+                const yesterday = new Date()
                 yesterday.setDate(yesterday.getDate() - 1)
                 startTime = getSystemTimezoneDay(yesterday, true)
                 endTime = getSystemTimezoneDay(yesterday, false)
                 break
               case 'dayBefore':
                 // 前天：基于系统时区的前天
-                const dayBefore = new Date(now)
+                const dayBefore = new Date()
                 dayBefore.setDate(dayBefore.getDate() - 2)
                 startTime = getSystemTimezoneDay(dayBefore, true)
                 endTime = getSystemTimezoneDay(dayBefore, false)
@@ -346,18 +374,20 @@ export const useDashboardStore = defineStore('dashboard', () => {
             startDate = new Date(now.getTime() - 24 * 60 * 60 * 1000)
             break
           case 'yesterday':
-            // 昨天：基于系统时区的昨天
-            const yesterday2 = new Date(now)
-            yesterday2.setDate(yesterday2.getDate() - 1)
-            startDate = getSystemTimezoneDay(yesterday2, true)
-            endDate = getSystemTimezoneDay(yesterday2, false)
+            // 昨天：获取本地时间的昨天
+            const yesterday = new Date()
+            yesterday.setDate(yesterday.getDate() - 1)
+            // 转换为系统时区的昨天0点和23:59
+            startDate = getSystemTimezoneDay(yesterday, true)
+            endDate = getSystemTimezoneDay(yesterday, false)
             break
           case 'dayBefore':
-            // 前天：基于系统时区的前天
-            const dayBefore2 = new Date(now)
-            dayBefore2.setDate(dayBefore2.getDate() - 2)
-            startDate = getSystemTimezoneDay(dayBefore2, true)
-            endDate = getSystemTimezoneDay(dayBefore2, false)
+            // 前天：获取本地时间的前天
+            const dayBefore = new Date()
+            dayBefore.setDate(dayBefore.getDate() - 2)
+            // 转换为系统时区的前天0点和23:59
+            startDate = getSystemTimezoneDay(dayBefore, true)
+            endDate = getSystemTimezoneDay(dayBefore, false)
             break
         }
       } else {
@@ -381,19 +411,21 @@ export const useDashboardStore = defineStore('dashboard', () => {
       dateFilter.value.customEnd = endDate.toISOString().split('T')[0]
       
       // 设置 customRange 为 Element Plus 需要的格式
-      const formatDate = (date) => {
-        const year = date.getFullYear()
-        const month = String(date.getMonth() + 1).padStart(2, '0')
-        const day = String(date.getDate()).padStart(2, '0')
-        const hours = String(date.getHours()).padStart(2, '0')
-        const minutes = String(date.getMinutes()).padStart(2, '0')
-        const seconds = String(date.getSeconds()).padStart(2, '0')
+      // 显示系统时区的时间
+      const formatDateForDisplay = (utcDate) => {
+        const systemTzDate = getDateInSystemTimezone(utcDate)
+        const year = systemTzDate.getUTCFullYear()
+        const month = String(systemTzDate.getUTCMonth() + 1).padStart(2, '0')
+        const day = String(systemTzDate.getUTCDate()).padStart(2, '0')
+        const hours = String(systemTzDate.getUTCHours()).padStart(2, '0')
+        const minutes = String(systemTzDate.getUTCMinutes()).padStart(2, '0')
+        const seconds = String(systemTzDate.getUTCSeconds()).padStart(2, '0')
         return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`
       }
       
       dateFilter.value.customRange = [
-        formatDate(startDate),
-        formatDate(endDate)
+        formatDateForDisplay(startDate),
+        formatDateForDisplay(endDate)
       ]
     }
     
@@ -409,9 +441,19 @@ export const useDashboardStore = defineStore('dashboard', () => {
       dateFilter.value.customStart = value[0].split(' ')[0]
       dateFilter.value.customEnd = value[1].split(' ')[0]
       
-      // 检查日期范围限制
-      const start = new Date(value[0])
-      const end = new Date(value[1])
+      // 检查日期范围限制 - value中的时间已经是系统时区时间
+      const systemTz = dashboardData.value.systemTimezone || 8
+      
+      // 解析系统时区时间
+      const parseSystemTime = (timeStr) => {
+        const [datePart, timePart] = timeStr.split(' ')
+        const [year, month, day] = datePart.split('-').map(Number)
+        const [hours, minutes, seconds] = timePart.split(':').map(Number)
+        return new Date(year, month - 1, day, hours, minutes, seconds)
+      }
+      
+      const start = parseSystemTime(value[0])
+      const end = parseSystemTime(value[1])
       
       if (trendGranularity.value === 'hour') {
         // 小时粒度：限制 24 小时
@@ -433,7 +475,7 @@ export const useDashboardStore = defineStore('dashboard', () => {
       refreshChartsData()
     } else if (value === null) {
       // 清空时恢复默认
-      setDateFilterPreset(trendGranularity.value === 'hour' ? '7days' : '7days')
+      setDateFilterPreset(trendGranularity.value === 'hour' ? 'last24h' : '7days')
     }
   }
   
