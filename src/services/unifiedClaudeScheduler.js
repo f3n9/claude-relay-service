@@ -107,7 +107,8 @@ class UnifiedClaudeScheduler {
       if (account.isActive === 'true' && 
           account.status !== 'error' &&
           account.status !== 'blocked' &&
-          (account.accountType === 'shared' || !account.accountType)) { // 兼容旧数据
+          (account.accountType === 'shared' || !account.accountType) && // 兼容旧数据
+          account.schedulable !== 'false') { // 检查是否可调度
         
         // 检查是否被限流
         const isRateLimited = await claudeAccountService.isAccountRateLimited(account.id);
@@ -128,12 +129,13 @@ class UnifiedClaudeScheduler {
     logger.info(`📋 Found ${consoleAccounts.length} total Claude Console accounts`);
     
     for (const account of consoleAccounts) {
-      logger.info(`🔍 Checking Claude Console account: ${account.name} - isActive: ${account.isActive}, status: ${account.status}, accountType: ${account.accountType}`);
+      logger.info(`🔍 Checking Claude Console account: ${account.name} - isActive: ${account.isActive}, status: ${account.status}, accountType: ${account.accountType}, schedulable: ${account.schedulable}`);
       
       // 注意：getAllAccounts返回的isActive是布尔值
       if (account.isActive === true && 
           account.status === 'active' &&
-          account.accountType === 'shared') {
+          account.accountType === 'shared' &&
+          account.schedulable !== false) { // 检查是否可调度
         
         // 检查模型支持（如果有请求的模型）
         if (requestedModel && account.supportedModels && account.supportedModels.length > 0) {
@@ -158,7 +160,7 @@ class UnifiedClaudeScheduler {
           logger.warn(`⚠️ Claude Console account ${account.name} is rate limited`);
         }
       } else {
-        logger.info(`❌ Claude Console account ${account.name} not eligible - isActive: ${account.isActive}, status: ${account.status}, accountType: ${account.accountType}`);
+        logger.info(`❌ Claude Console account ${account.name} not eligible - isActive: ${account.isActive}, status: ${account.status}, accountType: ${account.accountType}, schedulable: ${account.schedulable}`);
       }
     }
     
@@ -189,10 +191,20 @@ class UnifiedClaudeScheduler {
         if (!account || account.isActive !== 'true' || account.status === 'error') {
           return false;
         }
+        // 检查是否可调度
+        if (account.schedulable === 'false') {
+          logger.info(`🚫 Account ${accountId} is not schedulable`);
+          return false;
+        }
         return !(await claudeAccountService.isAccountRateLimited(accountId));
       } else if (accountType === 'claude-console') {
         const account = await claudeConsoleAccountService.getAccount(accountId);
         if (!account || !account.isActive || account.status !== 'active') {
+          return false;
+        }
+        // 检查是否可调度
+        if (account.schedulable === false) {
+          logger.info(`🚫 Claude Console account ${accountId} is not schedulable`);
           return false;
         }
         return !(await claudeConsoleAccountService.isAccountRateLimited(accountId));

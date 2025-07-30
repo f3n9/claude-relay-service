@@ -30,7 +30,8 @@ class ClaudeConsoleAccountService {
       rateLimitDuration = 60, // 限流时间（分钟）
       proxy = null,
       isActive = true,
-      accountType = 'shared' // 'dedicated' or 'shared'
+      accountType = 'shared', // 'dedicated' or 'shared'
+      schedulable = true // 是否可被调度
     } = options;
 
     // 验证必填字段
@@ -60,7 +61,9 @@ class ClaudeConsoleAccountService {
       errorMessage: '',
       // 限流相关
       rateLimitedAt: '',
-      rateLimitStatus: ''
+      rateLimitStatus: '',
+      // 调度控制
+      schedulable: schedulable.toString()
     };
 
     const client = redis.getClientSafe();
@@ -126,7 +129,8 @@ class ClaudeConsoleAccountService {
             errorMessage: accountData.errorMessage,
             createdAt: accountData.createdAt,
             lastUsedAt: accountData.lastUsedAt,
-            rateLimitStatus: rateLimitInfo
+            rateLimitStatus: rateLimitInfo,
+            schedulable: accountData.schedulable !== 'false' // 默认为true，只有明确设置为false才不可调度
           });
         }
       }
@@ -166,6 +170,7 @@ class ClaudeConsoleAccountService {
     accountData.priority = parseInt(accountData.priority) || 50;
     accountData.rateLimitDuration = parseInt(accountData.rateLimitDuration) || 60;
     accountData.isActive = accountData.isActive === 'true';
+    accountData.schedulable = accountData.schedulable !== 'false'; // 默认为true
     
     if (accountData.proxy) {
       accountData.proxy = JSON.parse(accountData.proxy);
@@ -210,6 +215,7 @@ class ClaudeConsoleAccountService {
       if (updates.rateLimitDuration !== undefined) updatedData.rateLimitDuration = updates.rateLimitDuration.toString();
       if (updates.proxy !== undefined) updatedData.proxy = updates.proxy ? JSON.stringify(updates.proxy) : '';
       if (updates.isActive !== undefined) updatedData.isActive = updates.isActive.toString();
+      if (updates.schedulable !== undefined) updatedData.schedulable = updates.schedulable.toString();
 
       // 处理账户类型变更
       if (updates.accountType && updates.accountType !== existingAccount.accountType) {

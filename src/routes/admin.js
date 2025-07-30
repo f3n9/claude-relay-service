@@ -793,6 +793,29 @@ router.post('/claude-accounts/:accountId/refresh', authenticateAdmin, async (req
   }
 });
 
+// 切换Claude账户调度状态
+router.put('/claude-accounts/:accountId/toggle-schedulable', authenticateAdmin, async (req, res) => {
+  try {
+    const { accountId } = req.params;
+    
+    const accounts = await claudeAccountService.getAllAccounts();
+    const account = accounts.find(acc => acc.id === accountId);
+    
+    if (!account) {
+      return res.status(404).json({ error: 'Account not found' });
+    }
+    
+    const newSchedulable = !account.schedulable;
+    await claudeAccountService.updateAccount(accountId, { schedulable: newSchedulable });
+    
+    logger.success(`🔄 Admin toggled Claude account schedulable status: ${accountId} -> ${newSchedulable ? 'schedulable' : 'not schedulable'}`);
+    res.json({ success: true, schedulable: newSchedulable });
+  } catch (error) {
+    logger.error('❌ Failed to toggle Claude account schedulable status:', error);
+    res.status(500).json({ error: 'Failed to toggle schedulable status', message: error.message });
+  }
+});
+
 // 🎮 Claude Console 账户管理
 
 // 获取所有Claude Console账户
@@ -938,6 +961,27 @@ router.put('/claude-console-accounts/:accountId/toggle', authenticateAdmin, asyn
   } catch (error) {
     logger.error('❌ Failed to toggle Claude Console account status:', error);
     res.status(500).json({ error: 'Failed to toggle account status', message: error.message });
+  }
+});
+
+// 切换Claude Console账户调度状态
+router.put('/claude-console-accounts/:accountId/toggle-schedulable', authenticateAdmin, async (req, res) => {
+  try {
+    const { accountId } = req.params;
+    
+    const account = await claudeConsoleAccountService.getAccount(accountId);
+    if (!account) {
+      return res.status(404).json({ error: 'Account not found' });
+    }
+    
+    const newSchedulable = !account.schedulable;
+    await claudeConsoleAccountService.updateAccount(accountId, { schedulable: newSchedulable });
+    
+    logger.success(`🔄 Admin toggled Claude Console account schedulable status: ${accountId} -> ${newSchedulable ? 'schedulable' : 'not schedulable'}`);
+    res.json({ success: true, schedulable: newSchedulable });
+  } catch (error) {
+    logger.error('❌ Failed to toggle Claude Console account schedulable status:', error);
+    res.status(500).json({ error: 'Failed to toggle schedulable status', message: error.message });
   }
 });
 

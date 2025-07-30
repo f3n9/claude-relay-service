@@ -38,7 +38,8 @@ class ClaudeAccountService {
       proxy = null, // { type: 'socks5', host: 'localhost', port: 1080, username: '', password: '' }
       isActive = true,
       accountType = 'shared', // 'dedicated' or 'shared'
-      priority = 50 // 调度优先级 (1-100，数字越小优先级越高)
+      priority = 50, // 调度优先级 (1-100，数字越小优先级越高)
+      schedulable = true // 是否可被调度
     } = options;
 
     const accountId = uuidv4();
@@ -66,7 +67,8 @@ class ClaudeAccountService {
         lastUsedAt: '',
         lastRefreshAt: '',
         status: 'active', // 有OAuth数据的账户直接设为active
-        errorMessage: ''
+        errorMessage: '',
+        schedulable: schedulable.toString() // 是否可被调度
       };
     } else {
       // 兼容旧格式
@@ -88,7 +90,8 @@ class ClaudeAccountService {
         lastUsedAt: '',
         lastRefreshAt: '',
         status: 'created', // created, active, expired, error
-        errorMessage: ''
+        errorMessage: '',
+        schedulable: schedulable.toString() // 是否可被调度
       };
     }
 
@@ -328,7 +331,9 @@ class ClaudeAccountService {
             progress: 0,
             remainingTime: null,
             lastRequestTime: null
-          }
+          },
+          // 添加调度状态
+          schedulable: account.schedulable !== 'false' // 默认为true，兼容历史数据
         };
       }));
       
@@ -348,7 +353,7 @@ class ClaudeAccountService {
         throw new Error('Account not found');
       }
 
-      const allowedUpdates = ['name', 'description', 'email', 'password', 'refreshToken', 'proxy', 'isActive', 'claudeAiOauth', 'accountType', 'priority'];
+      const allowedUpdates = ['name', 'description', 'email', 'password', 'refreshToken', 'proxy', 'isActive', 'claudeAiOauth', 'accountType', 'priority', 'schedulable'];
       const updatedData = { ...accountData };
 
       // 检查是否新增了 refresh token

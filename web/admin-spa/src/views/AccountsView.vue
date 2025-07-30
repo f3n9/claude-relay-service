@@ -138,6 +138,11 @@
                     <i class="fas fa-exclamation-triangle mr-1"></i>
                     限流中 ({{ account.rateLimitStatus.minutesRemaining }}分钟)
                   </span>
+                  <span v-if="account.schedulable === false" 
+                        class="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-gray-100 text-gray-700">
+                    <i class="fas fa-pause-circle mr-1"></i>
+                    不可调度
+                  </span>
                   <span v-if="account.status === 'blocked' && account.errorMessage" 
                         class="text-xs text-gray-500 mt-1 max-w-xs truncate" 
                         :title="account.errorMessage">
@@ -153,7 +158,7 @@
                 <div v-if="account.platform === 'claude' || account.platform === 'claude-console'" class="flex items-center gap-2">
                   <div class="w-16 bg-gray-200 rounded-full h-2">
                     <div class="bg-gradient-to-r from-green-500 to-blue-600 h-2 rounded-full transition-all duration-300" 
-                         :style="{ width: ((100 - (account.priority || 50)) + '%') }"></div>
+                         :style="{ width: ((101 - (account.priority || 50)) + '%') }"></div>
                   </div>
                   <span class="text-xs text-gray-700 font-medium min-w-[20px]">
                     {{ account.priority || 50 }}
@@ -230,6 +235,24 @@
                     <i :class="[
                       'fas fa-sync-alt',
                       account.isRefreshing ? 'animate-spin' : ''
+                    ]"></i>
+                  </button>
+                  <button 
+                    @click="toggleSchedulable(account)"
+                    :disabled="account.isTogglingSchedulable"
+                    :class="[
+                      'px-3 py-1.5 rounded-lg text-xs font-medium transition-colors',
+                      account.isTogglingSchedulable
+                        ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                        : account.schedulable
+                        ? 'bg-green-100 text-green-700 hover:bg-green-200'
+                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                    ]"
+                    :title="account.schedulable ? '点击禁用调度' : '点击启用调度'"
+                  >
+                    <i :class="[
+                      'fas',
+                      account.schedulable ? 'fa-toggle-on' : 'fa-toggle-off'
                     ]"></i>
                   </button>
                   <button 
@@ -568,6 +591,41 @@ const refreshToken = async (account) => {
     showToast('Token刷新失败', 'error')
   } finally {
     account.isRefreshing = false
+  }
+}
+
+// 切换调度状态
+const toggleSchedulable = async (account) => {
+  if (account.isTogglingSchedulable) return
+  
+  try {
+    account.isTogglingSchedulable = true
+    
+    let endpoint
+    if (account.platform === 'claude') {
+      endpoint = `/admin/claude-accounts/${account.id}/toggle-schedulable`
+    } else if (account.platform === 'claude-console') {
+      endpoint = `/admin/claude-console-accounts/${account.id}/toggle-schedulable`
+    } else {
+      showToast('Gemini账户暂不支持调度控制', 'warning')
+      return
+    }
+    
+    const data = await apiClient.put(endpoint)
+    
+    if (data.success) {
+      account.schedulable = data.schedulable
+      showToast(
+        data.schedulable ? '已启用调度' : '已禁用调度', 
+        'success'
+      )
+    } else {
+      showToast(data.message || '操作失败', 'error')
+    }
+  } catch (error) {
+    showToast('切换调度状态失败', 'error')
+  } finally {
+    account.isTogglingSchedulable = false
   }
 }
 
