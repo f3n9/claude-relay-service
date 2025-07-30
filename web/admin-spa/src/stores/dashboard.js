@@ -94,7 +94,8 @@ export const useDashboardStore = defineStore('dashboard', () => {
   // 输入：一个本地时间的日期对象（如用户选择的日期）
   // 输出：该日期在系统时区的0点/23:59对应的UTC时间
   function getSystemTimezoneDay(localDate, startOfDay = true) {
-    const systemTz = dashboardData.value.systemTimezone || 8
+    // 固定使用UTC+8，因为后端系统时区是UTC+8
+    const systemTz = 8
     
     // 获取本地日期的年月日（这是用户想要查看的日期）
     const year = localDate.getFullYear()
@@ -103,12 +104,12 @@ export const useDashboardStore = defineStore('dashboard', () => {
     
     if (startOfDay) {
       // 创建UTC时间，使其在系统时区(UTC+8)显示为 YYYY-MM-DD 00:00:00
-      // 例如：要在UTC+8显示为 2025-07-28 00:00:00，UTC时间应该是 2025-07-27 16:00:00
-      const utcDate = new Date(Date.UTC(year, month, day, 0 - systemTz, 0, 0, 0))
+      // 例如：要在UTC+8显示为 2025-07-29 00:00:00，UTC时间应该是 2025-07-28 16:00:00
+      const utcDate = new Date(Date.UTC(year, month, day - 1, 24 - systemTz, 0, 0, 0))
       return utcDate
     } else {
       // 创建UTC时间，使其在系统时区(UTC+8)显示为 YYYY-MM-DD 23:59:59.999
-      // 例如：要在UTC+8显示为 2025-07-28 23:59:59，UTC时间应该是 2025-07-28 15:59:59
+      // 例如：要在UTC+8显示为 2025-07-29 23:59:59，UTC时间应该是 2025-07-29 15:59:59
       const utcDate = new Date(Date.UTC(year, month, day, 24 - systemTz - 1, 59, 59, 999))
       return utcDate
     }
@@ -181,7 +182,8 @@ export const useDashboardStore = defineStore('dashboard', () => {
         if (dateFilter.value.customRange && dateFilter.value.customRange.length === 2) {
           // 使用自定义时间范围 - 需要将系统时区时间转换为UTC
           const convertToUTC = (systemTzTimeStr) => {
-            const systemTz = dashboardData.value.systemTimezone || 8
+            // 固定使用UTC+8，因为后端系统时区是UTC+8
+            const systemTz = 8
             // 解析系统时区时间字符串
             const [datePart, timePart] = systemTzTimeStr.split(' ')
             const [year, month, day] = datePart.split('-').map(Number)
@@ -273,7 +275,8 @@ export const useDashboardStore = defineStore('dashboard', () => {
         if (dateFilter.value.customRange && dateFilter.value.customRange.length === 2) {
           // 使用自定义时间范围 - 需要将系统时区时间转换为UTC
           const convertToUTC = (systemTzTimeStr) => {
-            const systemTz = dashboardData.value.systemTimezone || 8
+            // 固定使用UTC+8，因为后端系统时区是UTC+8
+            const systemTz = 8
             // 解析系统时区时间字符串
             const [datePart, timePart] = systemTzTimeStr.split(' ')
             const [year, month, day] = datePart.split('-').map(Number)
