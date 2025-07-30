@@ -359,7 +359,7 @@
                     使用共享账号池
                   </option>
                   <option 
-                    v-for="account in accounts.claude.filter(a => a.isDedicated)" 
+                    v-for="account in accounts.claude.filter(a => a.accountType === 'dedicated')" 
                     :key="account.id" 
                     :value="account.id"
                   >
@@ -378,7 +378,7 @@
                     使用共享账号池
                   </option>
                   <option 
-                    v-for="account in accounts.gemini.filter(a => a.isDedicated)" 
+                    v-for="account in accounts.gemini.filter(a => a.accountType === 'dedicated')" 
                     :key="account.id" 
                     :value="account.id"
                   >
