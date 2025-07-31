@@ -881,7 +881,7 @@ class ClaudeAccountService {
       accountData.sessionWindowEnd = windowEnd.toISOString();
       accountData.lastRequestTime = now.toISOString();
 
-      logger.info(`🕐 Created new session window for account ${accountData.name} (${accountId}): ${windowStart.toISOString()} - ${windowEnd.toISOString()}`);
+      logger.info(`🕐 Created new session window for account ${accountData.name} (${accountId}): ${windowStart.toISOString()} - ${windowEnd.toISOString()} (from current time)`);
 
       return accountData;
     } catch (error) {
@@ -892,11 +892,8 @@ class ClaudeAccountService {
 
   // 🕐 计算会话窗口开始时间
   _calculateSessionWindowStart(requestTime) {
-    const hour = requestTime.getHours();
-    const windowStartHour = Math.floor(hour / 5) * 5; // 向下取整到最近的5小时边界
-    
+    // 从当前时间开始创建窗口，只将分钟取整到整点
     const windowStart = new Date(requestTime);
-    windowStart.setHours(windowStartHour);
     windowStart.setMinutes(0);
     windowStart.setSeconds(0);
     windowStart.setMilliseconds(0);
