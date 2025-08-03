@@ -938,7 +938,14 @@ handle_menu_choice() {
 create_symlink() {
     # 获取脚本的绝对路径
     local script_path=""
-    if command_exists realpath; then
+    
+    # 优先使用项目中的 manage.sh（在 app/scripts 目录下）
+    if [ -n "$APP_DIR" ] && [ -f "$APP_DIR/scripts/manage.sh" ]; then
+        script_path="$APP_DIR/scripts/manage.sh"
+    elif [ -f "/app/scripts/manage.sh" ] && [ "$(basename "$0")" = "manage.sh" ]; then
+        # Docker 容器中的路径
+        script_path="/app/scripts/manage.sh"
+    elif command_exists realpath; then
         script_path="$(realpath "$0")"
     elif command_exists readlink && readlink -f "$0" >/dev/null 2>&1; then
         script_path="$(readlink -f "$0")"
@@ -950,11 +957,22 @@ create_symlink() {
     local symlink_path="/usr/bin/crs"
     
     print_info "创建命令行快捷方式..."
+    print_info "APP_DIR: $APP_DIR"
     print_info "脚本路径: $script_path"
     
     # 检查脚本文件是否存在
     if [ ! -f "$script_path" ]; then
         print_error "找不到脚本文件: $script_path"
+        print_info "当前目录: $(pwd)"
+        print_info "脚本参数 \$0: $0"
+        if [ -n "$APP_DIR" ]; then
+            print_info "检查项目目录结构:"
+            ls -la "$APP_DIR/" 2>/dev/null | head -5
+            if [ -d "$APP_DIR/scripts" ]; then
+                print_info "scripts 目录内容:"
+                ls -la "$APP_DIR/scripts/" 2>/dev/null | grep manage.sh
+            fi
+        fi
         return 1
     fi
     
@@ -1004,7 +1022,15 @@ load_config() {
     fi
     
     if [ -n "$INSTALL_DIR" ]; then
-        APP_DIR="$INSTALL_DIR/app"
+        # 检查是否使用了标准的安装结构（项目在 app 子目录）
+        if [ -d "$INSTALL_DIR/app" ] && [ -f "$INSTALL_DIR/app/package.json" ]; then
+            APP_DIR="$INSTALL_DIR/app"
+        # 检查是否直接克隆了项目（项目在根目录）
+        elif [ -f "$INSTALL_DIR/package.json" ]; then
+            APP_DIR="$INSTALL_DIR"
+        else
+            APP_DIR="$INSTALL_DIR/app"
+        fi
         
         # 加载.env配置
         if [ -f "$APP_DIR/.env" ]; then
@@ -1077,6 +1103,12 @@ main() {
             ;;
         symlink)
             # 单独创建软链接
+            # 确保 APP_DIR 已设置
+            if [ -z "$APP_DIR" ]; then
+                print_error "请先安装项目后再创建软链接"
+                print_info "运行: $0 install"
+                exit 1
+            fi
             create_symlink
             ;;
         help)
