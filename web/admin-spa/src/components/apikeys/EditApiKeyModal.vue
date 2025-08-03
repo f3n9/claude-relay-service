@@ -534,6 +534,7 @@
 <script setup>
 import { ref, reactive, computed, onMounted } from 'vue'
 import { showToast } from '@/utils/toast'
+import { useAuthStore } from '@/stores/auth'
 import { useClientsStore } from '@/stores/clients'
 import { useApiKeysStore } from '@/stores/apiKeys'
 import { apiClient } from '@/config/api'
@@ -551,6 +552,7 @@ const props = defineProps({
 
 const emit = defineEmits(['close', 'success'])
 
+const authStore = useAuthStore()
 const clientsStore = useClientsStore()
 const apiKeysStore = useApiKeysStore()
 const loading = ref(false)
@@ -636,6 +638,8 @@ const updateApiKey = async () => {
       concurrencyLimit: form.concurrencyLimit !== '' && form.concurrencyLimit !== null ? parseInt(form.concurrencyLimit) : 0,
       dailyCostLimit: form.dailyCostLimit !== '' && form.dailyCostLimit !== null ? parseFloat(form.dailyCostLimit) : 0,
       permissions: form.permissions,
+      claudeAccountId: form.claudeAccountId || null,
+      geminiAccountId: form.geminiAccountId || null,
       tags: form.tags
     }
     
@@ -646,25 +650,6 @@ const updateApiKey = async () => {
     // 客户端限制 - 始终提交这些字段
     data.enableClientRestriction = form.enableClientRestriction
     data.allowedClients = form.allowedClients
-    
-    // 处理Claude账户绑定（区分OAuth和Console）
-    if (form.claudeAccountId) {
-      if (form.claudeAccountId.startsWith('console:')) {
-        // Claude Console账户
-        data.claudeConsoleAccountId = form.claudeAccountId.substring(8);
-        data.claudeAccountId = null; // 清空OAuth绑定
-      } else {
-        // Claude OAuth账户
-        data.claudeAccountId = form.claudeAccountId;
-        data.claudeConsoleAccountId = null; // 清空Console绑定
-      }
-    } else {
-      data.claudeAccountId = null;
-      data.claudeConsoleAccountId = null;
-    }
-    
-    // Gemini账户绑定
-    data.geminiAccountId = form.geminiAccountId || null;
     
     const result = await apiClient.put(`/admin/api-keys/${props.apiKey.id}`, data)
     
@@ -762,15 +747,7 @@ onMounted(async () => {
   form.concurrencyLimit = props.apiKey.concurrencyLimit || ''
   form.dailyCostLimit = props.apiKey.dailyCostLimit || ''
   form.permissions = props.apiKey.permissions || 'all'
-  // 处理Claude账户绑定初始化
-  if (props.apiKey.claudeAccountId) {
-    form.claudeAccountId = props.apiKey.claudeAccountId;
-  } else if (props.apiKey.claudeConsoleAccountId) {
-    form.claudeAccountId = `console:${props.apiKey.claudeConsoleAccountId}`;
-  } else {
-    form.claudeAccountId = '';
-  }
-  
+  form.claudeAccountId = props.apiKey.claudeAccountId || ''
   form.geminiAccountId = props.apiKey.geminiAccountId || ''
   form.restrictedModels = props.apiKey.restrictedModels || []
   form.allowedClients = props.apiKey.allowedClients || []

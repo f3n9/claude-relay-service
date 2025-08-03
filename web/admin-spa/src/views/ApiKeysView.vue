@@ -472,10 +472,10 @@
                             :default-time="defaultTime"
                             size="small"
                             style="width: 280px;"
+                            @update:model-value="(value) => onApiKeyCustomDateRangeChange(key.id, value)"
                             class="api-key-date-picker"
                             :clearable="true"
                             :unlink-panels="false"
-                            @update:model-value="(value) => onApiKeyCustomDateRangeChange(key.id, value)"
                           />
                         </div>
                       </div>
@@ -989,11 +989,6 @@ const accounts = ref({ claude: [], gemini: [], claudeGroups: [], geminiGroups: [
 const editingExpiryKey = ref(null)
 const expiryEditModalRef = ref(null)
 
-// 分页相关
-const currentPage = ref(1)
-const pageSize = ref(10)
-const pageSizeOptions = [5, 10, 20, 50, 100]
-
 // 标签相关
 const selectedTagFilter = ref('')
 const availableTags = ref([])
@@ -1017,8 +1012,8 @@ const renewingApiKey = ref(null)
 const newApiKeyData = ref(null)
 const batchApiKeyData = ref([])
 
-// 计算筛选和排序后的API Keys（未分页）
-const filteredAndSortedApiKeys = computed(() => {
+// 计算排序后的API Keys
+const sortedApiKeys = computed(() => {
   // 先进行标签筛选
   let filteredKeys = apiKeys.value
   if (selectedTagFilter.value) {
@@ -1109,17 +1104,8 @@ const loadAccounts = async () => {
       apiClient.get('/admin/account-groups')
     ])
     
-    // 合并Claude OAuth账户和Claude Console账户
-    const claudeAccounts = []
-    
     if (claudeData.success) {
-      claudeData.data?.forEach(account => {
-        claudeAccounts.push({
-          ...account,
-          platform: 'claude-oauth',
-          isDedicated: account.accountType === 'dedicated'
-        })
-      })
+      accounts.value.claude = claudeData.data || []
     }
     
     if (claudeConsoleData.success) {
@@ -1132,10 +1118,7 @@ const loadAccounts = async () => {
     }
     
     if (geminiData.success) {
-      accounts.value.gemini = (geminiData.data || []).map(account => ({
-        ...account,
-        isDedicated: account.accountType === 'dedicated'
-      }))
+      accounts.value.gemini = geminiData.data || []
     }
     
     if (groupsData.success) {
@@ -1165,9 +1148,6 @@ const loadApiKeys = async () => {
         }
       })
       availableTags.value = Array.from(tagsSet).sort()
-      
-      // 重置到第一页
-      currentPage.value = 1
     }
   } catch (error) {
     showToast('加载 API Keys 失败', 'error')
@@ -1184,8 +1164,6 @@ const sortApiKeys = (field) => {
     apiKeysSortBy.value = field
     apiKeysSortOrder.value = 'asc'
   }
-  // 排序时重置到第一页
-  currentPage.value = 1
 }
 
 // 格式化数字
@@ -1202,28 +1180,23 @@ const calculateApiKeyCost = (usage) => {
 }
 
 // 获取绑定账户名称
-const getBoundAccountName = (claudeAccountId, claudeConsoleAccountId) => {
-  // 优先显示Claude OAuth账户
-  if (claudeAccountId) {
-    const claudeAccount = accounts.value.claude.find(acc => acc.id === claudeAccountId)
-    if (claudeAccount) {
-      return claudeAccount.name
-    }
-    // 如果找不到，返回账户ID的前8位
-    return `账户-${claudeAccountId.substring(0, 8)}`
+const getBoundAccountName = (accountId) => {
+  if (!accountId) return '未知账户'
+  
+  // 从Claude账户列表中查找
+  const claudeAccount = accounts.value.claude.find(acc => acc.id === accountId)
+  if (claudeAccount) {
+    return claudeAccount.name
   }
   
-  // 其次显示Claude Console账户
-  if (claudeConsoleAccountId) {
-    const consoleAccount = accounts.value.claude.find(acc => acc.id === claudeConsoleAccountId)
-    if (consoleAccount) {
-      return `${consoleAccount.name} (Console)`
-    }
-    // 如果找不到，返回账户ID的前8位
-    return `Console-${claudeConsoleAccountId.substring(0, 8)}`
+  // 从Gemini账户列表中查找
+  const geminiAccount = accounts.value.gemini.find(acc => acc.id === accountId)
+  if (geminiAccount) {
+    return geminiAccount.name
   }
   
-  return '未知账户'
+  // 如果找不到，返回账户ID的前8位
+  return `账户-${accountId.substring(0, 8)}`
 }
 
 // 检查API Key是否过期
@@ -1504,7 +1477,7 @@ const deleteApiKey = async (keyId) => {
 const copyApiStatsLink = (apiKey) => {
   // 构建统计页面的完整URL
   const baseUrl = window.location.origin
-  const statsUrl = `${baseUrl}/admin-next/api-stats?apiId=${apiKey.id}`
+  const statsUrl = `${baseUrl}/admin/api-stats?apiId=${apiKey.id}`
   
   // 使用传统的textarea方法复制到剪贴板
   const textarea = document.createElement('textarea')
@@ -1673,5 +1646,4 @@ onMounted(async () => {
 .api-key-date-picker :deep(.el-range-separator) {
   @apply text-gray-500;
 }
-
 </style>
