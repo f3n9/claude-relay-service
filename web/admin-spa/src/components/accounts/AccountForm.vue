@@ -870,7 +870,19 @@ const form = ref({
   apiUrl: props.account?.apiUrl || '',
   apiKey: props.account?.apiKey || '',
   priority: props.account?.priority || 50,
-  supportedModels: props.account?.supportedModels?.join('\n') || '',
+  supportedModels: (() => {
+    const models = props.account?.supportedModels;
+    if (!models) return '';
+    // 处理对象格式（Claude Console 的新格式）
+    if (typeof models === 'object' && !Array.isArray(models)) {
+      return Object.keys(models).join('\n');
+    }
+    // 处理数组格式（向后兼容）
+    if (Array.isArray(models)) {
+      return models.join('\n');
+    }
+    return '';
+  })(),
   userAgent: props.account?.userAgent || '',
   rateLimitDuration: props.account?.rateLimitDuration || 60
 })
@@ -1362,7 +1374,19 @@ watch(() => props.account, (newAccount) => {
       apiUrl: newAccount.apiUrl || '',
       apiKey: '',  // 编辑模式不显示现有的 API Key
       priority: newAccount.priority || 50,
-      supportedModels: newAccount.supportedModels?.join('\n') || '',
+      supportedModels: (() => {
+        const models = newAccount.supportedModels;
+        if (!models) return '';
+        // 处理对象格式（Claude Console 的新格式）
+        if (typeof models === 'object' && !Array.isArray(models)) {
+          return Object.keys(models).join('\n');
+        }
+        // 处理数组格式（向后兼容）
+        if (Array.isArray(models)) {
+          return models.join('\n');
+        }
+        return '';
+      })(),
       userAgent: newAccount.userAgent || '',
       rateLimitDuration: newAccount.rateLimitDuration || 60
     }
