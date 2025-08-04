@@ -27,6 +27,7 @@ function checkPermissions(apiKeyData, requiredPermission = 'gemini') {
 router.post('/v1/chat/completions', authenticateApiKey, async (req, res) => {
   const startTime = Date.now();
   let abortController = null;
+  let account = null; // Declare account outside try block for error handling
   
   try {
     const apiKeyData = req.apiKey;
@@ -41,16 +42,42 @@ router.post('/v1/chat/completions', authenticateApiKey, async (req, res) => {
         }
       });
     }
+    // 处理请求体结构 - 支持多种格式
+    let requestBody = req.body;
+    
+    // 如果请求体被包装在 body 字段中，解包它
+    if (req.body.body && typeof req.body.body === 'object') {
+      requestBody = req.body.body;
+    }
+    
+    // 从 URL 路径中提取模型信息（如果存在）
+    let urlModel = null;
+    const urlPath = req.body?.config?.url || req.originalUrl || req.url;
+    const modelMatch = urlPath.match(/\/([^\/]+):(?:stream)?[Gg]enerateContent/);
+    if (modelMatch) {
+      urlModel = modelMatch[1];
+      logger.debug(`Extracted model from URL: ${urlModel}`);
+    }
     
     // 提取请求参数
     const {
-      messages,
-      model = 'gemini-2.0-flash-exp',
+      messages: requestMessages,
+      contents,
+      model: bodyModel = 'gemini-2.0-flash-exp',
       temperature = 0.7,
       max_tokens = 4096,
       stream = false
-    } = req.body;
-    
+    } = requestBody;
+
+    // 优先使用 URL 中的模型，其次是请求体中的模型
+    const model = urlModel || bodyModel;
+
+    // 支持两种格式: OpenAI 的 messages 或 Gemini 的 contents
+    let messages = requestMessages;
+    if (contents && Array.isArray(contents)) {
+      messages = contents;
+    }
+
     // 验证必需参数
     if (!messages || !Array.isArray(messages) || messages.length === 0) {
       return res.status(400).json({
@@ -79,7 +106,7 @@ router.post('/v1/chat/completions', authenticateApiKey, async (req, res) => {
     const sessionHash = generateSessionHash(req);
     
     // 选择可用的 Gemini 账户
-    const account = await geminiAccountService.selectAvailableAccount(
+    account = await geminiAccountService.selectAvailableAccount(
       apiKeyData.id,
       sessionHash
     );
@@ -153,8 +180,8 @@ router.post('/v1/chat/completions', authenticateApiKey, async (req, res) => {
     
     // 处理速率限制
     if (error.status === 429) {
-      if (req.apiKey && req.account) {
-        await geminiAccountService.setAccountRateLimited(req.account.id, true);
+      if (req.apiKey && account) {
+        await geminiAccountService.setAccountRateLimited(account.id, true);
       }
     }
     
