@@ -66,16 +66,31 @@ router.post('/messages', authenticateApiKey, async (req, res) => {
     // 生成会话哈希用于粘性会话
     const sessionHash = generateSessionHash(req);
 
-    // 选择可用的 Gemini 账户
-    const account = await geminiAccountService.selectAvailableAccount(
-      apiKeyData.id,
-      sessionHash
-    );
+    // 使用统一调度选择可用的 Gemini 账户（传递请求的模型）
+    let accountId;
+    try {
+      const schedulerResult = await unifiedGeminiScheduler.selectAccountForApiKey(
+        apiKeyData,
+        sessionHash,
+        model  // 传递请求的模型进行过滤
+      );
+      accountId = schedulerResult.accountId;
+    } catch (error) {
+      logger.error('Failed to select Gemini account:', error);
+      return res.status(503).json({
+        error: {
+          message: error.message || 'No available Gemini accounts',
+          type: 'service_unavailable'
+        }
+      });
+    }
 
+    // 获取账户详情
+    const account = await geminiAccountService.getAccount(accountId);
     if (!account) {
       return res.status(503).json({
         error: {
-          message: 'No available Gemini accounts',
+          message: 'Selected account not found',
           type: 'service_unavailable'
         }
       });
