@@ -38,8 +38,12 @@
               class="form-input px-3 py-2 text-sm w-full sm:w-auto"
               @change="filterByGroup"
             >
-              <option value="all">所有账户</option>
-              <option value="ungrouped">未分组账户</option>
+              <option value="all">
+                所有账户
+              </option>
+              <option value="ungrouped">
+                未分组账户
+              </option>
               <option
                 v-for="group in accountGroups"
                 :key="group.id"
@@ -177,7 +181,10 @@
                   </div>
                   <div class="min-w-0">
                     <div class="flex items-center gap-2">
-                      <div class="text-sm font-semibold text-gray-900 truncate" :title="account.name">
+                      <div
+                        class="text-sm font-semibold text-gray-900 truncate"
+                        :title="account.name"
+                      >
                         {{ account.name }}
                       </div>
                       <span
@@ -206,7 +213,10 @@
                         <i class="fas fa-folder mr-1" />{{ account.groupInfo.name }}
                       </span>
                     </div>
-                    <div class="text-xs text-gray-500 truncate" :title="account.id">
+                    <div
+                      class="text-xs text-gray-500 truncate"
+                      :title="account.id"
+                    >
                       {{ account.id }}
                     </div>
                   </div>
@@ -221,7 +231,7 @@
                   >
                     <i class="fas fa-robot text-yellow-700 text-xs" />
                     <span class="text-xs font-semibold text-yellow-800">Gemini</span>
-                    <span class="w-px h-4 bg-yellow-300 mx-1"></span>
+                    <span class="w-px h-4 bg-yellow-300 mx-1" />
                     <span class="text-xs font-medium text-yellow-700">
                       {{ (account.scopes && account.scopes.length > 0) ? 'OAuth' : '传统' }}
                     </span>
@@ -232,7 +242,7 @@
                   >
                     <i class="fas fa-terminal text-purple-700 text-xs" />
                     <span class="text-xs font-semibold text-purple-800">Console</span>
-                    <span class="w-px h-4 bg-purple-300 mx-1"></span>
+                    <span class="w-px h-4 bg-purple-300 mx-1" />
                     <span class="text-xs font-medium text-purple-700">API Key</span>
                   </div>
                   <div
@@ -241,7 +251,7 @@
                   >
                     <i class="fas fa-brain text-indigo-700 text-xs" />
                     <span class="text-xs font-semibold text-indigo-800">Claude</span>
-                    <span class="w-px h-4 bg-indigo-300 mx-1"></span>
+                    <span class="w-px h-4 bg-indigo-300 mx-1" />
                     <span class="text-xs font-medium text-indigo-700">
                       {{ (account.scopes && account.scopes.length > 0) ? 'OAuth' : '传统' }}
                     </span>
@@ -525,10 +535,10 @@
                 今日使用
               </p>
               <p class="text-sm font-semibold text-gray-900">
-                {{ formatNumber(account.usage?.dailyRequests || 0) }} 次
+                {{ formatNumber(account.usage?.daily?.requests || 0) }} 次
               </p>
               <p class="text-xs text-gray-500 mt-0.5">
-                {{ formatNumber(account.usage?.dailyTokens || 0) }} tokens
+                {{ formatNumber(account.usage?.daily?.allTokens || 0) }} tokens
               </p>
             </div>
             <div>
@@ -536,10 +546,10 @@
                 总使用量
               </p>
               <p class="text-sm font-semibold text-gray-900">
-                {{ formatNumber(account.usage?.totalRequests || 0) }} 次
+                {{ formatNumber(account.usage?.total?.requests || 0) }} 次
               </p>
               <p class="text-xs text-gray-500 mt-0.5">
-                {{ formatNumber(account.usage?.totalTokens || 0) }} tokens
+                {{ formatNumber(account.usage?.total?.allTokens || 0) }} tokens
               </p>
             </div>
           </div>
@@ -548,25 +558,37 @@
           <div class="space-y-2 mb-3">
             <!-- 会话窗口 -->
             <div
-              v-if="account.sessionWindow"
-              class="flex items-center justify-between text-xs"
+              v-if="account.platform === 'claude' && account.sessionWindow && account.sessionWindow.hasActiveWindow"
+              class="bg-gray-50 rounded-lg p-2 space-y-1.5"
             >
-              <span class="text-gray-500">会话窗口</span>
-              <div class="flex items-center gap-2">
-                <span
-                  :class="[
-                    'font-medium',
-                    account.sessionWindow.remaining <= 20 ? 'text-orange-600' : 'text-gray-900'
-                  ]"
-                >
-                  {{ account.sessionWindow.remaining || 0 }} / {{ account.sessionWindow.total || 0 }}
+              <div class="flex items-center justify-between text-xs">
+                <span class="text-gray-600 font-medium">会话窗口</span>
+                <span class="text-gray-700 font-medium">
+                  {{ account.sessionWindow.progress }}%
                 </span>
-                <div class="w-20 h-1.5 bg-gray-200 rounded-full overflow-hidden">
-                  <div 
-                    class="h-full bg-gradient-to-r from-blue-500 to-blue-600 transition-all duration-300"
-                    :style="{ width: `${getSessionWindowPercentage(account)}%` }"
-                  />
-                </div>
+              </div>
+              <div class="w-full h-2 bg-gray-200 rounded-full overflow-hidden">
+                <div 
+                  class="h-full bg-gradient-to-r from-blue-500 to-indigo-600 transition-all duration-300"
+                  :style="{ width: account.sessionWindow.progress + '%' }"
+                />
+              </div>
+              <div class="flex items-center justify-between text-xs">
+                <span class="text-gray-500">
+                  {{ formatSessionWindow(account.sessionWindow.windowStart, account.sessionWindow.windowEnd) }}
+                </span>
+                <span
+                  v-if="account.sessionWindow.remainingTime > 0"
+                  class="text-indigo-600 font-medium"
+                >
+                  剩余 {{ formatRemainingTime(account.sessionWindow.remainingTime) }}
+                </span>
+                <span
+                  v-else
+                  class="text-gray-500"
+                >
+                  已结束
+                </span>
               </div>
             </div>
             
@@ -615,8 +637,8 @@
               :class="account.schedulable 
                 ? 'text-gray-600 bg-gray-50 hover:bg-gray-100' 
                 : 'text-green-600 bg-green-50 hover:bg-green-100'"
-              @click="toggleSchedulable(account)"
               :disabled="account.isTogglingSchedulable"
+              @click="toggleSchedulable(account)"
             >
               <i :class="['fas', account.schedulable ? 'fa-pause' : 'fa-play']" />
               {{ account.schedulable ? '暂停' : '启用' }}
