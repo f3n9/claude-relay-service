@@ -135,15 +135,23 @@ async function* handleStreamResponse(response, model, apiKeyId) {
     for await (const chunk of response.data) {
       buffer += chunk.toString();
       
-      // 处理可能的多个 JSON 对象
+      // 处理 SSE 格式的数据
       const lines = buffer.split('\n');
       buffer = lines.pop() || ''; // 保留最后一个不完整的行
       
       for (const line of lines) {
         if (!line.trim()) continue;
         
+        // 处理 SSE 格式: "data: {...}"
+        let jsonData = line;
+        if (line.startsWith('data: ')) {
+          jsonData = line.substring(6).trim();
+        }
+
+        if (!jsonData || jsonData === '[DONE]') continue;
+
         try {
-          const data = JSON.parse(line);
+          const data = JSON.parse(jsonData);
           
           // 更新使用量统计
           if (data.usageMetadata) {
@@ -171,7 +179,7 @@ async function* handleStreamResponse(response, model, apiKeyId) {
             return;
           }
         } catch (e) {
-          logger.debug('Error parsing JSON line:', e.message);
+          logger.debug('Error parsing JSON line:', e.message, 'Line:', jsonData);
         }
       }
     }
@@ -179,10 +187,17 @@ async function* handleStreamResponse(response, model, apiKeyId) {
     // 处理剩余的 buffer
     if (buffer.trim()) {
       try {
-        const data = JSON.parse(buffer);
-        const openaiResponse = convertGeminiResponse(data, model, true);
-        if (openaiResponse) {
-          yield `data: ${JSON.stringify(openaiResponse)}\n\n`;
+        let jsonData = buffer.trim();
+        if (jsonData.startsWith('data: ')) {
+          jsonData = jsonData.substring(6).trim();
+        }
+
+        if (jsonData && jsonData !== '[DONE]') {
+          const data = JSON.parse(jsonData);
+          const openaiResponse = convertGeminiResponse(data, model, true);
+          if (openaiResponse) {
+            yield `data: ${JSON.stringify(openaiResponse)}\n\n`;
+          }
         }
       } catch (e) {
         logger.debug('Error parsing final buffer:', e.message);
