@@ -46,10 +46,10 @@
                 <i class="fas fa-coins text-green-500" />
               </div>
               <div class="text-2xl font-bold text-gray-900">
-                {{ formatNumber(totalTokens) }}
+                {{ formatTokenCount(totalTokens) }}
               </div>
               <div class="text-xs text-gray-600 mt-1">
-                今日: {{ formatNumber(dailyTokens) }}
+                今日: {{ formatTokenCount(dailyTokens) }}
               </div>
             </div>
 
@@ -99,7 +99,7 @@
                   <span class="text-sm text-gray-600">输入 Token</span>
                 </div>
                 <span class="text-sm font-semibold text-gray-900">
-                  {{ formatNumber(inputTokens) }}
+                  {{ formatTokenCount(inputTokens) }}
                 </span>
               </div>
               <div class="flex items-center justify-between">
@@ -108,7 +108,7 @@
                   <span class="text-sm text-gray-600">输出 Token</span>
                 </div>
                 <span class="text-sm font-semibold text-gray-900">
-                  {{ formatNumber(outputTokens) }}
+                  {{ formatTokenCount(outputTokens) }}
                 </span>
               </div>
               <div
@@ -120,7 +120,7 @@
                   <span class="text-sm text-gray-600">缓存创建 Token</span>
                 </div>
                 <span class="text-sm font-semibold text-purple-600">
-                  {{ formatNumber(cacheCreateTokens) }}
+                  {{ formatTokenCount(cacheCreateTokens) }}
                 </span>
               </div>
               <div
@@ -132,7 +132,7 @@
                   <span class="text-sm text-gray-600">缓存读取 Token</span>
                 </div>
                 <span class="text-sm font-semibold text-purple-600">
-                  {{ formatNumber(cacheReadTokens) }}
+                  {{ formatTokenCount(cacheReadTokens) }}
                 </span>
               </div>
             </div>
