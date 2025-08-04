@@ -546,7 +546,7 @@
                               <i class="fas fa-coins text-yellow-500 mr-1 text-xs" />
                               总Token:
                             </span>
-                            <span class="font-semibold text-gray-900">{{ formatNumber(stat.allTokens) }}</span>
+                            <span class="font-semibold text-gray-900">{{ formatTokenCount(stat.allTokens) }}</span>
                           </div>
                           <div class="flex justify-between items-center text-sm">
                             <span class="text-gray-600 flex items-center">
@@ -561,14 +561,14 @@
                                 <i class="fas fa-arrow-down text-green-500 mr-1" />
                                 输入:
                               </span>
-                              <span class="font-medium">{{ formatNumber(stat.inputTokens) }}</span>
+                              <span class="font-medium">{{ formatTokenCount(stat.inputTokens) }}</span>
                             </div>
                             <div class="flex justify-between items-center text-xs text-gray-500">
                               <span class="flex items-center">
                                 <i class="fas fa-arrow-up text-blue-500 mr-1" />
                                 输出:
                               </span>
-                              <span class="font-medium">{{ formatNumber(stat.outputTokens) }}</span>
+                              <span class="font-medium">{{ formatTokenCount(stat.outputTokens) }}</span>
                             </div>
                             <div
                               v-if="stat.cacheCreateTokens > 0"
@@ -578,7 +578,7 @@
                                 <i class="fas fa-save mr-1" />
                                 缓存创建:
                               </span>
-                              <span class="font-medium">{{ formatNumber(stat.cacheCreateTokens) }}</span>
+                              <span class="font-medium">{{ formatTokenCount(stat.cacheCreateTokens) }}</span>
                             </div>
                             <div
                               v-if="stat.cacheReadTokens > 0"
@@ -588,7 +588,7 @@
                                 <i class="fas fa-download mr-1" />
                                 缓存读取:
                               </span>
-                              <span class="font-medium">{{ formatNumber(stat.cacheReadTokens) }}</span>
+                              <span class="font-medium">{{ formatTokenCount(stat.cacheReadTokens) }}</span>
                             </div>
                           </div>
                         </div>
@@ -623,7 +623,7 @@
                             总请求: <span class="font-semibold text-gray-800">{{ apiKeyModelStats[key.id].reduce((sum, stat) => sum + stat.requests, 0) }}</span>
                           </span>
                           <span class="text-gray-600">
-                            总Token: <span class="font-semibold text-gray-800">{{ formatNumber(apiKeyModelStats[key.id].reduce((sum, stat) => sum + stat.allTokens, 0)) }}</span>
+                            总Token: <span class="font-semibold text-gray-800">{{ formatTokenCount(apiKeyModelStats[key.id].reduce((sum, stat) => sum + stat.allTokens, 0)) }}</span>
                           </span>
                         </div>
                       </div>
