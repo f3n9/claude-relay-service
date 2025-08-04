@@ -1521,6 +1521,30 @@ router.post('/gemini-accounts/:accountId/refresh', authenticateAdmin, async (req
   }
 });
 
+// 切换 Gemini 账户调度状态
+router.put('/gemini-accounts/:accountId/toggle-schedulable', authenticateAdmin, async (req, res) => {
+  try {
+    const { accountId } = req.params;
+    
+    const account = await geminiAccountService.getAccount(accountId);
+    if (!account) {
+      return res.status(404).json({ error: 'Account not found' });
+    }
+    
+    // 将字符串 'true'/'false' 转换为布尔值，然后取反
+    const currentSchedulable = account.schedulable === 'true';
+    const newSchedulable = !currentSchedulable;
+    
+    await geminiAccountService.updateAccount(accountId, { schedulable: String(newSchedulable) });
+    
+    logger.success(`🔄 Admin toggled Gemini account schedulable status: ${accountId} -> ${newSchedulable ? 'schedulable' : 'not schedulable'}`);
+    res.json({ success: true, schedulable: newSchedulable });
+  } catch (error) {
+    logger.error('❌ Failed to toggle Gemini account schedulable status:', error);
+    res.status(500).json({ error: 'Failed to toggle schedulable status', message: error.message });
+  }
+});
+
 // 📊 账户使用统计
 
 // 获取所有账户的使用统计
