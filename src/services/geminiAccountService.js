@@ -294,7 +294,7 @@ async function createAccount(accountData) {
     // 代理设置
     proxy: accountData.proxy ? JSON.stringify(accountData.proxy) : '',
 
-    // 项目编号（Google Cloud/Workspace 账号需要）
+    // 项目 ID（Google Cloud/Workspace 账号需要）
     projectId: accountData.projectId || '',
     
     // 支持的模型列表（可选）

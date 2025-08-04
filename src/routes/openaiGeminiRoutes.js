@@ -122,13 +122,16 @@ function convertGeminiResponseToOpenAI(geminiResponse, model, stream = false) {
     return geminiResponse;
   } else {
     // 非流式响应转换
-    if (geminiResponse.candidates && geminiResponse.candidates.length > 0) {
-      const candidate = geminiResponse.candidates[0];
+    // 处理嵌套的 response 结构
+    const actualResponse = geminiResponse.response || geminiResponse;
+    
+    if (actualResponse.candidates && actualResponse.candidates.length > 0) {
+      const candidate = actualResponse.candidates[0];
       const content = candidate.content?.parts?.[0]?.text || '';
       const finishReason = candidate.finishReason?.toLowerCase() || 'stop';
 
       // 计算 token 使用量
-      const usage = geminiResponse.usageMetadata || {
+      const usage = actualResponse.usageMetadata || {
         promptTokenCount: 0,
         candidatesTokenCount: 0,
         totalTokenCount: 0
@@ -189,7 +192,7 @@ router.post('/v1/chat/completions', authenticateApiKey, async (req, res) => {
     // 从 URL 路径中提取模型信息（如果存在）
     let urlModel = null;
     const urlPath = req.body?.config?.url || req.originalUrl || req.url;
-    const modelMatch = urlPath.match(/\/([^\/]+):(?:stream)?[Gg]enerateContent/);
+    const modelMatch = urlPath.match(/\/([^/]+):(?:stream)?[Gg]enerateContent/);
     if (modelMatch) {
       urlModel = modelMatch[1];
       logger.debug(`Extracted model from URL: ${urlModel}`);
@@ -204,6 +207,10 @@ router.post('/v1/chat/completions', authenticateApiKey, async (req, res) => {
       max_tokens = 4096,
       stream = false
     } = requestBody;
+    
+    // 检查URL中是否包含stream标识
+    const isStreamFromUrl = urlPath && urlPath.includes('streamGenerateContent');
+    const actualStream = stream || isStreamFromUrl;
 
     // 优先使用 URL 中的模型，其次是请求体中的模型
     const model = urlModel || bodyModel;
@@ -292,9 +299,7 @@ router.post('/v1/chat/completions', authenticateApiKey, async (req, res) => {
     
     // 获取OAuth客户端
     const client = await geminiAccountService.getOauthClient(account.accessToken, account.refreshToken);
-    
-    let project = 'verdant-wares-464411-k9';
-    if (stream) {
+    if (actualStream) {
       // 流式响应
       logger.info('StreamGenerateContent request', {
         model: model,
@@ -306,7 +311,7 @@ router.post('/v1/chat/completions', authenticateApiKey, async (req, res) => {
         client,
         { model, request: geminiRequestBody },
         null, // user_prompt_id
-        project || account.projectId,
+        account.projectId, // 使用有权限的项目ID
         apiKeyData.id, // 使用 API Key ID 作为 session ID
         abortController.signal // 传递中止信号
       );
@@ -320,9 +325,29 @@ router.post('/v1/chat/completions', authenticateApiKey, async (req, res) => {
       // 处理流式响应，转换为 OpenAI 格式
       let buffer = '';
       
+      // 发送初始的空消息，符合 OpenAI 流式格式
+      const initialChunk = {
+        id: `chatcmpl-${Date.now()}`,
+        object: 'chat.completion.chunk',
+        created: Math.floor(Date.now() / 1000),
+        model: model,
+        choices: [{
+          index: 0,
+          delta: { role: 'assistant' },
+          finish_reason: null
+        }]
+      };
+      res.write(`data: ${JSON.stringify(initialChunk)}\n\n`);
+      
       streamResponse.on('data', (chunk) => {
         try {
-          buffer += chunk.toString();
+          const chunkStr = chunk.toString();
+          
+          if (!chunkStr.trim()) {
+            return;
+          }
+          
+          buffer += chunkStr;
           const lines = buffer.split('\n');
           buffer = lines.pop() || ''; // 保留最后一个不完整的行
           
@@ -341,30 +366,51 @@ router.post('/v1/chat/completions', authenticateApiKey, async (req, res) => {
               const data = JSON.parse(jsonData);
               
               // 转换为 OpenAI 流式格式
-              if (data.candidates && data.candidates.length > 0) {
-                const candidate = data.candidates[0];
+              if (data.response?.candidates && data.response.candidates.length > 0) {
+                const candidate = data.response.candidates[0];
                 const content = candidate.content?.parts?.[0]?.text || '';
-                const finishReason = candidate.finishReason?.toLowerCase();
+                const finishReason = candidate.finishReason;
                 
-                const openaiChunk = {
-                  id: `chatcmpl-${Date.now()}`,
-                  object: 'chat.completion.chunk',
-                  created: Math.floor(Date.now() / 1000),
-                  model: model,
-                  choices: [{
-                    index: 0,
-                    delta: {
-                      content: content
-                    },
-                    finish_reason: finishReason === 'stop' ? 'stop' : null
-                  }]
-                };
-                
-                res.write(`data: ${JSON.stringify(openaiChunk)}\n\n`);
-                
-                // 如果结束了，发送最终的 [DONE]
-                if (finishReason === 'stop') {
-                  res.write('data: [DONE]\n\n');
+                // 只有当有内容或者是结束标记时才发送数据
+                if (content || finishReason === 'STOP') {
+                  const openaiChunk = {
+                    id: `chatcmpl-${Date.now()}`,
+                    object: 'chat.completion.chunk',
+                    created: Math.floor(Date.now() / 1000),
+                    model: model,
+                    choices: [{
+                      index: 0,
+                      delta: content ? { content: content } : {},
+                      finish_reason: finishReason === 'STOP' ? 'stop' : null
+                    }]
+                  };
+                  
+                  res.write(`data: ${JSON.stringify(openaiChunk)}\n\n`);
+                  
+                  // 如果结束了，添加 usage 信息并发送最终的 [DONE]
+                  if (finishReason === 'STOP') {
+                    // 如果有 usage 数据，添加到最后一个 chunk
+                    if (data.response.usageMetadata) {
+                      const usageChunk = {
+                        id: `chatcmpl-${Date.now()}`,
+                        object: 'chat.completion.chunk',
+                        created: Math.floor(Date.now() / 1000),
+                        model: model,
+                        choices: [{
+                          index: 0,
+                          delta: {},
+                          finish_reason: 'stop'
+                        }],
+                        usage: {
+                          prompt_tokens: data.response.usageMetadata.promptTokenCount || 0,
+                          completion_tokens: data.response.usageMetadata.candidatesTokenCount || 0,
+                          total_tokens: data.response.usageMetadata.totalTokenCount || 0
+                        }
+                      };
+                      res.write(`data: ${JSON.stringify(usageChunk)}\n\n`);
+                    }
+                    res.write('data: [DONE]\n\n');
+                  }
                 }
               }
             } catch (e) {
@@ -402,6 +448,9 @@ router.post('/v1/chat/completions', authenticateApiKey, async (req, res) => {
             }
           });
         } else {
+          // 如果已经开始发送流数据，发送错误事件
+          res.write(`data: {"error": {"message": "${error.message || 'Stream error'}"}}\n\n`);
+          res.write('data: [DONE]\n\n');
           res.end();
         }
       });
@@ -418,7 +467,7 @@ router.post('/v1/chat/completions', authenticateApiKey, async (req, res) => {
         client,
         { model, request: geminiRequestBody },
         null, // user_prompt_id
-        account.projectId,
+        account.projectId, // 使用有权限的项目ID
         apiKeyData.id // 使用 API Key ID 作为 session ID
       );
       
