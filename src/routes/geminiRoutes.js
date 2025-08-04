@@ -7,7 +7,7 @@ const { sendGeminiRequest, getAvailableModels } = require('../services/geminiRel
 const crypto = require('crypto');
 const sessionHelper = require('../utils/sessionHelper');
 const unifiedGeminiScheduler = require('../services/unifiedGeminiScheduler');
-const { OAuth2Client } = require('google-auth-library');
+// const { OAuth2Client } = require('google-auth-library'); // OAuth2Client is not used in this file
 
 // 生成会话哈希
 function generateSessionHash(req) {
@@ -108,7 +108,8 @@ router.post('/messages', authenticateApiKey, async (req, res) => {
       proxy: account.proxy,
       apiKeyId: apiKeyData.id,
       signal: abortController.signal,
-      projectId: account.projectId
+      projectId: account.projectId,
+      accountId: account.id
     });
 
     if (stream) {

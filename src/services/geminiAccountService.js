@@ -279,6 +279,10 @@ async function createAccount(accountData) {
     accountType: accountData.accountType || 'shared',
     isActive: 'true',
     status: 'active',
+    
+    // 调度相关
+    schedulable: accountData.schedulable !== undefined ? String(accountData.schedulable) : 'true',
+    priority: accountData.priority || 50, // 调度优先级 (1-100，数字越小优先级越高)
 
     // OAuth 相关字段（加密存储）
     geminiOauth: geminiOauth ? encrypt(geminiOauth) : '',
@@ -292,6 +296,9 @@ async function createAccount(accountData) {
 
     // 项目编号（Google Cloud/Workspace 账号需要）
     projectId: accountData.projectId || '',
+    
+    // 支持的模型列表（可选）
+    supportedModels: accountData.supportedModels || [], // 空数组表示支持所有模型
 
     // 时间戳
     createdAt: now,
