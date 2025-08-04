@@ -560,20 +560,19 @@ async function handleStreamGenerateContent(req, res) {
   }
 }
 
-// v1internal 和 v1beta 端点注册
+// 注册所有路由端点
+// v1internal 版本的端点
 router.post('/v1internal\\:loadCodeAssist', authenticateApiKey, handleLoadCodeAssist);
-router.post('/v1beta\\:loadCodeAssist', authenticateApiKey, handleLoadCodeAssist);
-
 router.post('/v1internal\\:onboardUser', authenticateApiKey, handleOnboardUser);
-router.post('/v1beta\\:onboardUser', authenticateApiKey, handleOnboardUser);
-
 router.post('/v1internal\\:countTokens', authenticateApiKey, handleCountTokens);
-router.post('/v1beta\\:countTokens', authenticateApiKey, handleCountTokens);
-
 router.post('/v1internal\\:generateContent', authenticateApiKey, handleGenerateContent);
-router.post('/v1beta\\:generateContent', authenticateApiKey, handleGenerateContent);
-
 router.post('/v1internal\\:streamGenerateContent', authenticateApiKey, handleStreamGenerateContent);
+
+// v1beta 版本的端点
+router.post('/v1beta\\:loadCodeAssist', authenticateApiKey, handleLoadCodeAssist);
+router.post('/v1beta\\:onboardUser', authenticateApiKey, handleOnboardUser);
+router.post('/v1beta\\:countTokens', authenticateApiKey, handleCountTokens);
+router.post('/v1beta\\:generateContent', authenticateApiKey, handleGenerateContent);
 router.post('/v1beta\\:streamGenerateContent', authenticateApiKey, handleStreamGenerateContent);
 
 module.exports = router;
