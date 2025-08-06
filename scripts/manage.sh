@@ -454,13 +454,61 @@ EOF
     print_info "运行初始化设置..."
     npm run setup
     
-    # 安装Web界面依赖
-    print_info "安装Web界面依赖..."
-    npm run install:web
+    # 获取预构建的前端文件
+    print_info "获取预构建的前端文件..."
     
-    # 构建前端
-    print_info "构建前端界面..."
-    npm run build:web
+    # 创建目标目录
+    mkdir -p web/admin-spa/dist
+    
+    # 从 web-dist 分支获取构建好的文件
+    if git ls-remote --heads origin web-dist | grep -q web-dist; then
+        print_info "从 web-dist 分支下载前端文件..."
+        
+        # 创建临时目录用于 clone
+        TEMP_CLONE_DIR=$(mktemp -d)
+        
+        # 使用 sparse-checkout 来只获取需要的文件
+        git clone --depth 1 --branch web-dist --single-branch \
+            https://github.com/Wei-Shaw/claude-relay-service.git \
+            "$TEMP_CLONE_DIR" 2>/dev/null || {
+            # 如果 HTTPS 失败，尝试使用当前仓库的 remote URL
+            REPO_URL=$(git config --get remote.origin.url)
+            git clone --depth 1 --branch web-dist --single-branch "$REPO_URL" "$TEMP_CLONE_DIR"
+        }
+        
+        # 复制文件到目标目录（排除 .git 和 README.md）
+        rsync -av --exclude='.git' --exclude='README.md' "$TEMP_CLONE_DIR/" web/admin-spa/dist/ 2>/dev/null || {
+            # 如果没有 rsync，使用 cp
+            cp -r "$TEMP_CLONE_DIR"/* web/admin-spa/dist/ 2>/dev/null
+            rm -rf web/admin-spa/dist/.git 2>/dev/null
+            rm -f web/admin-spa/dist/README.md 2>/dev/null
+        }
+        
+        # 清理临时目录
+        rm -rf "$TEMP_CLONE_DIR"
+        
+        print_success "前端文件下载完成"
+    else
+        print_warning "web-dist 分支不存在，尝试本地构建..."
+        
+        # 检查是否有 Node.js 和 npm
+        if command_exists npm; then
+            # 回退到原始构建方式
+            if [ -f "web/admin-spa/package.json" ]; then
+                print_info "开始本地构建前端..."
+                cd web/admin-spa
+                npm install
+                npm run build
+                cd ../..
+                print_success "前端本地构建完成"
+            else
+                print_error "无法找到前端项目文件"
+            fi
+        else
+            print_error "无法获取前端文件，且本地环境不支持构建"
+            print_info "请确保仓库已正确配置 web-dist 分支"
+        fi
+    fi
     
     # 创建systemd服务文件（Linux）
     if [[ "$OS" == "debian" || "$OS" == "redhat" || "$OS" == "arch" ]]; then
@@ -549,11 +597,65 @@ update_service() {
     # 更新依赖
     print_info "更新依赖..."
     npm install
-    npm run install:web
     
-    # 构建前端
-    print_info "构建前端界面..."
-    npm run build:web
+    # 获取最新的预构建前端文件
+    print_info "更新前端文件..."
+    
+    # 创建目标目录
+    mkdir -p web/admin-spa/dist
+    
+    # 清理旧的前端文件
+    rm -rf web/admin-spa/dist/*
+    
+    # 从 web-dist 分支获取构建好的文件
+    if git ls-remote --heads origin web-dist | grep -q web-dist; then
+        print_info "从 web-dist 分支下载最新前端文件..."
+        
+        # 创建临时目录用于 clone
+        TEMP_CLONE_DIR=$(mktemp -d)
+        
+        # 使用 sparse-checkout 来只获取需要的文件
+        git clone --depth 1 --branch web-dist --single-branch \
+            https://github.com/Wei-Shaw/claude-relay-service.git \
+            "$TEMP_CLONE_DIR" 2>/dev/null || {
+            # 如果 HTTPS 失败，尝试使用当前仓库的 remote URL
+            REPO_URL=$(git config --get remote.origin.url)
+            git clone --depth 1 --branch web-dist --single-branch "$REPO_URL" "$TEMP_CLONE_DIR"
+        }
+        
+        # 复制文件到目标目录（排除 .git 和 README.md）
+        rsync -av --exclude='.git' --exclude='README.md' "$TEMP_CLONE_DIR/" web/admin-spa/dist/ 2>/dev/null || {
+            # 如果没有 rsync，使用 cp
+            cp -r "$TEMP_CLONE_DIR"/* web/admin-spa/dist/ 2>/dev/null
+            rm -rf web/admin-spa/dist/.git 2>/dev/null
+            rm -f web/admin-spa/dist/README.md 2>/dev/null
+        }
+        
+        # 清理临时目录
+        rm -rf "$TEMP_CLONE_DIR"
+        
+        print_success "前端文件更新完成"
+    else
+        print_warning "web-dist 分支不存在，尝试本地构建..."
+        
+        # 检查是否有 Node.js 和 npm
+        if command_exists npm; then
+            # 回退到原始构建方式
+            if [ -f "web/admin-spa/package.json" ]; then
+                print_info "开始本地构建前端..."
+                cd web/admin-spa
+                npm install
+                npm run build
+                cd ../..
+                print_success "前端本地构建完成"
+            else
+                print_error "无法找到前端项目文件"
+            fi
+        else
+            print_error "无法获取前端文件，且本地环境不支持构建"
+            print_info "请确保仓库已正确配置 web-dist 分支"
+        fi
+    fi
     
     # 启动服务
     start_service
@@ -678,6 +780,36 @@ restart_service() {
     start_service
 }
 
+# 更新模型价格
+update_model_pricing() {
+    if ! check_installation; then
+        print_error "服务未安装，请先运行: $0 install"
+        return 1
+    fi
+    
+    print_info "更新模型价格数据..."
+    
+    cd "$APP_DIR"
+    
+    # 运行更新脚本
+    if npm run update:pricing; then
+        print_success "模型价格数据更新完成"
+        
+        # 显示更新后的信息
+        if [ -f "data/model_pricing.json" ]; then
+            local model_count=$(grep -o '"[^"]*"\s*:' data/model_pricing.json | wc -l)
+            local file_size=$(du -h data/model_pricing.json | cut -f1)
+            echo -e "\n更新信息:"
+            echo -e "  模型数量: ${GREEN}$model_count${NC}"
+            echo -e "  文件大小: ${GREEN}$file_size${NC}"
+            echo -e "  文件位置: $APP_DIR/data/model_pricing.json"
+        fi
+    else
+        print_error "模型价格数据更新失败"
+        return 1
+    fi
+}
+
 # 显示状态
 show_status() {
     echo -e "\n${BLUE}=== Claude Relay Service 状态 ===${NC}"
@@ -751,15 +883,16 @@ show_help() {
     echo "用法: $0 [命令]"
     echo ""
     echo "命令:"
-    echo "  install   - 安装服务"
-    echo "  update    - 更新服务"
-    echo "  uninstall - 卸载服务"
-    echo "  start     - 启动服务"
-    echo "  stop      - 停止服务"
-    echo "  restart   - 重启服务"
-    echo "  status    - 查看状态"
-    echo "  symlink   - 创建 crs 快捷命令"
-    echo "  help      - 显示帮助"
+    echo "  install        - 安装服务"
+    echo "  update         - 更新服务"
+    echo "  uninstall      - 卸载服务"
+    echo "  start          - 启动服务"
+    echo "  stop           - 停止服务"
+    echo "  restart        - 重启服务"
+    echo "  status         - 查看状态"
+    echo "  update-pricing - 更新模型价格数据"
+    echo "  symlink        - 创建 crs 快捷命令"
+    echo "  help           - 显示帮助"
     echo ""
 }
 
@@ -834,10 +967,11 @@ show_menu() {
         echo "  3) 停止服务"
         echo "  4) 重启服务"
         echo "  5) 更新服务"
-        echo "  6) 卸载服务"
-        echo "  7) 退出"
+        echo "  6) 更新模型价格"
+        echo "  7) 卸载服务"
+        echo "  8) 退出"
         echo ""
-        echo -n "请输入选项 [1-7]: "
+        echo -n "请输入选项 [1-8]: "
     fi
 }
 
@@ -925,12 +1059,18 @@ handle_menu_choice() {
                 ;;
             6)
                 echo ""
+                update_model_pricing
+                echo -n "按回车键继续..."
+                read
+                ;;
+            7)
+                echo ""
                 uninstall_service
                 if [ $? -eq 0 ]; then
                     exit 0
                 fi
                 ;;
-            7)
+            8)
                 echo "退出管理工具"
                 exit 0
                 ;;
@@ -1108,6 +1248,9 @@ main() {
             ;;
         status)
             show_status
+            ;;
+        update-pricing)
+            update_model_pricing
             ;;
         symlink)
             # 单独创建软链接
