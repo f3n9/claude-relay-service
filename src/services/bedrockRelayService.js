@@ -250,7 +250,8 @@ class BedrockRelayService {
     };
 
     // 如果已经是Bedrock格式，直接返回
-    if (modelName.startsWith('us.anthropic.') || modelName.startsWith('anthropic.')) {
+    // Bedrock模型格式：{region}.anthropic.{model-name} 或 anthropic.{model-name}
+    if (modelName.includes('.anthropic.') || modelName.startsWith('anthropic.')) {
       return modelName;
     }
 
