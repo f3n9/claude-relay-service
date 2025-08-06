@@ -340,23 +340,30 @@ class BedrockAccountService {
         throw new Error('Invalid encrypted data format');
       }
 
-      // 检查必要字段
-      if (!encryptedData.encrypted || !encryptedData.iv) {
+      // 检查是否为加密格式 (有 encrypted 和 iv 字段)
+      if (encryptedData.encrypted && encryptedData.iv) {
+        // 加密数据 - 进行解密
+        const key = crypto.createHash('sha256').update(config.security.encryptionKey).digest();
+        const iv = Buffer.from(encryptedData.iv, 'hex');
+        const decipher = crypto.createDecipheriv(this.ENCRYPTION_ALGORITHM, key, iv);
+
+        let decrypted = decipher.update(encryptedData.encrypted, 'hex', 'utf8');
+        decrypted += decipher.final('utf8');
+
+        return JSON.parse(decrypted);
+      } else if (encryptedData.accessKeyId) {
+        // 纯文本数据 - 直接返回 (向后兼容)
+        logger.warn('⚠️ 发现未加密的AWS凭证，建议更新账户以启用加密');
+        return encryptedData;
+      } else {
+        // 既不是加密格式也不是有效的凭证格式
         logger.error('❌ 缺少加密数据字段:', {
           hasEncrypted: !!encryptedData.encrypted,
-          hasIv: !!encryptedData.iv
+          hasIv: !!encryptedData.iv,
+          hasAccessKeyId: !!encryptedData.accessKeyId
         });
-        throw new Error('Missing encrypted data fields');
+        throw new Error('Missing encrypted data fields or valid credentials');
       }
-
-      const key = crypto.createHash('sha256').update(config.security.encryptionKey).digest();
-      const iv = Buffer.from(encryptedData.iv, 'hex');
-      const decipher = crypto.createDecipheriv(this.ENCRYPTION_ALGORITHM, key, iv);
-
-      let decrypted = decipher.update(encryptedData.encrypted, 'hex', 'utf8');
-      decrypted += decipher.final('utf8');
-
-      return JSON.parse(decrypted);
     } catch (error) {
       logger.error('❌ AWS凭证解密失败', error);
       throw new Error('Credentials decryption failed');
