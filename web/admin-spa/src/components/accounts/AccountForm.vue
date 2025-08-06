@@ -455,7 +455,7 @@
               </div>
               
               <div>
-                <label class="block text-sm font-semibold text-gray-700 mb-3">支持的模型 (可选)--注意,ClaudeCode必须加上hiku模型！</label>
+                <label class="block text-sm font-semibold text-gray-700 mb-3">支持的模型 (可选)--注意,ClaudeCode必须加上haiku模型！</label>
                 <div class="mb-2 flex gap-2">
                   <button
                     type="button"
@@ -483,7 +483,7 @@
                   v-model="form.supportedModels" 
                   rows="3" 
                   class="form-input w-full resize-none"
-                  placeholder="每行一个模型，留空表示支持所有模型。特别注意,ClaudeCode必须加上hiku模型！"
+                  placeholder="每行一个模型，留空表示支持所有模型。特别注意,ClaudeCode必须加上haiku模型！"
                 />
                 <p class="text-xs text-gray-500 mt-1">
                   留空表示支持所有模型。如果指定模型，请求中的模型不在列表内将不会调度到此账号
@@ -843,7 +843,7 @@
                 v-model="form.supportedModels" 
                 rows="3" 
                 class="form-input w-full resize-none"
-                placeholder="每行一个模型，留空表示支持所有模型。特别注意,ClaudeCode必须加上hiku模型！"
+                placeholder="每行一个模型，留空表示支持所有模型。特别注意,ClaudeCode必须加上haiku模型！"
               />
             </div>
             
