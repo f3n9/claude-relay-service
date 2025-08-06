@@ -516,11 +516,6 @@ EOF
         fi
     fi
     
-    # 创建systemd服务文件（Linux）
-    if [[ "$OS" == "debian" || "$OS" == "redhat" || "$OS" == "arch" ]]; then
-        create_systemd_service
-    fi
-    
     # 创建软链接
     create_symlink
     
@@ -553,38 +548,6 @@ EOF
     echo "  重启服务: crs restart"
 }
 
-# 创建systemd服务
-create_systemd_service() {
-    local service_file="/etc/systemd/system/claude-relay.service"
-    
-    print_info "创建 systemd 服务..."
-    
-    sudo tee $service_file > /dev/null << EOF
-[Unit]
-Description=Claude Relay Service
-After=network.target redis.service
-
-[Service]
-Type=simple
-User=$USER
-WorkingDirectory=$APP_DIR
-Environment="NODE_ENV=production"
-EnvironmentFile=-$APP_DIR/.env
-ExecStart=$(which node) $APP_DIR/src/app.js
-Restart=on-failure
-RestartSec=10
-StandardOutput=append:$APP_DIR/logs/service.log
-StandardError=append:$APP_DIR/logs/service-error.log
-# 确保日志目录存在
-ExecStartPre=/bin/mkdir -p $APP_DIR/logs
-
-[Install]
-WantedBy=multi-user.target
-EOF
-    
-    sudo systemctl daemon-reload
-    print_success "systemd 服务创建完成"
-}
 
 # 更新服务
 update_service() {
@@ -597,16 +560,38 @@ update_service() {
     
     cd "$APP_DIR"
     
-    # 停止服务
-    stop_service
+    # 保存当前运行状态
+    local was_running=false
+    if pgrep -f "node.*src/app.js" > /dev/null; then
+        was_running=true
+        print_info "检测到服务正在运行，将在更新后自动重启..."
+        stop_service
+    fi
+    
+    # 备份配置文件
+    print_info "备份配置文件..."
+    if [ -f ".env" ]; then
+        cp .env .env.backup.$(date +%Y%m%d%H%M%S)
+    fi
+    if [ -f "config/config.js" ]; then
+        cp config/config.js config/config.js.backup.$(date +%Y%m%d%H%M%S)
+    fi
     
     # 拉取最新代码
     print_info "拉取最新代码..."
-    git pull origin main
+    if ! git pull origin main; then
+        print_error "拉取代码失败，请检查网络连接"
+        return 1
+    fi
     
     # 更新依赖
     print_info "更新依赖..."
     npm install
+    
+    # 确保脚本有执行权限
+    if [ -f "$APP_DIR/scripts/manage.sh" ]; then
+        chmod +x "$APP_DIR/scripts/manage.sh"
+    fi
     
     # 获取最新的预构建前端文件
     print_info "更新前端文件..."
@@ -667,10 +652,21 @@ update_service() {
         fi
     fi
     
-    # 启动服务
-    start_service
+    # 更新软链接到最新版本
+    create_symlink
+    
+    # 如果之前在运行，则重新启动服务
+    if [ "$was_running" = true ]; then
+        print_info "重新启动服务..."
+        start_service
+    fi
     
     print_success "更新完成！"
+    
+    # 显示版本信息
+    if [ -f "$APP_DIR/VERSION" ]; then
+        echo -e "\n当前版本: ${GREEN}$(cat "$APP_DIR/VERSION")${NC}"
+    fi
 }
 
 # 卸载服务
@@ -698,13 +694,6 @@ uninstall_service() {
     
     # 停止服务
     stop_service
-    
-    # 删除systemd服务
-    if [ -f "/etc/systemd/system/claude-relay.service" ]; then
-        sudo systemctl disable claude-relay.service
-        sudo rm /etc/systemd/system/claude-relay.service
-        sudo systemctl daemon-reload
-    fi
     
     # 备份数据
     echo -n "是否备份数据？(y/N): "
@@ -746,57 +735,100 @@ start_service() {
     cd "$APP_DIR"
     
     # 检查是否已运行
-    if pgrep -f "node.*claude-relay" > /dev/null; then
+    if pgrep -f "node.*src/app.js" > /dev/null; then
         print_warning "服务已在运行"
         return 0
     fi
     
-    # 使用不同方式启动
-    if [ -f "/etc/systemd/system/claude-relay.service" ]; then
-        # 先重新加载systemd配置
-        sudo systemctl daemon-reload
+    # 确保日志目录存在
+    mkdir -p "$APP_DIR/logs"
+    
+    # 检查pm2是否可用并且不是从package.json脚本调用的
+    if command_exists pm2 && [ "$1" != "--no-pm2" ]; then
+        print_info "使用 pm2 启动服务..."
+        # 直接使用pm2启动，避免循环调用
+        pm2 start "$APP_DIR/src/app.js" --name "claude-relay" --log "$APP_DIR/logs/pm2.log" 2>/dev/null
+        sleep 2
         
-        # 启动服务
-        sudo systemctl start claude-relay.service
-        
-        # 等待服务启动
-        sleep 3
-        
-        # 检查服务状态
-        if sudo systemctl is-active claude-relay.service >/dev/null 2>&1; then
-            print_success "服务已通过 systemd 启动"
+        # 检查是否启动成功
+        if pm2 list 2>/dev/null | grep -q "claude-relay"; then
+            print_success "服务已通过 pm2 启动"
+            pm2 save 2>/dev/null || true
         else
-            print_warning "systemd 启动失败，尝试使用 npm 启动..."
-            # 查看失败原因
-            sudo journalctl -u claude-relay.service -n 20 --no-pager 2>/dev/null
-            
-            # 尝试使用npm启动
-            npm run service:start:daemon
-            print_success "服务已通过 npm 启动"
+            print_warning "pm2 启动失败，尝试直接启动..."
+            start_service_direct
         fi
     else
-        # 使用npm启动
-        npm run service:start:daemon
-        print_success "服务已启动"
+        start_service_direct
     fi
     
     sleep 2
-    show_status
+    
+    # 验证服务是否成功启动
+    if pgrep -f "node.*src/app.js" > /dev/null; then
+        show_status
+    else
+        print_error "服务启动失败，请查看日志: $APP_DIR/logs/service.log"
+        if [ -f "$APP_DIR/logs/service.log" ]; then
+            echo "最近的错误日志："
+            tail -n 20 "$APP_DIR/logs/service.log"
+        fi
+        return 1
+    fi
+}
+
+# 直接启动服务（不使用pm2）
+start_service_direct() {
+    print_info "使用后台进程启动服务..."
+    
+    # 使用setsid创建新会话，确保进程完全脱离终端
+    if command_exists setsid; then
+        # setsid方式（推荐）
+        setsid nohup node "$APP_DIR/src/app.js" > "$APP_DIR/logs/service.log" 2>&1 < /dev/null &
+        local pid=$!
+        sleep 1
+        
+        # 获取实际的子进程PID
+        local real_pid=$(pgrep -f "node.*src/app.js" | head -1)
+        if [ -n "$real_pid" ]; then
+            echo $real_pid > "$APP_DIR/.pid"
+            print_success "服务已在后台启动 (PID: $real_pid)"
+        else
+            echo $pid > "$APP_DIR/.pid"
+            print_success "服务已在后台启动 (PID: $pid)"
+        fi
+    else
+        # 备用方式：使用nohup和disown
+        nohup node "$APP_DIR/src/app.js" > "$APP_DIR/logs/service.log" 2>&1 < /dev/null &
+        local pid=$!
+        disown $pid 2>/dev/null || true
+        echo $pid > "$APP_DIR/.pid"
+        print_success "服务已在后台启动 (PID: $pid)"
+    fi
 }
 
 # 停止服务
 stop_service() {
     print_info "停止服务..."
     
-    if [ -f "/etc/systemd/system/claude-relay.service" ]; then
-        sudo systemctl stop claude-relay.service
-    else
-        if command_exists pm2; then
-            cd "$APP_DIR" 2>/dev/null && npm run service:stop
-        else
-            pkill -f "node.*claude-relay" || true
+    # 尝试使用pm2停止
+    if command_exists pm2 && [ -n "$APP_DIR" ] && [ -d "$APP_DIR" ]; then
+        cd "$APP_DIR" 2>/dev/null
+        pm2 stop claude-relay 2>/dev/null || true
+        pm2 delete claude-relay 2>/dev/null || true
+    fi
+    
+    # 使用PID文件停止
+    if [ -f "$APP_DIR/.pid" ]; then
+        local pid=$(cat "$APP_DIR/.pid")
+        if kill -0 $pid 2>/dev/null; then
+            kill $pid
+            rm -f "$APP_DIR/.pid"
         fi
     fi
+    
+    # 强制停止所有相关进程
+    pkill -f "node.*src/app.js" 2>/dev/null || true
     
     print_success "服务已停止"
 }
@@ -851,12 +883,18 @@ show_status() {
     actual_port=${actual_port:-3000}
     
     # 检查进程
-    if pgrep -f "node.*claude-relay" > /dev/null; then
+    local pid=$(pgrep -f "node.*src/app.js" | head -1)
+    if [ -n "$pid" ]; then
         echo -e "服务状态: ${GREEN}运行中${NC}"
-        
-        # 获取进程信息
-        local pid=$(pgrep -f "node.*claude-relay" | head -1)
         echo "进程 PID: $pid"
+        
+        # 显示进程信息
+        if command_exists ps; then
+            local proc_info=$(ps -p $pid -o comm,etime,rss --no-headers 2>/dev/null)
+            if [ -n "$proc_info" ]; then
+                echo "进程信息: $proc_info"
+            fi
+        fi
         echo "服务端口: $actual_port"
         
         # 获取公网IP
@@ -946,9 +984,9 @@ show_menu() {
         actual_port=${actual_port:-3000}
         
         # 检查服务状态
-        if pgrep -f "node.*claude-relay" > /dev/null; then
+        local pid=$(pgrep -f "node.*src/app.js" | head -1)
+        if [ -n "$pid" ]; then
             echo -e "  运行状态: ${GREEN}运行中${NC}"
-            local pid=$(pgrep -f "node.*claude-relay" | head -1)
             echo -e "  进程 PID: $pid"
             echo -e "  服务端口: $actual_port"
             
