@@ -421,6 +421,12 @@ install_service() {
     print_info "安装项目依赖..."
     npm install
     
+    # 确保脚本有执行权限
+    if [ -f "$APP_DIR/scripts/manage.sh" ]; then
+        chmod +x "$APP_DIR/scripts/manage.sh"
+        print_success "已设置脚本执行权限"
+    fi
+    
     # 创建配置文件
     print_info "创建配置文件..."
     
@@ -562,11 +568,15 @@ After=network.target redis.service
 Type=simple
 User=$USER
 WorkingDirectory=$APP_DIR
+Environment="NODE_ENV=production"
+EnvironmentFile=-$APP_DIR/.env
 ExecStart=$(which node) $APP_DIR/src/app.js
 Restart=on-failure
 RestartSec=10
 StandardOutput=append:$APP_DIR/logs/service.log
 StandardError=append:$APP_DIR/logs/service-error.log
+# 确保日志目录存在
+ExecStartPre=/bin/mkdir -p $APP_DIR/logs
 
 [Install]
 WantedBy=multi-user.target
@@ -743,8 +753,27 @@ start_service() {
     
     # 使用不同方式启动
     if [ -f "/etc/systemd/system/claude-relay.service" ]; then
+        # 先重新加载systemd配置
+        sudo systemctl daemon-reload
+        
+        # 启动服务
         sudo systemctl start claude-relay.service
-        print_success "服务已通过 systemd 启动"
+        
+        # 等待服务启动
+        sleep 3
+        
+        # 检查服务状态
+        if sudo systemctl is-active claude-relay.service >/dev/null 2>&1; then
+            print_success "服务已通过 systemd 启动"
+        else
+            print_warning "systemd 启动失败，尝试使用 npm 启动..."
+            # 查看失败原因
+            sudo journalctl -u claude-relay.service -n 20 --no-pager 2>/dev/null
+            
+            # 尝试使用npm启动
+            npm run service:start:daemon
+            print_success "服务已通过 npm 启动"
+        fi
     else
         # 使用npm启动
         npm run service:start:daemon
@@ -1090,6 +1119,8 @@ create_symlink() {
     # 优先使用项目中的 manage.sh（在 app/scripts 目录下）
     if [ -n "$APP_DIR" ] && [ -f "$APP_DIR/scripts/manage.sh" ]; then
         script_path="$APP_DIR/scripts/manage.sh"
+        # 确保脚本有执行权限
+        chmod +x "$script_path" 2>/dev/null || sudo chmod +x "$script_path" 2>/dev/null || true
     elif [ -f "/app/scripts/manage.sh" ] && [ "$(basename "$0")" = "manage.sh" ]; then
         # Docker 容器中的路径
         script_path="/app/scripts/manage.sh"
@@ -1124,21 +1155,13 @@ create_symlink() {
         return 1
     fi
     
-    # 检查是否已存在
+    # 如果已存在，直接删除并重新创建（默认使用代码中的最新版本）
     if [ -L "$symlink_path" ] || [ -f "$symlink_path" ]; then
-        print_warning "$symlink_path 已存在"
-        echo -n "是否覆盖？(y/N): "
-        read -n 1 overwrite
-        echo
-        
-        if [[ "$overwrite" =~ ^[Yy]$ ]]; then
-            sudo rm -f "$symlink_path" || {
-                print_error "删除旧文件失败"
-                return 1
-            }
-        else
-            return 0
-        fi
+        print_info "更新已存在的软链接..."
+        sudo rm -f "$symlink_path" 2>/dev/null || {
+            print_error "删除旧文件失败"
+            return 1
+        }
     fi
     
     # 创建软链接
