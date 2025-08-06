@@ -459,7 +459,7 @@ class ClaudeConsoleRelayService {
   _filterClientHeaders(clientHeaders) {
     const sensitiveHeaders = [
       'content-type',
-      "user-agent",
+      'user-agent',
       'x-api-key',
       'authorization',
       'host',
