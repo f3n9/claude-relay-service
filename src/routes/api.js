@@ -145,7 +145,7 @@ async function handleMessagesRequest(req, res) {
             throw new Error('Failed to get Bedrock account details');
           }
 
-          const result = await bedrockRelayService.handleStreamRequest(req.body, bedrockAccountResult.data, req.headers, res);
+          const result = await bedrockRelayService.handleStreamRequest(req.body, bedrockAccountResult.data, res);
           
           // 记录Bedrock使用统计
           if (result.usage) {

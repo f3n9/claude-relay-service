@@ -1377,11 +1377,13 @@ const createAccount = async () => {
       data.userAgent = form.value.userAgent || null
       data.rateLimitDuration = form.value.rateLimitDuration || 60
     } else if (form.value.platform === 'bedrock') {
-      // Bedrock 账户特定数据
-      data.accessKeyId = form.value.accessKeyId
-      data.secretAccessKey = form.value.secretAccessKey
+      // Bedrock 账户特定数据 - 构造 awsCredentials 对象
+      data.awsCredentials = {
+        accessKeyId: form.value.accessKeyId,
+        secretAccessKey: form.value.secretAccessKey,
+        sessionToken: form.value.sessionToken || null
+      }
       data.region = form.value.region
-      data.sessionToken = form.value.sessionToken || null
       data.defaultModel = form.value.defaultModel || null
       data.smallFastModel = form.value.smallFastModel || null
       data.priority = form.value.priority || 50
@@ -1511,17 +1513,21 @@ const updateAccount = async () => {
     
     // Bedrock 特定更新
     if (props.account.platform === 'bedrock') {
-      if (form.value.accessKeyId) {
-        data.accessKeyId = form.value.accessKeyId
-      }
-      if (form.value.secretAccessKey) {
-        data.secretAccessKey = form.value.secretAccessKey
+      // 只有当有凭证变更时才构造 awsCredentials 对象
+      if (form.value.accessKeyId || form.value.secretAccessKey || form.value.sessionToken) {
+        data.awsCredentials = {}
+        if (form.value.accessKeyId) {
+          data.awsCredentials.accessKeyId = form.value.accessKeyId
+        }
+        if (form.value.secretAccessKey) {
+          data.awsCredentials.secretAccessKey = form.value.secretAccessKey
+        }
+        if (form.value.sessionToken !== undefined) {
+          data.awsCredentials.sessionToken = form.value.sessionToken || null
+        }
       }
       if (form.value.region) {
         data.region = form.value.region
-      }
-      if (form.value.sessionToken) {
-        data.sessionToken = form.value.sessionToken
       }
       // 模型配置（支持设置为空来使用系统默认）
       data.defaultModel = form.value.defaultModel || null

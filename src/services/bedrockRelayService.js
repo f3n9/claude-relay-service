@@ -7,16 +7,16 @@ class BedrockRelayService {
   constructor() {
     this.defaultRegion = process.env.AWS_REGION || config.bedrock?.defaultRegion || 'us-east-1';
     this.smallFastModelRegion = process.env.ANTHROPIC_SMALL_FAST_MODEL_AWS_REGION || this.defaultRegion;
-    
+
     // 默认模型配置
-    this.defaultModel = process.env.ANTHROPIC_MODEL || 'us.anthropic.claude-3-7-sonnet-20250219-v1:0';
+    this.defaultModel = process.env.ANTHROPIC_MODEL || 'us.anthropic.claude-sonnet-4-20250514-v1:0';
     this.defaultSmallModel = process.env.ANTHROPIC_SMALL_FAST_MODEL || 'us.anthropic.claude-3-5-haiku-20241022-v1:0';
-    
+
     // Token配置
     this.maxOutputTokens = parseInt(process.env.CLAUDE_CODE_MAX_OUTPUT_TOKENS) || 4096;
     this.maxThinkingTokens = parseInt(process.env.MAX_THINKING_TOKENS) || 1024;
     this.enablePromptCaching = process.env.DISABLE_PROMPT_CACHING !== '1';
-    
+
     // 创建Bedrock客户端
     this.clients = new Map(); // 缓存不同区域的客户端
   }
@@ -25,7 +25,7 @@ class BedrockRelayService {
   _getBedrockClient(region = null, bedrockAccount = null) {
     const targetRegion = region || this.defaultRegion;
     const clientKey = `${targetRegion}-${bedrockAccount?.id || 'default'}`;
-    
+
     if (this.clients.has(clientKey)) {
       return this.clients.get(clientKey);
     }
@@ -42,13 +42,17 @@ class BedrockRelayService {
         sessionToken: bedrockAccount.awsCredentials.sessionToken
       };
     } else {
-      // 使用默认凭证链：环境变量 -> AWS配置文件 -> IAM角色
-      clientConfig.credentials = fromEnv();
+      // 检查是否有环境变量凭证
+      if (process.env.AWS_ACCESS_KEY_ID && process.env.AWS_SECRET_ACCESS_KEY) {
+        clientConfig.credentials = fromEnv();
+      } else {
+        throw new Error('AWS凭证未配置。请在Bedrock账户中配置AWS访问密钥，或设置环境变量AWS_ACCESS_KEY_ID和AWS_SECRET_ACCESS_KEY');
+      }
     }
 
     const client = new BedrockRuntimeClient(clientConfig);
     this.clients.set(clientKey, client);
-    
+
     logger.debug(`🔧 Created Bedrock client for region: ${targetRegion}, account: ${bedrockAccount?.name || 'default'}`);
     return client;
   }
@@ -62,7 +66,7 @@ class BedrockRelayService {
 
       // 转换请求格式为Bedrock格式
       const bedrockPayload = this._convertToBedrockFormat(requestBody);
-      
+
       const command = new InvokeModelCommand({
         modelId: modelId,
         body: JSON.stringify(bedrockPayload),
@@ -71,7 +75,7 @@ class BedrockRelayService {
       });
 
       logger.debug(`🚀 Bedrock非流式请求 - 模型: ${modelId}, 区域: ${region}`);
-      
+
       const startTime = Date.now();
       const response = await client.send(command);
       const duration = Date.now() - startTime;
@@ -81,7 +85,7 @@ class BedrockRelayService {
       const claudeResponse = this._convertFromBedrockFormat(responseBody);
 
       logger.info(`✅ Bedrock请求完成 - 模型: ${modelId}, 耗时: ${duration}ms`);
-      
+
       return {
         success: true,
         data: claudeResponse,
@@ -105,7 +109,7 @@ class BedrockRelayService {
 
       // 转换请求格式为Bedrock格式
       const bedrockPayload = this._convertToBedrockFormat(requestBody);
-      
+
       const command = new InvokeModelWithResponseStreamCommand({
         modelId: modelId,
         body: JSON.stringify(bedrockPayload),
@@ -114,7 +118,7 @@ class BedrockRelayService {
       });
 
       logger.debug(`🌊 Bedrock流式请求 - 模型: ${modelId}, 区域: ${region}`);
-      
+
       const startTime = Date.now();
       const response = await client.send(command);
 
@@ -135,17 +139,17 @@ class BedrockRelayService {
         if (chunk.chunk) {
           const chunkData = JSON.parse(new TextDecoder().decode(chunk.chunk.bytes));
           const claudeEvent = this._convertBedrockStreamToClaudeFormat(chunkData, isFirstChunk);
-          
+
           if (claudeEvent) {
             // 发送SSE事件
             res.write(`event: ${claudeEvent.type}\n`);
             res.write(`data: ${JSON.stringify(claudeEvent.data)}\n\n`);
-            
+
             // 提取使用统计
             if (claudeEvent.type === 'message_stop' && claudeEvent.data.usage) {
               totalUsage = claudeEvent.data.usage;
             }
-            
+
             isFirstChunk = false;
           }
         }
@@ -168,34 +172,97 @@ class BedrockRelayService {
 
     } catch (error) {
       logger.error('❌ Bedrock流式请求失败:', error);
-      
+
       // 发送错误事件
       if (!res.headersSent) {
         res.writeHead(500, { 'Content-Type': 'application/json' });
       }
-      
+
       res.write('event: error\n');
       res.write(`data: ${JSON.stringify({ error: this._handleBedrockError(error).message })}\n\n`);
       res.end();
-      
+
       throw this._handleBedrockError(error);
     }
   }
 
   // 选择使用的模型
   _selectModel(requestBody, bedrockAccount) {
+    let selectedModel;
+    
     // 优先使用账户配置的模型
     if (bedrockAccount?.defaultModel) {
-      return bedrockAccount.defaultModel;
+      selectedModel = bedrockAccount.defaultModel;
+      logger.info(`🎯 使用账户配置的模型: ${selectedModel}`, { metadata: { source: 'account', accountId: bedrockAccount.id } });
     }
-    
     // 检查请求中指定的模型
-    if (requestBody.model) {
-      return requestBody.model;
+    else if (requestBody.model) {
+      selectedModel = requestBody.model;
+      logger.info(`🎯 使用请求指定的模型: ${selectedModel}`, { metadata: { source: 'request' } });
     }
-    
     // 使用默认模型
-    return this.defaultModel;
+    else {
+      selectedModel = this.defaultModel;
+      logger.info(`🎯 使用系统默认模型: ${selectedModel}`, { metadata: { source: 'default' } });
+    }
+
+    // 如果是标准Claude模型名，需要映射为Bedrock格式
+    const bedrockModel = this._mapToBedrockModel(selectedModel);
+    if (bedrockModel !== selectedModel) {
+      logger.info(`🔄 模型映射: ${selectedModel} → ${bedrockModel}`, { metadata: { originalModel: selectedModel, bedrockModel } });
+    }
+
+    return bedrockModel;
+  }
+
+  // 将标准Claude模型名映射为Bedrock格式
+  _mapToBedrockModel(modelName) {
+    // 标准Claude模型名到Bedrock模型名的映射表
+    const modelMapping = {
+      // Claude Sonnet 4
+      'claude-sonnet-4': 'us.anthropic.claude-sonnet-4-20250514-v1:0',
+      'claude-sonnet-4-20250514': 'us.anthropic.claude-sonnet-4-20250514-v1:0',
+      
+      // Claude Opus 4.1
+      'claude-opus-4': 'us.anthropic.claude-opus-4-1-20250805-v1:0',
+      'claude-opus-4-1': 'us.anthropic.claude-opus-4-1-20250805-v1:0',
+      'claude-opus-4-1-20250805': 'us.anthropic.claude-opus-4-1-20250805-v1:0',
+      
+      // Claude 3.7 Sonnet
+      'claude-3-7-sonnet': 'us.anthropic.claude-3-7-sonnet-20250219-v1:0',
+      'claude-3-7-sonnet-20250219': 'us.anthropic.claude-3-7-sonnet-20250219-v1:0',
+      
+      // Claude 3.5 Sonnet v2
+      'claude-3-5-sonnet': 'us.anthropic.claude-3-5-sonnet-20241022-v2:0',
+      'claude-3-5-sonnet-20241022': 'us.anthropic.claude-3-5-sonnet-20241022-v2:0',
+      
+      // Claude 3.5 Haiku
+      'claude-3-5-haiku': 'us.anthropic.claude-3-5-haiku-20241022-v1:0',
+      'claude-3-5-haiku-20241022': 'us.anthropic.claude-3-5-haiku-20241022-v1:0',
+      
+      // Claude 3 Sonnet
+      'claude-3-sonnet': 'us.anthropic.claude-3-sonnet-20240229-v1:0',
+      'claude-3-sonnet-20240229': 'us.anthropic.claude-3-sonnet-20240229-v1:0',
+      
+      // Claude 3 Haiku
+      'claude-3-haiku': 'us.anthropic.claude-3-haiku-20240307-v1:0',
+      'claude-3-haiku-20240307': 'us.anthropic.claude-3-haiku-20240307-v1:0'
+    };
+
+    // 如果已经是Bedrock格式，直接返回
+    if (modelName.startsWith('us.anthropic.') || modelName.startsWith('anthropic.')) {
+      return modelName;
+    }
+
+    // 查找映射
+    const mappedModel = modelMapping[modelName];
+    if (mappedModel) {
+      return mappedModel;
+    }
+
+    // 如果没有找到映射，返回原始模型名（可能会导致错误，但保持向后兼容）
+    logger.warn(`⚠️ 未找到模型映射: ${modelName}，使用原始模型名`, { metadata: { originalModel: modelName } });
+    return modelName;
   }
 
   // 选择使用的区域
@@ -204,12 +271,12 @@ class BedrockRelayService {
     if (bedrockAccount?.region) {
       return bedrockAccount.region;
     }
-    
+
     // 对于小模型，使用专门的区域配置
     if (modelId.includes('haiku')) {
       return this.smallFastModelRegion;
     }
-    
+
     return this.defaultRegion;
   }
 
@@ -230,7 +297,7 @@ class BedrockRelayService {
     if (requestBody.temperature !== undefined) {
       bedrockPayload.temperature = requestBody.temperature;
     }
-    
+
     if (requestBody.top_p !== undefined) {
       bedrockPayload.top_p = requestBody.top_p;
     }
@@ -289,7 +356,7 @@ class BedrockRelayService {
         }
       };
     }
-    
+
     if (bedrockChunk.type === 'content_block_delta') {
       return {
         type: 'content_block_delta',
@@ -299,7 +366,7 @@ class BedrockRelayService {
         }
       };
     }
-    
+
     if (bedrockChunk.type === 'message_delta') {
       return {
         type: 'message_delta',
@@ -309,7 +376,7 @@ class BedrockRelayService {
         }
       };
     }
-    
+
     if (bedrockChunk.type === 'message_stop') {
       return {
         type: 'message_stop',
@@ -325,23 +392,23 @@ class BedrockRelayService {
   // 处理Bedrock错误
   _handleBedrockError(error) {
     const errorMessage = error.message || 'Unknown Bedrock error';
-    
+
     if (error.name === 'ValidationException') {
       return new Error(`Bedrock参数验证失败: ${errorMessage}`);
     }
-    
+
     if (error.name === 'ThrottlingException') {
       return new Error('Bedrock请求限流，请稍后重试');
     }
-    
+
     if (error.name === 'AccessDeniedException') {
       return new Error('Bedrock访问被拒绝，请检查IAM权限');
     }
-    
+
     if (error.name === 'ModelNotReadyException') {
       return new Error('Bedrock模型未就绪，请稍后重试');
     }
-    
+
     return new Error(`Bedrock服务错误: ${errorMessage}`);
   }
 
@@ -349,9 +416,15 @@ class BedrockRelayService {
   async getAvailableModels(bedrockAccount = null) {
     try {
       const region = bedrockAccount?.region || this.defaultRegion;
-      
+
       // Bedrock暂不支持列出推理配置文件的API，返回预定义的模型列表
       const models = [
+        {
+          id: 'us.anthropic.claude-sonnet-4-20250514-v1:0',
+          name: 'Claude Sonnet 4',
+          provider: 'anthropic',
+          type: 'bedrock'
+        },
         {
           id: 'us.anthropic.claude-opus-4-1-20250805-v1:0',
           name: 'Claude Opus 4.1',

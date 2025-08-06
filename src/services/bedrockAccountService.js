@@ -19,7 +19,7 @@ class BedrockAccountService {
       description = '',
       region = process.env.AWS_REGION || 'us-east-1',
       awsCredentials = null, // { accessKeyId, secretAccessKey, sessionToken }
-      defaultModel = 'us.anthropic.claude-3-7-sonnet-20250219-v1:0',
+      defaultModel = 'us.anthropic.claude-sonnet-4-20250514-v1:0',
       isActive = true,
       accountType = 'shared', // 'dedicated' or 'shared'
       priority = 50, // 调度优先级 (1-100，数字越小优先级越高)
@@ -28,7 +28,7 @@ class BedrockAccountService {
     } = options;
 
     const accountId = uuidv4();
-    
+
     let accountData = {
       id: accountId,
       name,
@@ -52,9 +52,9 @@ class BedrockAccountService {
 
     const client = redis.getClientSafe();
     await client.set(`bedrock_account:${accountId}`, JSON.stringify(accountData));
-    
+
     logger.info(`✅ 创建Bedrock账户成功 - ID: ${accountId}, 名称: ${name}, 区域: ${region}`);
-    
+
     return {
       success: true,
       data: {
@@ -84,14 +84,14 @@ class BedrockAccountService {
       }
 
       const account = JSON.parse(accountData);
-      
+
       // 解密AWS凭证用于内部使用
       if (account.awsCredentials) {
         account.awsCredentials = this._decryptAwsCredentials(account.awsCredentials);
       }
 
       logger.debug(`🔍 获取Bedrock账户 - ID: ${accountId}, 名称: ${account.name}`);
-      
+
       return {
         success: true,
         data: account
@@ -113,7 +113,7 @@ class BedrockAccountService {
         const accountData = await client.get(key);
         if (accountData) {
           const account = JSON.parse(accountData);
-          
+
           // 返回给前端时，不包含敏感信息，只显示掩码
           accounts.push({
             id: account.id,
@@ -141,7 +141,7 @@ class BedrockAccountService {
       });
 
       logger.debug(`📋 获取所有Bedrock账户 - 共 ${accounts.length} 个`);
-      
+
       return {
         success: true,
         data: accounts
@@ -161,7 +161,7 @@ class BedrockAccountService {
       }
 
       const account = accountResult.data;
-      
+
       // 更新字段
       if (updates.name !== undefined) account.name = updates.name;
       if (updates.description !== undefined) account.description = updates.description;
@@ -186,9 +186,9 @@ class BedrockAccountService {
 
       const client = redis.getClientSafe();
       await client.set(`bedrock_account:${accountId}`, JSON.stringify(account));
-      
+
       logger.info(`✅ 更新Bedrock账户成功 - ID: ${accountId}, 名称: ${account.name}`);
-      
+
       return {
         success: true,
         data: {
@@ -222,9 +222,9 @@ class BedrockAccountService {
 
       const client = redis.getClientSafe();
       await client.del(`bedrock_account:${accountId}`);
-      
+
       logger.info(`✅ 删除Bedrock账户成功 - ID: ${accountId}`);
-      
+
       return { success: true };
     } catch (error) {
       logger.error(`❌ 删除Bedrock账户失败 - ID: ${accountId}`, error);
@@ -240,7 +240,7 @@ class BedrockAccountService {
         return { success: false, error: 'Failed to get accounts' };
       }
 
-      const availableAccounts = accountsResult.data.filter(account => 
+      const availableAccounts = accountsResult.data.filter(account =>
         account.isActive && account.schedulable
       );
 
@@ -250,7 +250,7 @@ class BedrockAccountService {
 
       // 简单的轮询选择策略 - 选择优先级最高的账户
       const selectedAccount = availableAccounts[0];
-      
+
       // 获取完整账户信息（包含解密的凭证）
       const fullAccountResult = await this.getAccount(selectedAccount.id);
       if (!fullAccountResult.success) {
@@ -258,7 +258,7 @@ class BedrockAccountService {
       }
 
       logger.debug(`🎯 选择Bedrock账户 - ID: ${selectedAccount.id}, 名称: ${selectedAccount.name}`);
-      
+
       return {
         success: true,
         data: fullAccountResult.data
@@ -278,12 +278,12 @@ class BedrockAccountService {
       }
 
       const account = accountResult.data;
-      
+
       logger.info(`🧪 测试Bedrock账户连接 - ID: ${accountId}, 名称: ${account.name}`);
 
       // 尝试获取模型列表来测试连接
       const models = await bedrockRelayService.getAvailableModels(account);
-      
+
       if (models && models.length > 0) {
         logger.info(`✅ Bedrock账户测试成功 - ID: ${accountId}, 发现 ${models.length} 个模型`);
         return {
@@ -313,14 +313,14 @@ class BedrockAccountService {
   // 🔐 加密AWS凭证
   _encryptAwsCredentials(credentials) {
     try {
-      const key = Buffer.from(config.security.encryptionKey, 'utf8');
+      const key = crypto.createHash('sha256').update(config.security.encryptionKey).digest();
       const iv = crypto.randomBytes(16);
-      const cipher = crypto.createCipher(this.ENCRYPTION_ALGORITHM, key);
-      
+      const cipher = crypto.createCipheriv(this.ENCRYPTION_ALGORITHM, key, iv);
+
       const credentialsString = JSON.stringify(credentials);
       let encrypted = cipher.update(credentialsString, 'utf8', 'hex');
       encrypted += cipher.final('hex');
-      
+
       return {
         encrypted: encrypted,
         iv: iv.toString('hex')
@@ -334,12 +334,28 @@ class BedrockAccountService {
   // 🔓 解密AWS凭证
   _decryptAwsCredentials(encryptedData) {
     try {
-      const key = Buffer.from(config.security.encryptionKey, 'utf8');
-      const decipher = crypto.createDecipher(this.ENCRYPTION_ALGORITHM, key);
-      
+      // 检查数据格式
+      if (!encryptedData || typeof encryptedData !== 'object') {
+        logger.error('❌ 无效的加密数据格式:', encryptedData);
+        throw new Error('Invalid encrypted data format');
+      }
+
+      // 检查必要字段
+      if (!encryptedData.encrypted || !encryptedData.iv) {
+        logger.error('❌ 缺少加密数据字段:', {
+          hasEncrypted: !!encryptedData.encrypted,
+          hasIv: !!encryptedData.iv
+        });
+        throw new Error('Missing encrypted data fields');
+      }
+
+      const key = crypto.createHash('sha256').update(config.security.encryptionKey).digest();
+      const iv = Buffer.from(encryptedData.iv, 'hex');
+      const decipher = crypto.createDecipheriv(this.ENCRYPTION_ALGORITHM, key, iv);
+
       let decrypted = decipher.update(encryptedData.encrypted, 'hex', 'utf8');
       decrypted += decipher.final('utf8');
-      
+
       return JSON.parse(decrypted);
     } catch (error) {
       logger.error('❌ AWS凭证解密失败', error);
