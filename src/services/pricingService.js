@@ -314,7 +314,7 @@ class PricingService {
       // 记录初始的修改时间
       let lastMtime = fs.statSync(this.pricingFile).mtimeMs;
       
-      fs.watchFile(this.pricingFile, watchOptions, (curr, prev) => {
+      fs.watchFile(this.pricingFile, watchOptions, (curr, _prev) => {
         // 检查文件是否真的被修改了（不仅仅是访问）
         if (curr.mtimeMs !== lastMtime) {
           lastMtime = curr.mtimeMs;

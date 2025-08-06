@@ -180,9 +180,10 @@ async function handleMessagesRequest(req, res) {
       
       res.status(response.statusCode);
       
-      // 设置响应头
+      // 设置响应头，避免 Content-Length 和 Transfer-Encoding 冲突
+      const skipHeaders = ['content-encoding', 'transfer-encoding', 'content-length'];
       Object.keys(response.headers).forEach(key => {
-        if (key.toLowerCase() !== 'content-encoding') {
+        if (!skipHeaders.includes(key.toLowerCase())) {
           res.setHeader(key, response.headers[key]);
         }
       });
@@ -282,6 +283,51 @@ router.post('/v1/messages', authenticateApiKey, handleMessagesRequest);
 // 🚀 Claude API messages 端点 - /claude/v1/messages (别名)
 router.post('/claude/v1/messages', authenticateApiKey, handleMessagesRequest);
 
+// 📋 模型列表端点 - Claude Code 客户端需要
+router.get('/v1/models', authenticateApiKey, async (req, res) => {
+  try {
+    // 返回支持的模型列表
+    const models = [
+      {
+        id: 'claude-3-5-sonnet-20241022',
+        object: 'model',
+        created: 1669599635,
+        owned_by: 'anthropic'
+      },
+      {
+        id: 'claude-3-5-haiku-20241022', 
+        object: 'model',
+        created: 1669599635,
+        owned_by: 'anthropic'
+      },
+      {
+        id: 'claude-3-opus-20240229',
+        object: 'model', 
+        created: 1669599635,
+        owned_by: 'anthropic'
+      },
+      {
+        id: 'claude-sonnet-4-20250514',
+        object: 'model',
+        created: 1669599635, 
+        owned_by: 'anthropic'
+      }
+    ];
+    
+    res.json({
+      object: 'list',
+      data: models
+    });
+    
+  } catch (error) {
+    logger.error('❌ Models list error:', error);
+    res.status(500).json({
+      error: 'Failed to get models list',
+      message: error.message
+    });
+  }
+});
+
 // 🏥 健康检查端点
 router.get('/health', async (req, res) => {
   try {
@@ -344,6 +390,48 @@ router.get('/v1/usage', authenticateApiKey, async (req, res) => {
     logger.error('❌ Usage stats error:', error);
     res.status(500).json({
       error: 'Failed to get usage stats',
+      message: error.message
+    });
+  }
+});
+
+// 👤 用户信息端点 - Claude Code 客户端需要
+router.get('/v1/me', authenticateApiKey, async (req, res) => {
+  try {
+    // 返回基础用户信息
+    res.json({
+      id: 'user_' + req.apiKey.id,
+      type: 'user', 
+      display_name: req.apiKey.name || 'API User',
+      created_at: new Date().toISOString()
+    });
+  } catch (error) {
+    logger.error('❌ User info error:', error);
+    res.status(500).json({
+      error: 'Failed to get user info',
+      message: error.message
+    });
+  }
+});
+
+// 💰 余额/限制端点 - Claude Code 客户端需要
+router.get('/v1/organizations/:org_id/usage', authenticateApiKey, async (req, res) => {
+  try {
+    const usage = await apiKeyService.getUsageStats(req.apiKey.id);
+    
+    res.json({
+      object: 'usage',
+      data: [
+        {
+          type: 'credit_balance', 
+          credit_balance: req.apiKey.tokenLimit - (usage.totalTokens || 0)
+        }
+      ]
+    });
+  } catch (error) {
+    logger.error('❌ Organization usage error:', error);
+    res.status(500).json({
+      error: 'Failed to get usage info',
       message: error.message
     });
   }
