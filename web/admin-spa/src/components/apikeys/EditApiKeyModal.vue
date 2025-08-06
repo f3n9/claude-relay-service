@@ -627,15 +627,20 @@ const updateApiKey = async () => {
       if (form.claudeAccountId.startsWith('console:')) {
         // Claude Console账户
         data.claudeConsoleAccountId = form.claudeAccountId.substring(8);
+        data.claudeAccountId = null; // 清空OAuth账号
       } else if (!form.claudeAccountId.startsWith('group:')) {
         // Claude OAuth账户（非分组）
         data.claudeAccountId = form.claudeAccountId;
+        data.claudeConsoleAccountId = null; // 清空Console账号
       } else {
         // 分组
         data.claudeAccountId = form.claudeAccountId;
+        data.claudeConsoleAccountId = null; // 清空Console账号
       }
     } else {
+      // 使用共享池，清空所有绑定
       data.claudeAccountId = null;
+      data.claudeConsoleAccountId = null;
     }
     
     // Gemini账户绑定
