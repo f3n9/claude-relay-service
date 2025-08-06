@@ -1,6 +1,8 @@
 const express = require('express');
 const claudeRelayService = require('../services/claudeRelayService');
 const claudeConsoleRelayService = require('../services/claudeConsoleRelayService');
+const bedrockRelayService = require('../services/bedrockRelayService');
+const bedrockAccountService = require('../services/bedrockAccountService');
 const unifiedClaudeScheduler = require('../services/unifiedClaudeScheduler');
 const apiKeyService = require('../services/apiKeyService');
 const { authenticateApiKey } = require('../middleware/auth');
@@ -101,7 +103,7 @@ async function handleMessagesRequest(req, res) {
           logger.warn('⚠️ Usage callback triggered but data is incomplete:', JSON.stringify(usageData));
         }
         });
-      } else {
+      } else if (accountType === 'claude-console') {
         // Claude Console账号使用Console转发服务（需要传递accountId）
         await claudeConsoleRelayService.relayStreamRequestWithUsageCapture(req.body, req.apiKey, res, req.headers, (usageData) => {
           // 回调函数：当检测到完整usage数据时记录真实token使用量
@@ -135,6 +137,44 @@ async function handleMessagesRequest(req, res) {
             logger.warn('⚠️ Usage callback triggered but data is incomplete:', JSON.stringify(usageData));
           }
         }, accountId);
+      } else if (accountType === 'bedrock') {
+        // Bedrock账号使用Bedrock转发服务
+        try {
+          const bedrockAccountResult = await bedrockAccountService.getAccount(accountId);
+          if (!bedrockAccountResult.success) {
+            throw new Error('Failed to get Bedrock account details');
+          }
+
+          const result = await bedrockRelayService.handleStreamRequest(req.body, bedrockAccountResult.data, res);
+          
+          // 记录Bedrock使用统计
+          if (result.usage) {
+            const inputTokens = result.usage.input_tokens || 0;
+            const outputTokens = result.usage.output_tokens || 0;
+            
+            apiKeyService.recordUsage(req.apiKey.id, inputTokens, outputTokens, 0, 0, result.model, accountId).catch(error => {
+              logger.error('❌ Failed to record Bedrock stream usage:', error);
+            });
+            
+            // 更新时间窗口内的token计数
+            if (req.rateLimitInfo) {
+              const totalTokens = inputTokens + outputTokens;
+              redis.getClient().incrby(req.rateLimitInfo.tokenCountKey, totalTokens).catch(error => {
+                logger.error('❌ Failed to update rate limit token count:', error);
+              });
+              logger.api(`📊 Updated rate limit token count: +${totalTokens} tokens`);
+            }
+            
+            usageDataCaptured = true;
+            logger.api(`📊 Bedrock stream usage recorded - Model: ${result.model}, Input: ${inputTokens}, Output: ${outputTokens}, Total: ${inputTokens + outputTokens} tokens`);
+          }
+        } catch (error) {
+          logger.error('❌ Bedrock stream request failed:', error);
+          if (!res.headersSent) {
+            res.status(500).json({ error: 'Bedrock service error', message: error.message });
+          }
+          return;
+        }
       }
       
       // 流式请求完成后 - 如果没有捕获到usage数据，记录警告但不进行估算
@@ -166,10 +206,43 @@ async function handleMessagesRequest(req, res) {
       if (accountType === 'claude-official') {
         // 官方Claude账号使用原有的转发服务
         response = await claudeRelayService.relayRequest(req.body, req.apiKey, req, res, req.headers);
-      } else {
+      } else if (accountType === 'claude-console') {
         // Claude Console账号使用Console转发服务
         logger.debug(`[DEBUG] Calling claudeConsoleRelayService.relayRequest with accountId: ${accountId}`);
         response = await claudeConsoleRelayService.relayRequest(req.body, req.apiKey, req, res, req.headers, accountId);
+      } else if (accountType === 'bedrock') {
+        // Bedrock账号使用Bedrock转发服务
+        try {
+          const bedrockAccountResult = await bedrockAccountService.getAccount(accountId);
+          if (!bedrockAccountResult.success) {
+            throw new Error('Failed to get Bedrock account details');
+          }
+
+          const result = await bedrockRelayService.handleNonStreamRequest(req.body, bedrockAccountResult.data, req.headers);
+          
+          // 构建标准响应格式
+          response = {
+            statusCode: result.success ? 200 : 500,
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(result.success ? result.data : { error: result.error }),
+            accountId: accountId
+          };
+          
+          // 如果成功，添加使用统计到响应数据中
+          if (result.success && result.usage) {
+            const responseData = JSON.parse(response.body);
+            responseData.usage = result.usage;
+            response.body = JSON.stringify(responseData);
+          }
+        } catch (error) {
+          logger.error('❌ Bedrock non-stream request failed:', error);
+          response = {
+            statusCode: 500,
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ error: 'Bedrock service error', message: error.message }),
+            accountId: accountId
+          };
+        }
       }
       
       logger.info('📡 Claude API response received', {
