@@ -85,7 +85,7 @@ test_build_and_push() {
     cp -r "$TEMP_DIR"/* .
     
     # 添加 README
-    cat > README.md << 'EOF'
+    cat > README.md << EOF
 # Claude Relay Service - Web Frontend Build
 
 This branch contains the pre-built frontend assets for Claude Relay Service.
