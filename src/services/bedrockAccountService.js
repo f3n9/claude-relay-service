@@ -155,12 +155,14 @@ class BedrockAccountService {
   // ✏️ 更新账户信息
   async updateAccount(accountId, updates = {}) {
     try {
-      const accountResult = await this.getAccount(accountId);
-      if (!accountResult.success) {
-        return accountResult;
+      // 获取原始账户数据（不解密凭证）
+      const client = redis.getClientSafe();
+      const accountData = await client.get(`bedrock_account:${accountId}`);
+      if (!accountData) {
+        return { success: false, error: 'Account not found' };
       }
 
-      const account = accountResult.data;
+      const account = JSON.parse(accountData);
 
       // 更新字段
       if (updates.name !== undefined) account.name = updates.name;
@@ -180,11 +182,15 @@ class BedrockAccountService {
         } else {
           delete account.awsCredentials;
         }
+      } else if (account.awsCredentials && account.awsCredentials.accessKeyId) {
+        // 如果没有提供新凭证但现有凭证是明文格式，重新加密
+        const plainCredentials = account.awsCredentials;
+        account.awsCredentials = this._encryptAwsCredentials(plainCredentials);
+        logger.info(`🔐 重新加密Bedrock账户凭证 - ID: ${accountId}`);
       }
 
       account.updatedAt = new Date().toISOString();
 
-      const client = redis.getClientSafe();
       await client.set(`bedrock_account:${accountId}`, JSON.stringify(account));
 
       logger.info(`✅ 更新Bedrock账户成功 - ID: ${accountId}, 名称: ${account.name}`);
