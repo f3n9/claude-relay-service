@@ -155,12 +155,14 @@ class BedrockAccountService {
   // ✏️ 更新账户信息
   async updateAccount(accountId, updates = {}) {
     try {
-      const accountResult = await this.getAccount(accountId);
-      if (!accountResult.success) {
-        return accountResult;
+      // 获取原始账户数据（不解密凭证）
+      const client = redis.getClientSafe();
+      const accountData = await client.get(`bedrock_account:${accountId}`);
+      if (!accountData) {
+        return { success: false, error: 'Account not found' };
       }
 
-      const account = accountResult.data;
+      const account = JSON.parse(accountData);
 
       // 更新字段
       if (updates.name !== undefined) account.name = updates.name;
@@ -180,11 +182,15 @@ class BedrockAccountService {
         } else {
           delete account.awsCredentials;
         }
+      } else if (account.awsCredentials && account.awsCredentials.accessKeyId) {
+        // 如果没有提供新凭证但现有凭证是明文格式，重新加密
+        const plainCredentials = account.awsCredentials;
+        account.awsCredentials = this._encryptAwsCredentials(plainCredentials);
+        logger.info(`🔐 重新加密Bedrock账户凭证 - ID: ${accountId}`);
       }
 
       account.updatedAt = new Date().toISOString();
 
-      const client = redis.getClientSafe();
       await client.set(`bedrock_account:${accountId}`, JSON.stringify(account));
 
       logger.info(`✅ 更新Bedrock账户成功 - ID: ${accountId}, 名称: ${account.name}`);
@@ -340,23 +346,30 @@ class BedrockAccountService {
         throw new Error('Invalid encrypted data format');
       }
 
-      // 检查必要字段
-      if (!encryptedData.encrypted || !encryptedData.iv) {
+      // 检查是否为加密格式 (有 encrypted 和 iv 字段)
+      if (encryptedData.encrypted && encryptedData.iv) {
+        // 加密数据 - 进行解密
+        const key = crypto.createHash('sha256').update(config.security.encryptionKey).digest();
+        const iv = Buffer.from(encryptedData.iv, 'hex');
+        const decipher = crypto.createDecipheriv(this.ENCRYPTION_ALGORITHM, key, iv);
+
+        let decrypted = decipher.update(encryptedData.encrypted, 'hex', 'utf8');
+        decrypted += decipher.final('utf8');
+
+        return JSON.parse(decrypted);
+      } else if (encryptedData.accessKeyId) {
+        // 纯文本数据 - 直接返回 (向后兼容)
+        logger.warn('⚠️ 发现未加密的AWS凭证，建议更新账户以启用加密');
+        return encryptedData;
+      } else {
+        // 既不是加密格式也不是有效的凭证格式
         logger.error('❌ 缺少加密数据字段:', {
           hasEncrypted: !!encryptedData.encrypted,
-          hasIv: !!encryptedData.iv
+          hasIv: !!encryptedData.iv,
+          hasAccessKeyId: !!encryptedData.accessKeyId
         });
-        throw new Error('Missing encrypted data fields');
+        throw new Error('Missing encrypted data fields or valid credentials');
       }
-
-      const key = crypto.createHash('sha256').update(config.security.encryptionKey).digest();
-      const iv = Buffer.from(encryptedData.iv, 'hex');
-      const decipher = crypto.createDecipheriv(this.ENCRYPTION_ALGORITHM, key, iv);
-
-      let decrypted = decipher.update(encryptedData.encrypted, 'hex', 'utf8');
-      decrypted += decipher.final('utf8');
-
-      return JSON.parse(decrypted);
     } catch (error) {
       logger.error('❌ AWS凭证解密失败', error);
       throw new Error('Credentials decryption failed');

@@ -164,6 +164,24 @@ class RedisClient {
   }
 
   // 📊 使用统计相关操作（支持缓存token统计和模型信息）
+  // 标准化模型名称，用于统计聚合
+  _normalizeModelName(model) {
+    if (!model || model === 'unknown') return model;
+    
+    // 对于Bedrock模型，去掉区域前缀进行统一
+    if (model.includes('.anthropic.') || model.includes('.claude')) {
+      // 匹配所有AWS区域格式：region.anthropic.model-name-v1:0 -> claude-model-name
+      // 支持所有AWS区域格式，如：us-east-1, eu-west-1, ap-southeast-1, ca-central-1等
+      let normalized = model.replace(/^[a-z0-9-]+\./, ''); // 去掉任何区域前缀（更通用）
+      normalized = normalized.replace('anthropic.', ''); // 去掉anthropic前缀
+      normalized = normalized.replace(/-v\d+:\d+$/, ''); // 去掉版本后缀（如-v1:0, -v2:1等）
+      return normalized;
+    }
+    
+    // 对于其他模型，去掉常见的版本后缀
+    return model.replace(/-v\d+:\d+$|:latest$/, '');
+  }
+
   async incrementTokenUsage(keyId, tokens, inputTokens = 0, outputTokens = 0, cacheCreateTokens = 0, cacheReadTokens = 0, model = 'unknown') {
     const key = `usage:${keyId}`;
     const now = new Date();
@@ -176,15 +194,18 @@ class RedisClient {
     const monthly = `usage:monthly:${keyId}:${currentMonth}`;
     const hourly = `usage:hourly:${keyId}:${currentHour}`; // 新增小时级别key
 
+    // 标准化模型名用于统计聚合
+    const normalizedModel = this._normalizeModelName(model);
+
     // 按模型统计的键
-    const modelDaily = `usage:model:daily:${model}:${today}`;
-    const modelMonthly = `usage:model:monthly:${model}:${currentMonth}`;
-    const modelHourly = `usage:model:hourly:${model}:${currentHour}`; // 新增模型小时级别
+    const modelDaily = `usage:model:daily:${normalizedModel}:${today}`;
+    const modelMonthly = `usage:model:monthly:${normalizedModel}:${currentMonth}`;
+    const modelHourly = `usage:model:hourly:${normalizedModel}:${currentHour}`; // 新增模型小时级别
 
     // API Key级别的模型统计
-    const keyModelDaily = `usage:${keyId}:model:daily:${model}:${today}`;
-    const keyModelMonthly = `usage:${keyId}:model:monthly:${model}:${currentMonth}`;
-    const keyModelHourly = `usage:${keyId}:model:hourly:${model}:${currentHour}`; // 新增API Key模型小时级别
+    const keyModelDaily = `usage:${keyId}:model:daily:${normalizedModel}:${today}`;
+    const keyModelMonthly = `usage:${keyId}:model:monthly:${normalizedModel}:${currentMonth}`;
+    const keyModelHourly = `usage:${keyId}:model:hourly:${normalizedModel}:${currentHour}`; // 新增API Key模型小时级别
 
     // 新增：系统级分钟统计
     const minuteTimestamp = Math.floor(now.getTime() / 60000);
@@ -333,10 +354,13 @@ class RedisClient {
     const accountMonthly = `account_usage:monthly:${accountId}:${currentMonth}`;
     const accountHourly = `account_usage:hourly:${accountId}:${currentHour}`;
     
+    // 标准化模型名用于统计聚合
+    const normalizedModel = this._normalizeModelName(model);
+    
     // 账户按模型统计的键
-    const accountModelDaily = `account_usage:model:daily:${accountId}:${model}:${today}`;
-    const accountModelMonthly = `account_usage:model:monthly:${accountId}:${model}:${currentMonth}`;
-    const accountModelHourly = `account_usage:model:hourly:${accountId}:${model}:${currentHour}`;
+    const accountModelDaily = `account_usage:model:daily:${accountId}:${normalizedModel}:${today}`;
+    const accountModelMonthly = `account_usage:model:monthly:${accountId}:${normalizedModel}:${currentMonth}`;
+    const accountModelHourly = `account_usage:model:hourly:${accountId}:${normalizedModel}:${currentHour}`;
     
     // 处理token分配
     const finalInputTokens = inputTokens || 0;
