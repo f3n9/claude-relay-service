@@ -1010,6 +1010,128 @@ router.post('/claude-accounts/exchange-code', authenticateAdmin, async (req, res
   }
 })
 
+// 生成Claude setup-token授权URL
+router.post('/claude-accounts/generate-setup-token-url', authenticateAdmin, async (req, res) => {
+  try {
+    const { proxy } = req.body // 接收代理配置
+    const setupTokenParams = await oauthHelper.generateSetupTokenParams()
+
+    // 将codeVerifier和state临时存储到Redis，用于后续验证
+    const sessionId = require('crypto').randomUUID()
+    await redis.setOAuthSession(sessionId, {
+      type: 'setup-token', // 标记为setup-token类型
+      codeVerifier: setupTokenParams.codeVerifier,
+      state: setupTokenParams.state,
+      codeChallenge: setupTokenParams.codeChallenge,
+      proxy: proxy || null, // 存储代理配置
+      createdAt: new Date().toISOString(),
+      expiresAt: new Date(Date.now() + 10 * 60 * 1000).toISOString() // 10分钟过期
+    })
+
+    logger.success('🔗 Generated Setup Token authorization URL with proxy support')
+    return res.json({
+      success: true,
+      data: {
+        authUrl: setupTokenParams.authUrl,
+        sessionId,
+        instructions: [
+          '1. 复制上面的链接到浏览器中打开',
+          '2. 登录您的 Claude 账户并授权 Claude Code',
+          '3. 完成授权后，从返回页面复制 Authorization Code',
+          '4. 在添加账户表单中粘贴 Authorization Code'
+        ]
+      }
+    })
+  } catch (error) {
+    logger.error('❌ Failed to generate Setup Token URL:', error)
+    return res
+      .status(500)
+      .json({ error: 'Failed to generate Setup Token URL', message: error.message })
+  }
+})
+
+// 验证setup-token授权码并获取token
+router.post('/claude-accounts/exchange-setup-token-code', authenticateAdmin, async (req, res) => {
+  try {
+    const { sessionId, authorizationCode, callbackUrl } = req.body
+
+    if (!sessionId || (!authorizationCode && !callbackUrl)) {
+      return res
+        .status(400)
+        .json({ error: 'Session ID and authorization code (or callback URL) are required' })
+    }
+
+    // 从Redis获取OAuth会话信息
+    const oauthSession = await redis.getOAuthSession(sessionId)
+    if (!oauthSession) {
+      return res.status(400).json({ error: 'Invalid or expired OAuth session' })
+    }
+
+    // 检查是否是setup-token类型
+    if (oauthSession.type !== 'setup-token') {
+      return res.status(400).json({ error: 'Invalid session type for setup token exchange' })
+    }
+
+    // 检查会话是否过期
+    if (new Date() > new Date(oauthSession.expiresAt)) {
+      await redis.deleteOAuthSession(sessionId)
+      return res
+        .status(400)
+        .json({ error: 'OAuth session has expired, please generate a new authorization URL' })
+    }
+
+    // 统一处理授权码输入（可能是直接的code或完整的回调URL）
+    let finalAuthCode
+    const inputValue = callbackUrl || authorizationCode
+
+    try {
+      finalAuthCode = oauthHelper.parseCallbackUrl(inputValue)
+    } catch (parseError) {
+      return res
+        .status(400)
+        .json({ error: 'Failed to parse authorization input', message: parseError.message })
+    }
+
+    // 交换Setup Token
+    const tokenData = await oauthHelper.exchangeSetupTokenCode(
+      finalAuthCode,
+      oauthSession.codeVerifier,
+      oauthSession.state,
+      oauthSession.proxy // 传递代理配置
+    )
+
+    // 清理OAuth会话
+    await redis.deleteOAuthSession(sessionId)
+
+    logger.success('🎉 Successfully exchanged setup token authorization code for tokens')
+    return res.json({
+      success: true,
+      data: {
+        claudeAiOauth: tokenData
+      }
+    })
+  } catch (error) {
+    logger.error('❌ Failed to exchange setup token authorization code:', {
+      error: error.message,
+      sessionId: req.body.sessionId,
+      // 不记录完整的授权码，只记录长度和前几个字符
+      codeLength: req.body.callbackUrl
+        ? req.body.callbackUrl.length
+        : req.body.authorizationCode
+          ? req.body.authorizationCode.length
+          : 0,
+      codePrefix: req.body.callbackUrl
+        ? `${req.body.callbackUrl.substring(0, 10)}...`
+        : req.body.authorizationCode
+          ? `${req.body.authorizationCode.substring(0, 10)}...`
+          : 'N/A'
+    })
+    return res
+      .status(500)
+      .json({ error: 'Failed to exchange setup token authorization code', message: error.message })
+  }
+})
+
 // 获取所有Claude账户
 router.get('/claude-accounts', authenticateAdmin, async (req, res) => {
   try {
