@@ -496,8 +496,11 @@
                   v-model="form.userAgent" 
                   type="text" 
                   class="form-input w-full"
-                  placeholder="默认：claude-cli/1.0.61 (console, cli)"
+                  placeholder="留空则透传客户端 User-Agent"
                 >
+                <p class="text-xs text-gray-500 mt-1">
+                  留空时将自动使用客户端的 User-Agent，仅在需要固定特定 UA 时填写
+                </p>
               </div>
               
               <div>
@@ -853,8 +856,11 @@
                 v-model="form.userAgent" 
                 type="text" 
                 class="form-input w-full"
-                placeholder="默认：claude-cli/1.0.61 (console, cli)"
+                placeholder="留空则透传客户端 User-Agent"
               >
+              <p class="text-xs text-gray-500 mt-1">
+                留空时将自动使用客户端的 User-Agent，仅在需要固定特定 UA 时填写
+              </p>
             </div>
             
             <div>
