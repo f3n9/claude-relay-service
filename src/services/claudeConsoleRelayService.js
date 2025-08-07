@@ -79,6 +79,12 @@ class ClaudeConsoleRelayService {
       const filteredHeaders = this._filterClientHeaders(clientHeaders);
       logger.debug(`[DEBUG] Filtered client headers: ${JSON.stringify(filteredHeaders)}`);
       
+      // 决定使用的 User-Agent：优先使用账户自定义的，否则透传客户端的，最后才使用默认值
+      const userAgent = account.userAgent || 
+                       clientHeaders?.['user-agent'] || 
+                       clientHeaders?.['User-Agent'] || 
+                       this.defaultUserAgent;
+      
       // 准备请求配置
       const requestConfig = {
         method: 'POST',
@@ -87,7 +93,7 @@ class ClaudeConsoleRelayService {
         headers: {
           'Content-Type': 'application/json',
           'anthropic-version': '2023-06-01',
-          'User-Agent': account.userAgent || this.defaultUserAgent,
+          'User-Agent': userAgent,
           ...filteredHeaders
         },
         httpsAgent: proxyAgent,
@@ -231,6 +237,12 @@ class ClaudeConsoleRelayService {
       const filteredHeaders = this._filterClientHeaders(clientHeaders);
       logger.debug(`[DEBUG] Filtered client headers: ${JSON.stringify(filteredHeaders)}`);
       
+      // 决定使用的 User-Agent：优先使用账户自定义的，否则透传客户端的，最后才使用默认值
+      const userAgent = account.userAgent || 
+                       clientHeaders?.['user-agent'] || 
+                       clientHeaders?.['User-Agent'] || 
+                       this.defaultUserAgent;
+      
       // 准备请求配置
       const requestConfig = {
         method: 'POST',
@@ -239,7 +251,7 @@ class ClaudeConsoleRelayService {
         headers: {
           'Content-Type': 'application/json',
           'anthropic-version': '2023-06-01',
-          'User-Agent': account.userAgent || this.defaultUserAgent,
+          'User-Agent': userAgent,
           ...filteredHeaders
         },
         httpsAgent: proxyAgent,
