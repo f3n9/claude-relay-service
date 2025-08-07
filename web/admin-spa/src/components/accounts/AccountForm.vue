@@ -25,7 +25,7 @@
 
         <!-- 步骤指示器 -->
         <div
-          v-if="!isEdit && form.addType === 'oauth'"
+          v-if="!isEdit && (form.addType === 'oauth' || form.addType === 'setup-token')"
           class="mb-4 flex items-center justify-center sm:mb-8"
         >
           <div class="flex items-center space-x-2 sm:space-x-4">
@@ -88,10 +88,14 @@
               v-if="!isEdit && form.platform !== 'claude-console' && form.platform !== 'bedrock'"
             >
               <label class="mb-3 block text-sm font-semibold text-gray-700">添加方式</label>
-              <div class="flex gap-4">
+              <div class="flex flex-wrap gap-4">
+                <label class="flex cursor-pointer items-center">
+                  <input v-model="form.addType" class="mr-2" type="radio" value="setup-token" />
+                  <span class="text-sm text-gray-700">Setup Token (推荐)</span>
+                </label>
                 <label class="flex cursor-pointer items-center">
                   <input v-model="form.addType" class="mr-2" type="radio" value="oauth" />
-                  <span class="text-sm text-gray-700">OAuth 授权 (推荐)</span>
+                  <span class="text-sm text-gray-700">OAuth 授权</span>
                 </label>
                 <label class="flex cursor-pointer items-center">
                   <input v-model="form.addType" class="mr-2" type="radio" value="manual" />
@@ -574,7 +578,7 @@
               </button>
               <button
                 v-if="
-                  form.addType === 'oauth' &&
+                  (form.addType === 'oauth' || form.addType === 'setup-token') &&
                   form.platform !== 'claude-console' &&
                   form.platform !== 'bedrock'
                 "
@@ -607,6 +611,158 @@
           @back="oauthStep = 1"
           @success="handleOAuthSuccess"
         />
+
+        <!-- 步骤2: Setup Token授权 -->
+        <div v-if="oauthStep === 2 && form.addType === 'setup-token'" class="space-y-6">
+          <!-- Claude Setup Token流程 -->
+          <div v-if="form.platform === 'claude'">
+            <div class="rounded-lg border border-blue-200 bg-blue-50 p-6">
+              <div class="flex items-start gap-4">
+                <div
+                  class="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg bg-blue-500"
+                >
+                  <i class="fas fa-key text-white" />
+                </div>
+                <div class="flex-1">
+                  <h4 class="mb-3 font-semibold text-blue-900">Claude Setup Token 授权</h4>
+                  <p class="mb-4 text-sm text-blue-800">
+                    请按照以下步骤通过 Setup Token 完成 Claude 账户的授权：
+                  </p>
+
+                  <div class="space-y-4">
+                    <!-- 步骤1: 生成授权链接 -->
+                    <div class="rounded-lg border border-blue-300 bg-white/80 p-4">
+                      <div class="flex items-start gap-3">
+                        <div
+                          class="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full bg-blue-600 text-xs font-bold text-white"
+                        >
+                          1
+                        </div>
+                        <div class="flex-1">
+                          <p class="mb-2 font-medium text-blue-900">点击下方按钮生成授权链接</p>
+                          <button
+                            v-if="!setupTokenAuthUrl"
+                            class="btn btn-primary px-4 py-2 text-sm"
+                            :disabled="setupTokenLoading"
+                            @click="generateSetupTokenAuthUrl"
+                          >
+                            <i v-if="!setupTokenLoading" class="fas fa-link mr-2" />
+                            <div v-else class="loading-spinner mr-2" />
+                            {{ setupTokenLoading ? '生成中...' : '生成 Setup Token 授权链接' }}
+                          </button>
+                          <div v-else class="space-y-3">
+                            <div class="flex items-center gap-2">
+                              <input
+                                class="form-input flex-1 bg-gray-50 font-mono text-xs"
+                                readonly
+                                type="text"
+                                :value="setupTokenAuthUrl"
+                              />
+                              <button
+                                class="rounded-lg bg-gray-100 px-3 py-2 transition-colors hover:bg-gray-200"
+                                title="复制链接"
+                                @click="copySetupTokenAuthUrl"
+                              >
+                                <i
+                                  :class="
+                                    setupTokenCopied ? 'fas fa-check text-green-500' : 'fas fa-copy'
+                                  "
+                                />
+                              </button>
+                            </div>
+                            <button
+                              class="text-xs text-blue-600 hover:text-blue-700"
+                              @click="regenerateSetupTokenAuthUrl"
+                            >
+                              <i class="fas fa-sync-alt mr-1" />重新生成
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    <!-- 步骤2: 访问链接并授权 -->
+                    <div class="rounded-lg border border-blue-300 bg-white/80 p-4">
+                      <div class="flex items-start gap-3">
+                        <div
+                          class="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full bg-blue-600 text-xs font-bold text-white"
+                        >
+                          2
+                        </div>
+                        <div class="flex-1">
+                          <p class="mb-2 font-medium text-blue-900">在浏览器中打开链接并完成授权</p>
+                          <p class="mb-2 text-sm text-blue-700">
+                            请在新标签页中打开授权链接，登录您的 Claude 账户并授权 Claude Code。
+                          </p>
+                          <div class="rounded border border-yellow-300 bg-yellow-50 p-3">
+                            <p class="text-xs text-yellow-800">
+                              <i class="fas fa-exclamation-triangle mr-1" />
+                              <strong>注意：</strong
+                              >如果您设置了代理，请确保浏览器也使用相同的代理访问授权页面。
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    <!-- 步骤3: 输入授权码 -->
+                    <div class="rounded-lg border border-blue-300 bg-white/80 p-4">
+                      <div class="flex items-start gap-3">
+                        <div
+                          class="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full bg-blue-600 text-xs font-bold text-white"
+                        >
+                          3
+                        </div>
+                        <div class="flex-1">
+                          <p class="mb-2 font-medium text-blue-900">输入 Authorization Code</p>
+                          <p class="mb-3 text-sm text-blue-700">
+                            授权完成后，从返回页面复制 Authorization Code，并粘贴到下方输入框：
+                          </p>
+                          <div class="space-y-3">
+                            <div>
+                              <label class="mb-2 block text-sm font-semibold text-gray-700">
+                                <i class="fas fa-key mr-2 text-blue-500" />Authorization Code
+                              </label>
+                              <textarea
+                                v-model="setupTokenAuthCode"
+                                class="form-input w-full resize-none font-mono text-sm"
+                                placeholder="粘贴从Claude Code授权页面获取的Authorization Code..."
+                                rows="3"
+                              />
+                            </div>
+                            <p class="mt-2 text-xs text-gray-500">
+                              <i class="fas fa-info-circle mr-1" />
+                              请粘贴从Claude Code授权页面复制的Authorization Code
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="flex gap-3 pt-4">
+            <button
+              class="flex-1 rounded-xl bg-gray-100 px-6 py-3 font-semibold text-gray-700 transition-colors hover:bg-gray-200"
+              type="button"
+              @click="oauthStep = 1"
+            >
+              上一步
+            </button>
+            <button
+              class="btn btn-primary flex-1 px-6 py-3 font-semibold"
+              :disabled="!canExchangeSetupToken || setupTokenExchanging"
+              type="button"
+              @click="exchangeSetupTokenCode"
+            >
+              <div v-if="setupTokenExchanging" class="loading-spinner mr-2" />
+              {{ setupTokenExchanging ? '验证中...' : '完成授权' }}
+            </button>
+          </div>
+        </div>
 
         <!-- 编辑模式 -->
         <div v-if="isEdit" class="space-y-6">
@@ -1014,6 +1170,14 @@ const show = ref(true)
 const oauthStep = ref(1)
 const loading = ref(false)
 
+// Setup Token 相关状态
+const setupTokenLoading = ref(false)
+const setupTokenExchanging = ref(false)
+const setupTokenAuthUrl = ref('')
+const setupTokenAuthCode = ref('')
+const setupTokenCopied = ref(false)
+const setupTokenSessionId = ref('')
+
 // 初始化代理配置
 const initProxyConfig = () => {
   if (props.account?.proxy && props.account.proxy.host && props.account.proxy.port) {
@@ -1039,7 +1203,7 @@ const initProxyConfig = () => {
 // 表单数据
 const form = ref({
   platform: props.account?.platform || 'claude',
-  addType: 'oauth',
+  addType: 'setup-token',
   name: props.account?.name || '',
   description: props.account?.description || '',
   accountType: props.account?.accountType || 'shared',
@@ -1092,6 +1256,11 @@ const canProceed = computed(() => {
   return form.value.name?.trim() && form.value.platform
 })
 
+// 计算是否可以交换Setup Token code
+const canExchangeSetupToken = computed(() => {
+  return setupTokenAuthUrl.value && setupTokenAuthCode.value.trim()
+})
+
 // // 计算是否可以创建
 // const canCreate = computed(() => {
 //   if (form.value.addType === 'manual') {
@@ -1138,6 +1307,98 @@ const nextStep = async () => {
   }
 
   oauthStep.value = 2
+}
+
+// Setup Token 相关方法
+// 生成Setup Token授权URL
+const generateSetupTokenAuthUrl = async () => {
+  setupTokenLoading.value = true
+  try {
+    const proxyConfig = form.value.proxy?.enabled
+      ? {
+          proxy: {
+            type: form.value.proxy.type,
+            host: form.value.proxy.host,
+            port: parseInt(form.value.proxy.port),
+            username: form.value.proxy.username || null,
+            password: form.value.proxy.password || null
+          }
+        }
+      : {}
+
+    const result = await accountsStore.generateClaudeSetupTokenUrl(proxyConfig)
+    setupTokenAuthUrl.value = result.authUrl
+    setupTokenSessionId.value = result.sessionId
+  } catch (error) {
+    showToast(error.message || '生成Setup Token授权链接失败', 'error')
+  } finally {
+    setupTokenLoading.value = false
+  }
+}
+
+// 重新生成Setup Token授权URL
+const regenerateSetupTokenAuthUrl = () => {
+  setupTokenAuthUrl.value = ''
+  setupTokenAuthCode.value = ''
+  generateSetupTokenAuthUrl()
+}
+
+// 复制Setup Token授权URL
+const copySetupTokenAuthUrl = async () => {
+  try {
+    await navigator.clipboard.writeText(setupTokenAuthUrl.value)
+    setupTokenCopied.value = true
+    showToast('链接已复制', 'success')
+    setTimeout(() => {
+      setupTokenCopied.value = false
+    }, 2000)
+  } catch (error) {
+    // 降级方案
+    const input = document.createElement('input')
+    input.value = setupTokenAuthUrl.value
+    document.body.appendChild(input)
+    input.select()
+    document.execCommand('copy')
+    document.body.removeChild(input)
+    setupTokenCopied.value = true
+    showToast('链接已复制', 'success')
+    setTimeout(() => {
+      setupTokenCopied.value = false
+    }, 2000)
+  }
+}
+
+// 交换Setup Token授权码
+const exchangeSetupTokenCode = async () => {
+  if (!canExchangeSetupToken.value) return
+
+  setupTokenExchanging.value = true
+  try {
+    const data = {
+      sessionId: setupTokenSessionId.value,
+      callbackUrl: setupTokenAuthCode.value.trim()
+    }
+
+    // 添加代理配置（如果启用）
+    if (form.value.proxy?.enabled) {
+      data.proxy = {
+        type: form.value.proxy.type,
+        host: form.value.proxy.host,
+        port: parseInt(form.value.proxy.port),
+        username: form.value.proxy.username || null,
+        password: form.value.proxy.password || null
+      }
+    }
+
+    const tokenInfo = await accountsStore.exchangeClaudeSetupTokenCode(data)
+
+    // 调用相同的成功处理函数
+    await handleOAuthSuccess(tokenInfo)
+  } catch (error) {
+    showToast(error.message || 'Setup Token授权失败，请检查授权码是否正确', 'error')
+  } finally {
+    setupTokenExchanging.value = false
+  }
 }
 
 // 处理OAuth成功
@@ -1585,6 +1846,48 @@ watch(
     }
   }
 )
+
+// 监听Setup Token授权码输入，自动提取URL中的code参数
+watch(setupTokenAuthCode, (newValue) => {
+  if (!newValue || typeof newValue !== 'string') return
+
+  const trimmedValue = newValue.trim()
+
+  // 如果内容为空，不处理
+  if (!trimmedValue) return
+
+  // 检查是否是 URL 格式（包含 http:// 或 https://）
+  const isUrl = trimmedValue.startsWith('http://') || trimmedValue.startsWith('https://')
+
+  // 如果是 URL 格式
+  if (isUrl) {
+    // 检查是否是正确的 localhost:45462 开头的 URL
+    if (trimmedValue.startsWith('http://localhost:45462')) {
+      try {
+        const url = new URL(trimmedValue)
+        const code = url.searchParams.get('code')
+
+        if (code) {
+          // 成功提取授权码
+          setupTokenAuthCode.value = code
+          showToast('成功提取授权码！', 'success')
+          console.log('Successfully extracted authorization code from URL')
+        } else {
+          // URL 中没有 code 参数
+          showToast('URL 中未找到授权码参数，请检查链接是否正确', 'error')
+        }
+      } catch (error) {
+        // URL 解析失败
+        console.error('Failed to parse URL:', error)
+        showToast('链接格式错误，请检查是否为完整的 URL', 'error')
+      }
+    } else {
+      // 错误的 URL（不是 localhost:45462 开头）
+      showToast('请粘贴以 http://localhost:45462 开头的链接', 'error')
+    }
+  }
+  // 如果不是 URL，保持原值（兼容直接输入授权码）
+})
 
 // 监听账户类型变化
 watch(

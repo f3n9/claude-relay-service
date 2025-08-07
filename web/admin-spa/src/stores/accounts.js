@@ -398,6 +398,42 @@ export const useAccountsStore = defineStore('accounts', () => {
     }
   }
 
+  // 生成Claude Setup Token URL
+  const generateClaudeSetupTokenUrl = async (proxyConfig) => {
+    try {
+      const response = await apiClient.post(
+        '/admin/claude-accounts/generate-setup-token-url',
+        proxyConfig
+      )
+      if (response.success) {
+        return response.data // 返回整个对象，包含authUrl和sessionId
+      } else {
+        throw new Error(response.message || '生成Setup Token URL失败')
+      }
+    } catch (err) {
+      error.value = err.message
+      throw err
+    }
+  }
+
+  // 交换Claude Setup Token Code
+  const exchangeClaudeSetupTokenCode = async (data) => {
+    try {
+      const response = await apiClient.post(
+        '/admin/claude-accounts/exchange-setup-token-code',
+        data
+      )
+      if (response.success) {
+        return response.data
+      } else {
+        throw new Error(response.message || '交换Setup Token授权码失败')
+      }
+    } catch (err) {
+      error.value = err.message
+      throw err
+    }
+  }
+
   // 生成Gemini OAuth URL
   const generateGeminiAuthUrl = async (proxyConfig) => {
     try {
@@ -480,6 +516,8 @@ export const useAccountsStore = defineStore('accounts', () => {
     refreshClaudeToken,
     generateClaudeAuthUrl,
     exchangeClaudeCode,
+    generateClaudeSetupTokenUrl,
+    exchangeClaudeSetupTokenCode,
     generateGeminiAuthUrl,
     exchangeGeminiCode,
     sortAccounts,

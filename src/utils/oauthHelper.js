@@ -15,15 +15,16 @@ const OAUTH_CONFIG = {
   TOKEN_URL: 'https://console.anthropic.com/v1/oauth/token',
   CLIENT_ID: '9d1c250a-e61b-44d9-88ed-5944d1962f5e',
   REDIRECT_URI: 'https://console.anthropic.com/oauth/code/callback',
-  SCOPES: 'org:create_api_key user:profile user:inference'
+  SCOPES: 'org:create_api_key user:profile user:inference',
+  SCOPES_SETUP: 'user:inference'
 }
 
 /**
  * 生成随机的 state 参数
- * @returns {string} 随机生成的 state (64字符hex)
+ * @returns {string} 随机生成的 state (base64url编码)
  */
 function generateState() {
-  return crypto.randomBytes(32).toString('hex')
+  return crypto.randomBytes(32).toString('base64url')
 }
 
 /**
@@ -74,6 +75,46 @@ function generateOAuthParams() {
   const codeChallenge = generateCodeChallenge(codeVerifier)
 
   const authUrl = generateAuthUrl(codeChallenge, state)
+
+  return {
+    authUrl,
+    codeVerifier,
+    state,
+    codeChallenge
+  }
+}
+
+/**
+ * 生成 Setup Token 授权 URL
+ * @param {string} codeChallenge - PKCE code challenge
+ * @param {string} state - state 参数
+ * @returns {string} 完整的授权 URL
+ */
+function generateSetupTokenAuthUrl(codeChallenge, state) {
+  const params = new URLSearchParams({
+    code: 'true',
+    client_id: OAUTH_CONFIG.CLIENT_ID,
+    response_type: 'code',
+    redirect_uri: OAUTH_CONFIG.REDIRECT_URI,
+    scope: OAUTH_CONFIG.SCOPES_SETUP,
+    code_challenge: codeChallenge,
+    code_challenge_method: 'S256',
+    state
+  })
+
+  return `${OAUTH_CONFIG.AUTHORIZE_URL}?${params.toString()}`
+}
+
+/**
+ * 生成Setup Token授权URL和相关参数
+ * @returns {{authUrl: string, codeVerifier: string, state: string, codeChallenge: string}}
+ */
+function generateSetupTokenParams() {
+  const state = generateState()
+  const codeVerifier = generateCodeVerifier()
+  const codeChallenge = generateCodeChallenge(codeVerifier)
+
+  const authUrl = generateSetupTokenAuthUrl(codeChallenge, state)
 
   return {
     authUrl,
@@ -281,6 +322,111 @@ function parseCallbackUrl(input) {
 }
 
 /**
+ * 使用授权码交换Setup Token
+ * @param {string} authorizationCode - 授权码
+ * @param {string} codeVerifier - PKCE code verifier
+ * @param {string} state - state 参数
+ * @param {object|null} proxyConfig - 代理配置（可选）
+ * @returns {Promise<object>} Claude格式的token响应
+ */
+async function exchangeSetupTokenCode(authorizationCode, codeVerifier, state, proxyConfig = null) {
+  // 清理授权码，移除URL片段
+  const cleanedCode = authorizationCode.split('#')[0]?.split('&')[0] ?? authorizationCode
+
+  const params = {
+    grant_type: 'authorization_code',
+    client_id: OAUTH_CONFIG.CLIENT_ID,
+    code: cleanedCode,
+    redirect_uri: OAUTH_CONFIG.REDIRECT_URI,
+    code_verifier: codeVerifier,
+    state,
+    expires_in: 31536000
+  }
+
+  // 创建代理agent
+  const agent = createProxyAgent(proxyConfig)
+
+  try {
+    logger.debug('🔄 Attempting Setup Token exchange', {
+      url: OAUTH_CONFIG.TOKEN_URL,
+      codeLength: cleanedCode.length,
+      codePrefix: `${cleanedCode.substring(0, 10)}...`,
+      hasProxy: !!proxyConfig,
+      proxyType: proxyConfig?.type || 'none'
+    })
+
+    const response = await axios.post(OAUTH_CONFIG.TOKEN_URL, params, {
+      headers: {
+        'Content-Type': 'application/json',
+        'User-Agent': 'claude-cli/1.0.56 (external, cli)',
+        Accept: 'application/json, text/plain, */*',
+        'Accept-Language': 'en-US,en;q=0.9',
+        Referer: 'https://claude.ai/',
+        Origin: 'https://claude.ai'
+      },
+      httpsAgent: agent,
+      timeout: 30000
+    })
+
+    const { data } = response
+
+    // 返回Claude格式的token数据
+    return {
+      accessToken: data.access_token,
+      refreshToken: '',
+      expiresAt: (Math.floor(Date.now() / 1000) + data.expires_in) * 1000,
+      scopes: data.scope ? data.scope.split(' ') : ['user:inference', 'user:profile'],
+      isMax: true
+    }
+  } catch (error) {
+    // 使用与标准OAuth相同的错误处理逻辑
+    if (error.response) {
+      const { status } = error.response
+      const errorData = error.response.data
+
+      logger.error('❌ Setup Token exchange failed with server error', {
+        status,
+        statusText: error.response.statusText,
+        data: errorData,
+        codeLength: cleanedCode.length,
+        codePrefix: `${cleanedCode.substring(0, 10)}...`
+      })
+
+      let errorMessage = `HTTP ${status}`
+      if (errorData) {
+        if (typeof errorData === 'string') {
+          errorMessage += `: ${errorData}`
+        } else if (errorData.error) {
+          errorMessage += `: ${errorData.error}`
+          if (errorData.error_description) {
+            errorMessage += ` - ${errorData.error_description}`
+          }
+        } else {
+          errorMessage += `: ${JSON.stringify(errorData)}`
+        }
+      }
+
+      throw new Error(`Setup Token exchange failed: ${errorMessage}`)
+    } else if (error.request) {
+      logger.error('❌ Setup Token exchange failed with network error', {
+        message: error.message,
+        code: error.code,
+        hasProxy: !!proxyConfig
+      })
+      throw new Error(
+        'Setup Token exchange failed: No response from server (network error or timeout)'
+      )
+    } else {
+      logger.error('❌ Setup Token exchange failed with unknown error', {
+        message: error.message,
+        stack: error.stack
+      })
+      throw new Error(`Setup Token exchange failed: ${error.message}`)
+    }
+  }
+}
+
+/**
  * 格式化为Claude标准格式
  * @param {object} tokenData - token数据
  * @returns {object} claudeAiOauth格式的数据
@@ -300,12 +446,15 @@ function formatClaudeCredentials(tokenData) {
 module.exports = {
   OAUTH_CONFIG,
   generateOAuthParams,
+  generateSetupTokenParams,
   exchangeCodeForTokens,
+  exchangeSetupTokenCode,
   parseCallbackUrl,
   formatClaudeCredentials,
   generateState,
   generateCodeVerifier,
   generateCodeChallenge,
   generateAuthUrl,
+  generateSetupTokenAuthUrl,
   createProxyAgent
 }
