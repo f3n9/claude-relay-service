@@ -248,9 +248,11 @@
                       'inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold',
                       account.status === 'blocked'
                         ? 'bg-orange-100 text-orange-800'
-                        : account.isActive
-                          ? 'bg-green-100 text-green-800'
-                          : 'bg-red-100 text-red-800'
+                        : account.status === 'unauthorized'
+                          ? 'bg-red-100 text-red-800'
+                          : account.isActive
+                            ? 'bg-green-100 text-green-800'
+                            : 'bg-red-100 text-red-800'
                     ]"
                   >
                     <div
@@ -258,13 +260,21 @@
                         'mr-2 h-2 w-2 rounded-full',
                         account.status === 'blocked'
                           ? 'bg-orange-500'
-                          : account.isActive
-                            ? 'bg-green-500'
-                            : 'bg-red-500'
+                          : account.status === 'unauthorized'
+                            ? 'bg-red-500'
+                            : account.isActive
+                              ? 'bg-green-500'
+                              : 'bg-red-500'
                       ]"
                     />
                     {{
-                      account.status === 'blocked' ? '已封锁' : account.isActive ? '正常' : '异常'
+                      account.status === 'blocked'
+                        ? '已封锁'
+                        : account.status === 'unauthorized'
+                          ? '异常'
+                          : account.isActive
+                            ? '正常'
+                            : '异常'
                     }}
                   </span>
                   <span
@@ -412,6 +422,27 @@
                   >
                     <i :class="['fas fa-sync-alt', account.isRefreshing ? 'animate-spin' : '']" />
                     <span class="ml-1">刷新</span>
+                  </button>
+                  <button
+                    v-if="
+                      account.platform === 'claude' &&
+                      (account.status === 'unauthorized' ||
+                        account.status !== 'active' ||
+                        account.rateLimitStatus?.isRateLimited ||
+                        !account.isActive)
+                    "
+                    :class="[
+                      'rounded px-2.5 py-1 text-xs font-medium transition-colors',
+                      account.isResetting
+                        ? 'cursor-not-allowed bg-gray-100 text-gray-400'
+                        : 'bg-yellow-100 text-yellow-700 hover:bg-yellow-200'
+                    ]"
+                    :disabled="account.isResetting"
+                    :title="account.isResetting ? '重置中...' : '重置所有异常状态'"
+                    @click="resetAccountStatus(account)"
+                  >
+                    <i :class="['fas fa-redo', account.isResetting ? 'animate-spin' : '']" />
+                    <span class="ml-1">重置状态</span>
                   </button>
                   <button
                     :class="[
@@ -1036,6 +1067,41 @@ const refreshToken = async (account) => {
   }
 }
 
+// 重置账户状态
+const resetAccountStatus = async (account) => {
+  if (account.isResetting) return
+
+  let confirmed = false
+  if (window.showConfirm) {
+    confirmed = await window.showConfirm(
+      '重置账户状态',
+      '确定要重置此账户的所有异常状态吗？这将清除限流状态、401错误计数等所有异常标记。',
+      '确定重置',
+      '取消'
+    )
+  } else {
+    confirmed = confirm('确定要重置此账户的所有异常状态吗？')
+  }
+
+  if (!confirmed) return
+
+  try {
+    account.isResetting = true
+    const data = await apiClient.post(`/admin/claude-accounts/${account.id}/reset-status`)
+
+    if (data.success) {
+      showToast('账户状态已重置', 'success')
+      loadAccounts()
+    } else {
+      showToast(data.message || '状态重置失败', 'error')
+    }
+  } catch (error) {
+    showToast('状态重置失败', 'error')
+  } finally {
+    account.isResetting = false
+  }
+}
+
 // 切换调度状态
 const toggleSchedulable = async (account) => {
   if (account.isTogglingSchedulable) return
@@ -1090,6 +1156,8 @@ const handleEditSuccess = () => {
 const getAccountStatusText = (account) => {
   // 检查是否被封锁
   if (account.status === 'blocked') return '已封锁'
+  // 检查是否未授权（401错误）
+  if (account.status === 'unauthorized') return '异常'
   // 检查是否限流
   if (
     account.isRateLimited ||
@@ -1108,6 +1176,9 @@ const getAccountStatusText = (account) => {
 // 获取账户状态样式类
 const getAccountStatusClass = (account) => {
   if (account.status === 'blocked') {
+    return 'bg-red-100 text-red-800'
+  }
+  if (account.status === 'unauthorized') {
     return 'bg-red-100 text-red-800'
   }
   if (
@@ -1129,6 +1200,9 @@ const getAccountStatusClass = (account) => {
 // 获取账户状态点样式类
 const getAccountStatusDotClass = (account) => {
   if (account.status === 'blocked') {
+    return 'bg-red-500'
+  }
+  if (account.status === 'unauthorized') {
     return 'bg-red-500'
   }
   if (

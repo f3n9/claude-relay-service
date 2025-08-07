@@ -144,6 +144,13 @@ npm run setup  # 自动生成密钥并创建管理员账户
 
 ## 开发最佳实践
 
+### 代码格式化要求
+- **必须使用 Prettier 格式化所有代码**
+- 后端代码（src/）：运行 `npx prettier --write <file>` 格式化
+- 前端代码（web/admin-spa/）：已安装 `prettier-plugin-tailwindcss`，运行 `npx prettier --write <file>` 格式化
+- 提交前检查格式：`npx prettier --check <file>`
+- 格式化所有文件：`npm run format`（如果配置了此脚本）
+
 ### 代码修改原则
 - 对现有文件进行修改时，首先检查代码库的现有模式和风格
 - 尽可能重用现有的服务和工具函数，避免重复代码

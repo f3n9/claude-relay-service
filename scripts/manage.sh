@@ -577,12 +577,66 @@ update_service() {
         cp config/config.js config/config.js.backup.$(date +%Y%m%d%H%M%S)
     fi
     
-    # 拉取最新代码
-    print_info "拉取最新代码..."
-    if ! git pull origin main; then
-        print_error "拉取代码失败，请检查网络连接"
+    # 检查本地修改
+    print_info "检查本地文件修改..."
+    local has_changes=false
+    if git status --porcelain | grep -v "^??" | grep -q .; then
+        has_changes=true
+        print_warning "检测到本地文件已修改："
+        git status --short | grep -v "^??"
+        echo ""
+        echo -e "${YELLOW}警告：更新将使用远程版本覆盖本地修改！${NC}"
+        
+        # 创建本地修改的备份
+        local backup_branch="backup-$(date +%Y%m%d-%H%M%S)"
+        print_info "创建本地修改备份分支: $backup_branch"
+        git stash push -m "Backup before update $(date +%Y-%m-%d)" >/dev/null 2>&1
+        git branch "$backup_branch" 2>/dev/null || true
+        
+        echo -e "${GREEN}已创建备份分支: $backup_branch${NC}"
+        echo "如需恢复，可执行: git checkout $backup_branch"
+        echo ""
+        
+        echo -n "是否继续更新？(y/N): "
+        read -n 1 confirm_update
+        echo
+        
+        if [[ ! "$confirm_update" =~ ^[Yy]$ ]]; then
+            print_info "已取消更新"
+            # 恢复 stash 的修改
+            git stash pop >/dev/null 2>&1 || true
+            # 如果之前在运行，重新启动服务
+            if [ "$was_running" = true ]; then
+                print_info "重新启动服务..."
+                start_service
+            fi
+            return 0
+        fi
+    fi
+    
+    # 获取最新代码（强制使用远程版本）
+    print_info "获取最新代码..."
+    
+    # 先获取远程更新
+    if ! git fetch origin main; then
+        print_error "获取远程代码失败，请检查网络连接"
         return 1
     fi
+    
+    # 强制重置到远程版本
+    print_info "应用远程更新..."
+    if ! git reset --hard origin/main; then
+        print_error "重置到远程版本失败"
+        # 尝试恢复
+        print_info "尝试恢复..."
+        git reset --hard HEAD
+        return 1
+    fi
+    
+    # 清理未跟踪的文件（可选，保留用户新建的文件）
+    # git clean -fd  # 注释掉，避免删除用户的新文件
+    
+    print_success "代码已更新到最新版本"
     
     # 更新依赖
     print_info "更新依赖..."
@@ -599,8 +653,14 @@ update_service() {
     # 创建目标目录
     mkdir -p web/admin-spa/dist
     
-    # 清理旧的前端文件
-    rm -rf web/admin-spa/dist/*
+    # 清理旧的前端文件（保留用户自定义文件）
+    if [ -d "web/admin-spa/dist" ]; then
+        print_info "清理旧的前端文件..."
+        # 只删除已知的前端文件，保留用户可能添加的自定义文件
+        rm -rf web/admin-spa/dist/assets 2>/dev/null
+        rm -f web/admin-spa/dist/index.html 2>/dev/null
+        rm -f web/admin-spa/dist/favicon.ico 2>/dev/null
+    fi
     
     # 从 web-dist 分支获取构建好的文件
     if git ls-remote --heads origin web-dist | grep -q web-dist; then
@@ -609,14 +669,42 @@ update_service() {
         # 创建临时目录用于 clone
         TEMP_CLONE_DIR=$(mktemp -d)
         
-        # 使用 sparse-checkout 来只获取需要的文件
-        git clone --depth 1 --branch web-dist --single-branch \
-            https://github.com/Wei-Shaw/claude-relay-service.git \
-            "$TEMP_CLONE_DIR" 2>/dev/null || {
+        # 添加错误处理
+        if [ ! -d "$TEMP_CLONE_DIR" ]; then
+            print_error "无法创建临时目录"
+            return 1
+        fi
+        
+        # 使用 sparse-checkout 来只获取需要的文件，添加重试机制
+        local clone_success=false
+        for attempt in 1 2 3; do
+            print_info "尝试下载前端文件 (第 $attempt 次)..."
+            
+            if git clone --depth 1 --branch web-dist --single-branch \
+                https://github.com/Wei-Shaw/claude-relay-service.git \
+                "$TEMP_CLONE_DIR" 2>/dev/null; then
+                clone_success=true
+                break
+            fi
+            
             # 如果 HTTPS 失败，尝试使用当前仓库的 remote URL
             REPO_URL=$(git config --get remote.origin.url)
-            git clone --depth 1 --branch web-dist --single-branch "$REPO_URL" "$TEMP_CLONE_DIR"
-        }
+            if git clone --depth 1 --branch web-dist --single-branch "$REPO_URL" "$TEMP_CLONE_DIR" 2>/dev/null; then
+                clone_success=true
+                break
+            fi
+            
+            if [ $attempt -lt 3 ]; then
+                print_warning "下载失败，等待 2 秒后重试..."
+                sleep 2
+            fi
+        done
+        
+        if [ "$clone_success" = false ]; then
+            print_error "无法下载前端文件"
+            rm -rf "$TEMP_CLONE_DIR"
+            return 1
+        fi
         
         # 复制文件到目标目录（排除 .git 和 README.md）
         rsync -av --exclude='.git' --exclude='README.md' "$TEMP_CLONE_DIR/" web/admin-spa/dist/ 2>/dev/null || {
@@ -663,10 +751,32 @@ update_service() {
     
     print_success "更新完成！"
     
+    # 显示更新摘要
+    echo ""
+    echo -e "${BLUE}=== 更新摘要 ===${NC}"
+    
     # 显示版本信息
     if [ -f "$APP_DIR/VERSION" ]; then
-        echo -e "\n当前版本: ${GREEN}$(cat "$APP_DIR/VERSION")${NC}"
+        echo -e "当前版本: ${GREEN}$(cat "$APP_DIR/VERSION")${NC}"
     fi
+    
+    # 显示最新的提交信息
+    local latest_commit=$(git log -1 --oneline 2>/dev/null)
+    if [ -n "$latest_commit" ]; then
+        echo -e "最新提交: ${GREEN}$latest_commit${NC}"
+    fi
+    
+    # 显示备份信息
+    echo -e "\n${YELLOW}配置文件备份：${NC}"
+    ls -la .env.backup.* 2>/dev/null | tail -3 || echo "  无备份文件"
+    
+    # 提醒用户检查配置
+    echo -e "\n${YELLOW}提示：${NC}"
+    echo "  - 配置文件已自动备份"
+    echo "  - 如有本地修改已保存到备份分支"
+    echo "  - 建议检查 .env 和 config/config.js 配置"
+    
+    echo -e "\n${BLUE}==================${NC}"
 }
 
 # 卸载服务

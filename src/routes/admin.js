@@ -1341,6 +1341,21 @@ router.post('/claude-accounts/:accountId/refresh', authenticateAdmin, async (req
   }
 })
 
+// 重置Claude账户状态（清除所有异常状态）
+router.post('/claude-accounts/:accountId/reset-status', authenticateAdmin, async (req, res) => {
+  try {
+    const { accountId } = req.params
+
+    const result = await claudeAccountService.resetAccountStatus(accountId)
+
+    logger.success(`✅ Admin reset status for Claude account: ${accountId}`)
+    return res.json({ success: true, data: result })
+  } catch (error) {
+    logger.error('❌ Failed to reset Claude account status:', error)
+    return res.status(500).json({ error: 'Failed to reset status', message: error.message })
+  }
+})
+
 // 切换Claude账户调度状态
 router.put(
   '/claude-accounts/:accountId/toggle-schedulable',
