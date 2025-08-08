@@ -450,28 +450,36 @@
                   <button
                     class="rounded-lg bg-blue-100 px-3 py-1 text-xs text-blue-700 transition-colors hover:bg-blue-200"
                     type="button"
-                    @click="addPresetMapping('claude-sonnet-4-20250514', 'claude-sonnet-4-20250514')"
+                    @click="
+                      addPresetMapping('claude-sonnet-4-20250514', 'claude-sonnet-4-20250514')
+                    "
                   >
                     + Sonnet 4
                   </button>
                   <button
                     class="rounded-lg bg-purple-100 px-3 py-1 text-xs text-purple-700 transition-colors hover:bg-purple-200"
                     type="button"
-                    @click="addPresetMapping('claude-opus-4-1-20250805', 'claude-opus-4-1-20250805')"
+                    @click="
+                      addPresetMapping('claude-opus-4-1-20250805', 'claude-opus-4-1-20250805')
+                    "
                   >
                     + Opus 4.1
                   </button>
                   <button
                     class="rounded-lg bg-green-100 px-3 py-1 text-xs text-green-700 transition-colors hover:bg-green-200"
                     type="button"
-                    @click="addPresetMapping('claude-3-5-haiku-20241022', 'claude-3-5-haiku-20241022')"
+                    @click="
+                      addPresetMapping('claude-3-5-haiku-20241022', 'claude-3-5-haiku-20241022')
+                    "
                   >
                     + Haiku 3.5
                   </button>
                   <button
                     class="rounded-lg bg-orange-100 px-3 py-1 text-xs text-orange-700 transition-colors hover:bg-orange-200"
                     type="button"
-                    @click="addPresetMapping('claude-opus-4-1-20250805', 'claude-sonnet-4-20250514')"
+                    @click="
+                      addPresetMapping('claude-opus-4-1-20250805', 'claude-sonnet-4-20250514')
+                    "
                   >
                     + Opus 4.1 → Sonnet 4
                   </button>
