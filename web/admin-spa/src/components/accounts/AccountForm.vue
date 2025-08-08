@@ -89,7 +89,7 @@
             >
               <label class="mb-3 block text-sm font-semibold text-gray-700">添加方式</label>
               <div class="flex flex-wrap gap-4">
-                <label class="flex cursor-pointer items-center">
+                <label v-if="form.platform === 'claude'" class="flex cursor-pointer items-center">
                   <input v-model="form.addType" class="mr-2" type="radio" value="setup-token" />
                   <span class="text-sm text-gray-700">Setup Token (推荐)</span>
                 </label>
@@ -1203,7 +1203,7 @@ const initProxyConfig = () => {
 // 表单数据
 const form = ref({
   platform: props.account?.platform || 'claude',
-  addType: 'setup-token',
+  addType: props.account?.platform === 'gemini' ? 'oauth' : 'setup-token',
   name: props.account?.name || '',
   description: props.account?.description || '',
   accountType: props.account?.accountType || 'shared',

@@ -6,36 +6,65 @@
           <h3 class="mb-1 text-lg font-bold text-gray-900 sm:mb-2 sm:text-xl">账户管理</h3>
           <p class="text-sm text-gray-600 sm:text-base">管理您的 Claude 和 Gemini 账户及代理配置</p>
         </div>
-        <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-          <div class="flex flex-col gap-2 sm:flex-row">
-            <select
-              v-model="accountSortBy"
-              class="form-input w-full px-3 py-2 text-sm sm:w-auto"
-              @change="sortAccounts()"
+        <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <!-- 筛选器组 -->
+          <div class="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:gap-3">
+            <!-- 排序选择器 -->
+            <div class="group relative min-w-[160px]">
+              <div
+                class="absolute -inset-0.5 rounded-lg bg-gradient-to-r from-indigo-500 to-blue-500 opacity-0 blur transition duration-300 group-hover:opacity-20"
+              ></div>
+              <CustomDropdown
+                v-model="accountSortBy"
+                icon="fa-sort-amount-down"
+                icon-color="text-indigo-500"
+                :options="sortOptions"
+                placeholder="选择排序"
+                @change="sortAccounts()"
+              />
+            </div>
+
+            <!-- 分组筛选器 -->
+            <div class="group relative min-w-[160px]">
+              <div
+                class="absolute -inset-0.5 rounded-lg bg-gradient-to-r from-purple-500 to-pink-500 opacity-0 blur transition duration-300 group-hover:opacity-20"
+              ></div>
+              <CustomDropdown
+                v-model="groupFilter"
+                icon="fa-layer-group"
+                icon-color="text-purple-500"
+                :options="groupOptions"
+                placeholder="选择分组"
+                @change="filterByGroup"
+              />
+            </div>
+
+            <!-- 刷新按钮 -->
+            <button
+              class="group relative flex items-center justify-center gap-2 rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-700 shadow-sm transition-all duration-200 hover:border-gray-300 hover:shadow-md disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
+              :disabled="accountsLoading"
+              @click="loadAccounts()"
             >
-              <option value="name">按名称排序</option>
-              <option value="dailyTokens">按今日Token排序</option>
-              <option value="dailyRequests">按今日请求数排序</option>
-              <option value="totalTokens">按总Token排序</option>
-              <option value="lastUsed">按最后使用排序</option>
-            </select>
-            <select
-              v-model="groupFilter"
-              class="form-input w-full px-3 py-2 text-sm sm:w-auto"
-              @change="filterByGroup"
-            >
-              <option value="all">所有账户</option>
-              <option value="ungrouped">未分组账户</option>
-              <option v-for="group in accountGroups" :key="group.id" :value="group.id">
-                {{ group.name }} ({{ group.platform === 'claude' ? 'Claude' : 'Gemini' }})
-              </option>
-            </select>
+              <div
+                class="absolute -inset-0.5 rounded-lg bg-gradient-to-r from-green-500 to-teal-500 opacity-0 blur transition duration-300 group-hover:opacity-20"
+              ></div>
+              <i
+                :class="[
+                  'fas relative text-green-500',
+                  accountsLoading ? 'fa-spinner fa-spin' : 'fa-sync-alt'
+                ]"
+              />
+              <span class="relative">刷新</span>
+            </button>
           </div>
+
+          <!-- 添加账户按钮 -->
           <button
-            class="btn btn-success flex w-full items-center justify-center gap-2 px-4 py-2 sm:w-auto sm:px-6 sm:py-3"
+            class="flex w-full items-center justify-center gap-2 rounded-lg bg-gradient-to-r from-green-500 to-green-600 px-5 py-2.5 text-sm font-medium text-white shadow-md transition-all duration-200 hover:from-green-600 hover:to-green-700 hover:shadow-lg sm:w-auto"
             @click.stop="openCreateAccountModal"
           >
-            <i class="fas fa-plus" />添加账户
+            <i class="fas fa-plus"></i>
+            <span>添加账户</span>
           </button>
         </div>
       </div>
@@ -710,6 +739,7 @@ import { apiClient } from '@/config/api'
 import { useConfirm } from '@/composables/useConfirm'
 import AccountForm from '@/components/accounts/AccountForm.vue'
 import ConfirmModal from '@/components/common/ConfirmModal.vue'
+import CustomDropdown from '@/components/common/CustomDropdown.vue'
 
 // 使用确认弹窗
 const { showConfirmModal, confirmOptions, showConfirm, handleConfirm, handleCancel } = useConfirm()
@@ -725,6 +755,30 @@ const refreshingTokens = ref({})
 const accountGroups = ref([])
 const groupFilter = ref('all')
 const filteredAccounts = ref([])
+
+// 下拉选项数据
+const sortOptions = ref([
+  { value: 'name', label: '按名称排序', icon: 'fa-font' },
+  { value: 'dailyTokens', label: '按今日Token排序', icon: 'fa-coins' },
+  { value: 'dailyRequests', label: '按今日请求数排序', icon: 'fa-chart-line' },
+  { value: 'totalTokens', label: '按总Token排序', icon: 'fa-database' },
+  { value: 'lastUsed', label: '按最后使用排序', icon: 'fa-clock' }
+])
+
+const groupOptions = computed(() => {
+  const options = [
+    { value: 'all', label: '所有账户', icon: 'fa-globe' },
+    { value: 'ungrouped', label: '未分组账户', icon: 'fa-user' }
+  ]
+  accountGroups.value.forEach((group) => {
+    options.push({
+      value: group.id,
+      label: `${group.name} (${group.platform === 'claude' ? 'Claude' : 'Gemini'})`,
+      icon: group.platform === 'claude' ? 'fa-brain' : 'fa-robot'
+    })
+  })
+  return options
+})
 
 // 模态框状态
 const showCreateAccountModal = ref(false)
