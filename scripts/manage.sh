@@ -421,8 +421,8 @@ install_service() {
     print_info "安装项目依赖..."
     npm install
     
-    # 确保脚本有执行权限
-    if [ -f "$APP_DIR/scripts/manage.sh" ]; then
+    # 确保脚本有执行权限（仅在权限不正确时设置）
+    if [ -f "$APP_DIR/scripts/manage.sh" ] && [ ! -x "$APP_DIR/scripts/manage.sh" ]; then
         chmod +x "$APP_DIR/scripts/manage.sh"
         print_success "已设置脚本执行权限"
     fi
@@ -568,13 +568,10 @@ update_service() {
         stop_service
     fi
     
-    # 备份配置文件
+    # 备份配置文件（只备份.env，config.js可从example恢复）
     print_info "备份配置文件..."
     if [ -f ".env" ]; then
         cp .env .env.backup.$(date +%Y%m%d%H%M%S)
-    fi
-    if [ -f "config/config.js" ]; then
-        cp config/config.js config/config.js.backup.$(date +%Y%m%d%H%M%S)
     fi
     
     # 检查本地修改
@@ -642,8 +639,8 @@ update_service() {
     print_info "更新依赖..."
     npm install
     
-    # 确保脚本有执行权限
-    if [ -f "$APP_DIR/scripts/manage.sh" ]; then
+    # 确保脚本有执行权限（仅在权限不正确时设置）
+    if [ -f "$APP_DIR/scripts/manage.sh" ] && [ ! -x "$APP_DIR/scripts/manage.sh" ]; then
         chmod +x "$APP_DIR/scripts/manage.sh"
     fi
     

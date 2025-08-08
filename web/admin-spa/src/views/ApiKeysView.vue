@@ -268,6 +268,12 @@
                           >${{ (key.dailyCost || 0).toFixed(4) }}</span
                         >
                       </div>
+                      <div class="flex items-center justify-between text-sm">
+                        <span class="text-gray-600">最后使用</span>
+                        <span class="font-medium text-gray-700">{{
+                          formatLastUsed(key.lastUsedAt)
+                        }}</span>
+                      </div>
                     </div>
 
                     <!-- 每日费用限制进度条 -->
@@ -744,6 +750,12 @@
                   </p>
                   <p class="text-xs text-gray-500">费用</p>
                 </div>
+              </div>
+              <div class="mt-2 flex items-center justify-between">
+                <span class="text-xs text-gray-600">最后使用</span>
+                <span class="text-xs font-medium text-gray-700">{{
+                  formatLastUsed(key.lastUsedAt)
+                }}</span>
               </div>
             </div>
 
@@ -1734,6 +1746,19 @@ const formatTokenCount = (count) => {
     return (count / 1000).toFixed(1) + 'K'
   }
   return count.toString()
+}
+
+// 格式化最后使用时间
+const formatLastUsed = (dateString) => {
+  if (!dateString) return '从未使用'
+  const date = new Date(dateString)
+  const now = new Date()
+  const diff = now - date
+  if (diff < 60000) return '刚刚'
+  if (diff < 3600000) return `${Math.floor(diff / 60000)} 分钟前`
+  if (diff < 86400000) return `${Math.floor(diff / 3600000)} 小时前`
+  if (diff < 604800000) return `${Math.floor(diff / 86400000)} 天前`
+  return date.toLocaleDateString('zh-CN')
 }
 
 // 监听筛选条件变化，重置页码
