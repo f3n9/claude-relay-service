@@ -63,13 +63,6 @@ npm run service:status        # 查看服务状态
 npm run service:logs          # 查看日志
 npm run service:stop          # 停止服务
 
-# CLI管理工具
-npm run cli admin             # 管理员操作
-npm run cli keys              # API Key管理
-npm run cli accounts          # Claude账户管理
-npm run cli status            # 系统状态
-```
-
 ### 开发环境配置
 必须配置的环境变量：
 - `JWT_SECRET`: JWT密钥（32字符以上随机字符串）

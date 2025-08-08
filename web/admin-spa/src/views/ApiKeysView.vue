@@ -254,48 +254,19 @@
                     </div>
 
                     <!-- 时间窗口限制进度条 -->
-                    <div v-if="key.rateLimitWindow > 0" class="space-y-1">
-                      <div class="flex items-center justify-between text-xs">
-                        <span class="text-gray-500">窗口限制</span>
-                        <span class="text-gray-700"> {{ key.rateLimitWindow }}分钟 </span>
-                      </div>
-
-                      <!-- 请求次数限制 -->
-                      <div v-if="key.rateLimitRequests > 0" class="space-y-0.5">
-                        <div class="flex items-center justify-between text-xs">
-                          <span class="text-gray-400">请求</span>
-                          <span class="text-gray-600">
-                            {{ key.currentWindowRequests || 0 }}/{{ key.rateLimitRequests }}
-                          </span>
-                        </div>
-                        <div class="h-1 w-full rounded-full bg-gray-200">
-                          <div
-                            class="h-1 rounded-full transition-all duration-300"
-                            :class="getWindowRequestProgressColor(key)"
-                            :style="{ width: getWindowRequestProgress(key) + '%' }"
-                          />
-                        </div>
-                      </div>
-
-                      <!-- Token使用量限制 -->
-                      <div v-if="key.tokenLimit > 0" class="space-y-0.5">
-                        <div class="flex items-center justify-between text-xs">
-                          <span class="text-gray-400">Token</span>
-                          <span class="text-gray-600">
-                            {{ formatTokenCount(key.currentWindowTokens || 0) }}/{{
-                              formatTokenCount(key.tokenLimit)
-                            }}
-                          </span>
-                        </div>
-                        <div class="h-1 w-full rounded-full bg-gray-200">
-                          <div
-                            class="h-1 rounded-full transition-all duration-300"
-                            :class="getWindowTokenProgressColor(key)"
-                            :style="{ width: getWindowTokenProgress(key) + '%' }"
-                          />
-                        </div>
-                      </div>
-                    </div>
+                    <WindowCountdown
+                      v-if="key.rateLimitWindow > 0"
+                      :current-requests="key.currentWindowRequests"
+                      :current-tokens="key.currentWindowTokens"
+                      :rate-limit-window="key.rateLimitWindow"
+                      :request-limit="key.rateLimitRequests"
+                      :show-progress="true"
+                      :show-tooltip="false"
+                      :token-limit="key.tokenLimit"
+                      :window-end-time="key.windowEndTime"
+                      :window-remaining-seconds="key.windowRemainingSeconds"
+                      :window-start-time="key.windowStartTime"
+                    />
 
                     <!-- 查看详情按钮 -->
                     <div class="pt-1">
@@ -743,46 +714,19 @@
             </div>
 
             <!-- 移动端时间窗口限制 -->
-            <div
+            <WindowCountdown
               v-if="key.rateLimitWindow > 0 && (key.rateLimitRequests > 0 || key.tokenLimit > 0)"
-              class="space-y-1"
-            >
-              <div class="mb-1 text-xs text-gray-500">窗口限制 ({{ key.rateLimitWindow }}分钟)</div>
-
-              <div v-if="key.rateLimitRequests > 0" class="flex items-center gap-2">
-                <span class="w-10 text-xs text-gray-500">请求</span>
-                <div class="flex-1">
-                  <div class="h-1.5 w-full rounded-full bg-gray-200">
-                    <div
-                      class="h-1.5 rounded-full transition-all duration-300"
-                      :class="getWindowRequestProgressColor(key)"
-                      :style="{ width: getWindowRequestProgress(key) + '%' }"
-                    />
-                  </div>
-                </div>
-                <span class="w-16 text-right text-xs text-gray-600">
-                  {{ key.currentWindowRequests || 0 }}/{{ key.rateLimitRequests }}
-                </span>
-              </div>
-
-              <div v-if="key.tokenLimit > 0" class="flex items-center gap-2">
-                <span class="w-10 text-xs text-gray-500">Token</span>
-                <div class="flex-1">
-                  <div class="h-1.5 w-full rounded-full bg-gray-200">
-                    <div
-                      class="h-1.5 rounded-full transition-all duration-300"
-                      :class="getWindowTokenProgressColor(key)"
-                      :style="{ width: getWindowTokenProgress(key) + '%' }"
-                    />
-                  </div>
-                </div>
-                <span class="w-16 text-right text-xs text-gray-600">
-                  {{ formatTokenCount(key.currentWindowTokens || 0) }}/{{
-                    formatTokenCount(key.tokenLimit)
-                  }}
-                </span>
-              </div>
-            </div>
+              :current-requests="key.currentWindowRequests"
+              :current-tokens="key.currentWindowTokens"
+              :rate-limit-window="key.rateLimitWindow"
+              :request-limit="key.rateLimitRequests"
+              :show-progress="true"
+              :show-tooltip="false"
+              :token-limit="key.tokenLimit"
+              :window-end-time="key.windowEndTime"
+              :window-remaining-seconds="key.windowRemainingSeconds"
+              :window-start-time="key.windowStartTime"
+            />
           </div>
 
           <!-- 时间信息 -->
@@ -1019,6 +963,7 @@ import NewApiKeyModal from '@/components/apikeys/NewApiKeyModal.vue'
 import BatchApiKeyModal from '@/components/apikeys/BatchApiKeyModal.vue'
 import ExpiryEditModal from '@/components/apikeys/ExpiryEditModal.vue'
 import UsageDetailModal from '@/components/apikeys/UsageDetailModal.vue'
+import WindowCountdown from '@/components/apikeys/WindowCountdown.vue'
 
 // 响应式数据
 const clientsStore = useClientsStore()
@@ -1660,36 +1605,6 @@ const formatTokenCount = (count) => {
     return (count / 1000).toFixed(1) + 'K'
   }
   return count.toString()
-}
-
-// 获取窗口请求进度
-const getWindowRequestProgress = (key) => {
-  if (!key.rateLimitRequests || key.rateLimitRequests === 0) return 0
-  const percentage = ((key.currentWindowRequests || 0) / key.rateLimitRequests) * 100
-  return Math.min(percentage, 100)
-}
-
-// 获取窗口请求进度条颜色
-const getWindowRequestProgressColor = (key) => {
-  const progress = getWindowRequestProgress(key)
-  if (progress >= 100) return 'bg-red-500'
-  if (progress >= 80) return 'bg-yellow-500'
-  return 'bg-blue-500'
-}
-
-// 获取窗口Token进度
-const getWindowTokenProgress = (key) => {
-  if (!key.tokenLimit || key.tokenLimit === 0) return 0
-  const percentage = ((key.currentWindowTokens || 0) / key.tokenLimit) * 100
-  return Math.min(percentage, 100)
-}
-
-// 获取窗口Token进度条颜色
-const getWindowTokenProgressColor = (key) => {
-  const progress = getWindowTokenProgress(key)
-  if (progress >= 100) return 'bg-red-500'
-  if (progress >= 80) return 'bg-yellow-500'
-  return 'bg-purple-500'
 }
 
 // 监听筛选条件变化，重置页码

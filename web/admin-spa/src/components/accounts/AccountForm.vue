@@ -1828,15 +1828,15 @@ const handleGroupRefresh = async () => {
 // 监听平台变化，重置表单
 watch(
   () => form.value.platform,
-  (newPlatform, oldPlatform) => {
+  (newPlatform) => {
     // 处理添加方式的自动切换
     if (newPlatform === 'claude-console' || newPlatform === 'bedrock') {
       form.value.addType = 'manual' // Claude Console 和 Bedrock 只支持手动模式
-    } else if (
-      oldPlatform === 'claude-console' &&
-      (newPlatform === 'claude' || newPlatform === 'gemini')
-    ) {
-      // 从 Claude Console 切换到其他平台时，恢复为 OAuth
+    } else if (newPlatform === 'claude') {
+      // 切换到 Claude 时，使用 Setup Token 作为默认方式
+      form.value.addType = 'setup-token'
+    } else if (newPlatform === 'gemini') {
+      // 切换到 Gemini 时，使用 OAuth 作为默认方式
       form.value.addType = 'oauth'
     }
 
