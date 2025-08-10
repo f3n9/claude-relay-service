@@ -283,6 +283,15 @@
                     <span class="text-xs font-medium text-orange-700">AWS</span>
                   </div>
                   <div
+                    v-else-if="account.platform === 'openai'"
+                    class="flex items-center gap-1.5 rounded-lg border border-gray-700 bg-gray-100 bg-gradient-to-r from-gray-100 to-gray-100 px-2.5 py-1"
+                  >
+                    <div class="fa-openai" />
+                    <span class="text-xs font-semibold text-gray-950">OpenAi</span>
+                    <span class="mx-1 h-4 w-px bg-gray-400" />
+                    <span class="text-xs font-medium text-gray-950">Oauth</span>
+                  </div>
+                  <div
                     v-else
                     class="flex items-center gap-1.5 rounded-lg border border-indigo-200 bg-gradient-to-r from-indigo-100 to-blue-100 px-2.5 py-1"
                   >
@@ -813,6 +822,7 @@ const platformOptions = ref([
   { value: 'claude', label: 'Claude', icon: 'fa-brain' },
   { value: 'claude-console', label: 'Claude Console', icon: 'fa-terminal' },
   { value: 'gemini', label: 'Gemini', icon: 'fa-robot' },
+  { value: 'openai', label: 'OpenAi', icon: 'fa-robot' },
   { value: 'bedrock', label: 'Bedrock', icon: 'fab fa-aws' }
 ])
 
@@ -899,7 +909,8 @@ const loadAccounts = async (forceReload = false) => {
         apiClient.get('/admin/claude-accounts', { params }),
         apiClient.get('/admin/claude-console-accounts', { params }),
         apiClient.get('/admin/bedrock-accounts', { params }),
-        apiClient.get('/admin/gemini-accounts', { params })
+        apiClient.get('/admin/gemini-accounts', { params }),
+        apiClient.get('/admin/openai-accounts', { params })
       )
     } else {
       // 只请求指定平台，其他平台设为null占位
@@ -945,7 +956,8 @@ const loadAccounts = async (forceReload = false) => {
     // 加载分组成员关系（需要在分组数据加载完成后）
     await loadGroupMembers(forceReload)
 
-    const [claudeData, claudeConsoleData, bedrockData, geminiData] = await Promise.all(requests)
+    const [claudeData, claudeConsoleData, bedrockData, geminiData, openaiData] =
+      await Promise.all(requests)
 
     const allAccounts = []
 
@@ -990,6 +1002,13 @@ const loadAccounts = async (forceReload = false) => {
         return { ...acc, platform: 'gemini', boundApiKeysCount, groupInfo }
       })
       allAccounts.push(...geminiAccounts)
+    }
+    if (openaiData.success) {
+      const openaiAccounts = (openaiData.data || []).map((acc) => {
+        const groupInfo = accountGroupMap.value.get(acc.id) || null
+        return { ...acc, platform: 'openai', boundApiKeysCount: 0, groupInfo }
+      })
+      allAccounts.push(...openaiAccounts)
     }
 
     accounts.value = allAccounts
@@ -1214,6 +1233,8 @@ const deleteAccount = async (account) => {
       endpoint = `/admin/claude-console-accounts/${account.id}`
     } else if (account.platform === 'bedrock') {
       endpoint = `/admin/bedrock-accounts/${account.id}`
+    } else if (account.platform === 'openai') {
+      endpoint = `/admin/openai-accounts/${account.id}`
     } else {
       endpoint = `/admin/gemini-accounts/${account.id}`
     }
