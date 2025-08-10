@@ -78,6 +78,10 @@
                   <span class="text-sm text-gray-700">Gemini</span>
                 </label>
                 <label class="flex cursor-pointer items-center">
+                  <input v-model="form.platform" class="mr-2" type="radio" value="openai" />
+                  <span class="text-sm text-gray-700">OpenAI</span>
+                </label>
+                <label class="flex cursor-pointer items-center">
                   <input v-model="form.platform" class="mr-2" type="radio" value="bedrock" />
                   <span class="text-sm text-gray-700">Bedrock</span>
                 </label>
@@ -568,6 +572,10 @@
                     请输入有效的 Gemini Access Token。如果您有 Refresh
                     Token，建议也一并填写以支持自动刷新。
                   </p>
+                  <p v-else-if="form.platform === 'openai'" class="mb-2 text-sm text-blue-800">
+                    请输入有效的 OpenAI Access Token。如果您有 Refresh
+                    Token，建议也一并填写以支持自动刷新。
+                  </p>
                   <div class="mb-2 mt-2 rounded-lg border border-blue-300 bg-white/80 p-3">
                     <p class="mb-1 text-sm font-medium text-blue-900">
                       <i class="fas fa-folder-open mr-1" />
@@ -586,6 +594,10 @@
                         >~/.config/gemini/credentials.json</code
                       >
                       文件中的凭证。
+                    </p>
+                    <p v-else-if="form.platform === 'openai'" class="text-xs text-blue-800">
+                      请从已登录 OpenAI 账户的机器上获取认证凭证， 或通过 OAuth 授权流程获取 Access
+                      Token。
                     </p>
                   </div>
                   <p class="text-xs text-blue-600">
@@ -1580,11 +1592,16 @@ const handleOAuthSuccess = async (tokenInfo) => {
       if (form.value.projectId) {
         data.projectId = form.value.projectId
       }
+    } else if (form.value.platform === 'openai') {
+      data.openaiOauth = tokenInfo.tokens || tokenInfo
+      data.accountInfo = tokenInfo.accountInfo
     }
 
     let result
     if (form.value.platform === 'claude') {
       result = await accountsStore.createClaudeAccount(data)
+    } else if (form.value.platform === 'openai') {
+      result = await accountsStore.createOpenAIAccount(data)
     } else {
       result = await accountsStore.createGeminiAccount(data)
     }
@@ -1734,6 +1751,8 @@ const createAccount = async () => {
       result = await accountsStore.createClaudeConsoleAccount(data)
     } else if (form.value.platform === 'bedrock') {
       result = await accountsStore.createBedrockAccount(data)
+    } else if (form.value.platform === 'openai') {
+      result = await accountsStore.createOpenAIAccount(data)
     } else {
       result = await accountsStore.createGeminiAccount(data)
     }
@@ -1882,6 +1901,8 @@ const updateAccount = async () => {
       await accountsStore.updateClaudeConsoleAccount(props.account.id, data)
     } else if (props.account.platform === 'bedrock') {
       await accountsStore.updateBedrockAccount(props.account.id, data)
+    } else if (props.account.platform === 'openai') {
+      await accountsStore.updateOpenAIAccount(props.account.id, data)
     } else {
       await accountsStore.updateGeminiAccount(props.account.id, data)
     }
