@@ -1146,7 +1146,27 @@ router.post('/claude-accounts/exchange-setup-token-code', authenticateAdmin, asy
 // 获取所有Claude账户
 router.get('/claude-accounts', authenticateAdmin, async (req, res) => {
   try {
-    const accounts = await claudeAccountService.getAllAccounts()
+    const { platform, groupId } = req.query
+    let accounts = await claudeAccountService.getAllAccounts()
+
+    // 根据查询参数进行筛选
+    if (platform && platform !== 'all' && platform !== 'claude') {
+      // 如果指定了其他平台，返回空数组
+      accounts = []
+    }
+
+    // 如果指定了分组筛选
+    if (groupId && groupId !== 'all') {
+      if (groupId === 'ungrouped') {
+        // 筛选未分组账户
+        accounts = accounts.filter((account) => !account.groupInfo)
+      } else {
+        // 筛选特定分组的账户
+        accounts = accounts.filter(
+          (account) => account.groupInfo && account.groupInfo.id === groupId
+        )
+      }
+    }
 
     // 为每个账户添加使用统计信息
     const accountsWithStats = await Promise.all(
@@ -1403,7 +1423,27 @@ router.put(
 // 获取所有Claude Console账户
 router.get('/claude-console-accounts', authenticateAdmin, async (req, res) => {
   try {
-    const accounts = await claudeConsoleAccountService.getAllAccounts()
+    const { platform, groupId } = req.query
+    let accounts = await claudeConsoleAccountService.getAllAccounts()
+
+    // 根据查询参数进行筛选
+    if (platform && platform !== 'all' && platform !== 'claude-console') {
+      // 如果指定了其他平台，返回空数组
+      accounts = []
+    }
+
+    // 如果指定了分组筛选
+    if (groupId && groupId !== 'all') {
+      if (groupId === 'ungrouped') {
+        // 筛选未分组账户
+        accounts = accounts.filter((account) => !account.groupInfo)
+      } else {
+        // 筛选特定分组的账户
+        accounts = accounts.filter(
+          (account) => account.groupInfo && account.groupInfo.id === groupId
+        )
+      }
+    }
 
     // 为每个账户添加使用统计信息
     const accountsWithStats = await Promise.all(
@@ -1652,6 +1692,7 @@ router.put(
 // 获取所有Bedrock账户
 router.get('/bedrock-accounts', authenticateAdmin, async (req, res) => {
   try {
+    const { platform, groupId } = req.query
     const result = await bedrockAccountService.getAllAccounts()
     if (!result.success) {
       return res
@@ -1659,9 +1700,30 @@ router.get('/bedrock-accounts', authenticateAdmin, async (req, res) => {
         .json({ error: 'Failed to get Bedrock accounts', message: result.error })
     }
 
+    let accounts = result.data
+
+    // 根据查询参数进行筛选
+    if (platform && platform !== 'all' && platform !== 'bedrock') {
+      // 如果指定了其他平台，返回空数组
+      accounts = []
+    }
+
+    // 如果指定了分组筛选
+    if (groupId && groupId !== 'all') {
+      if (groupId === 'ungrouped') {
+        // 筛选未分组账户
+        accounts = accounts.filter((account) => !account.groupInfo)
+      } else {
+        // 筛选特定分组的账户
+        accounts = accounts.filter(
+          (account) => account.groupInfo && account.groupInfo.id === groupId
+        )
+      }
+    }
+
     // 为每个账户添加使用统计信息
     const accountsWithStats = await Promise.all(
-      result.data.map(async (account) => {
+      accounts.map(async (account) => {
         try {
           const usageStats = await redis.getAccountUsageStats(account.id)
           return {
@@ -2027,7 +2089,27 @@ router.post('/gemini-accounts/exchange-code', authenticateAdmin, async (req, res
 // 获取所有 Gemini 账户
 router.get('/gemini-accounts', authenticateAdmin, async (req, res) => {
   try {
-    const accounts = await geminiAccountService.getAllAccounts()
+    const { platform, groupId } = req.query
+    let accounts = await geminiAccountService.getAllAccounts()
+
+    // 根据查询参数进行筛选
+    if (platform && platform !== 'all' && platform !== 'gemini') {
+      // 如果指定了其他平台，返回空数组
+      accounts = []
+    }
+
+    // 如果指定了分组筛选
+    if (groupId && groupId !== 'all') {
+      if (groupId === 'ungrouped') {
+        // 筛选未分组账户
+        accounts = accounts.filter((account) => !account.groupInfo)
+      } else {
+        // 筛选特定分组的账户
+        accounts = accounts.filter(
+          (account) => account.groupInfo && account.groupInfo.id === groupId
+        )
+      }
+    }
 
     // 为每个账户添加使用统计信息（与Claude账户相同的逻辑）
     const accountsWithStats = await Promise.all(
@@ -2368,7 +2450,8 @@ router.get('/dashboard', authenticateAdmin, async (req, res) => {
         acc.isActive &&
         acc.status !== 'blocked' &&
         acc.status !== 'unauthorized' &&
-        acc.schedulable !== false
+        acc.schedulable !== false &&
+        !(acc.rateLimitStatus && acc.rateLimitStatus.isRateLimited)
     ).length
     const abnormalClaudeAccounts = claudeAccounts.filter(
       (acc) => !acc.isActive || acc.status === 'blocked' || acc.status === 'unauthorized'
@@ -2390,7 +2473,8 @@ router.get('/dashboard', authenticateAdmin, async (req, res) => {
         acc.isActive &&
         acc.status !== 'blocked' &&
         acc.status !== 'unauthorized' &&
-        acc.schedulable !== false
+        acc.schedulable !== false &&
+        !(acc.rateLimitStatus && acc.rateLimitStatus.isRateLimited)
     ).length
     const abnormalClaudeConsoleAccounts = claudeConsoleAccounts.filter(
       (acc) => !acc.isActive || acc.status === 'blocked' || acc.status === 'unauthorized'
@@ -2412,7 +2496,11 @@ router.get('/dashboard', authenticateAdmin, async (req, res) => {
         acc.isActive &&
         acc.status !== 'blocked' &&
         acc.status !== 'unauthorized' &&
-        acc.schedulable !== false
+        acc.schedulable !== false &&
+        !(
+          acc.rateLimitStatus === 'limited' ||
+          (acc.rateLimitStatus && acc.rateLimitStatus.isRateLimited)
+        )
     ).length
     const abnormalGeminiAccounts = geminiAccounts.filter(
       (acc) => !acc.isActive || acc.status === 'blocked' || acc.status === 'unauthorized'
@@ -2425,7 +2513,9 @@ router.get('/dashboard', authenticateAdmin, async (req, res) => {
         acc.status !== 'unauthorized'
     ).length
     const rateLimitedGeminiAccounts = geminiAccounts.filter(
-      (acc) => acc.rateLimitStatus === 'limited'
+      (acc) =>
+        acc.rateLimitStatus === 'limited' ||
+        (acc.rateLimitStatus && acc.rateLimitStatus.isRateLimited)
     ).length
 
     // Bedrock账户统计
@@ -2434,7 +2524,8 @@ router.get('/dashboard', authenticateAdmin, async (req, res) => {
         acc.isActive &&
         acc.status !== 'blocked' &&
         acc.status !== 'unauthorized' &&
-        acc.schedulable !== false
+        acc.schedulable !== false &&
+        !(acc.rateLimitStatus && acc.rateLimitStatus.isRateLimited)
     ).length
     const abnormalBedrockAccounts = bedrockAccounts.filter(
       (acc) => !acc.isActive || acc.status === 'blocked' || acc.status === 'unauthorized'
