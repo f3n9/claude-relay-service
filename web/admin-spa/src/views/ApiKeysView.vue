@@ -1052,7 +1052,14 @@ const expandedApiKeys = ref({})
 const apiKeyModelStats = ref({})
 const apiKeyDateFilters = ref({})
 const defaultTime = ref([new Date(2000, 1, 1, 0, 0, 0), new Date(2000, 2, 1, 23, 59, 59)])
-const accounts = ref({ claude: [], gemini: [], claudeGroups: [], geminiGroups: [] })
+const accounts = ref({
+  claude: [],
+  gemini: [],
+  openai: [],
+  claudeGroups: [],
+  geminiGroups: [],
+  openaiGroups: []
+})
 const editingExpiryKey = ref(null)
 const expiryEditModalRef = ref(null)
 const showUsageDetailModal = ref(false)
@@ -1185,10 +1192,11 @@ const paginatedApiKeys = computed(() => {
 // 加载账户列表
 const loadAccounts = async () => {
   try {
-    const [claudeData, claudeConsoleData, geminiData, groupsData] = await Promise.all([
+    const [claudeData, claudeConsoleData, geminiData, openaiData, groupsData] = await Promise.all([
       apiClient.get('/admin/claude-accounts'),
       apiClient.get('/admin/claude-console-accounts'),
       apiClient.get('/admin/gemini-accounts'),
+      apiClient.get('/admin/openai-accounts'),
       apiClient.get('/admin/account-groups')
     ])
 
@@ -1209,11 +1217,16 @@ const loadAccounts = async () => {
       accounts.value.gemini = geminiData.data || []
     }
 
+    if (openaiData.success) {
+      accounts.value.openai = openaiData.data || []
+    }
+
     if (groupsData.success) {
       // 处理分组数据
       const allGroups = groupsData.data || []
       accounts.value.claudeGroups = allGroups.filter((g) => g.platform === 'claude')
       accounts.value.geminiGroups = allGroups.filter((g) => g.platform === 'gemini')
+      accounts.value.openaiGroups = allGroups.filter((g) => g.platform === 'openai')
     }
   } catch (error) {
     console.error('加载账户列表失败:', error)

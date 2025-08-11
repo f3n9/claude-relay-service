@@ -822,7 +822,7 @@ const platformOptions = ref([
   { value: 'claude', label: 'Claude', icon: 'fa-brain' },
   { value: 'claude-console', label: 'Claude Console', icon: 'fa-terminal' },
   { value: 'gemini', label: 'Gemini', icon: 'fa-robot' },
-  { value: 'openai', label: 'OpenAi', icon: 'fa-robot' },
+  { value: 'openai', label: 'OpenAi', icon: 'fa-openai' },
   { value: 'bedrock', label: 'Bedrock', icon: 'fab fa-aws' }
 ])
 
@@ -834,8 +834,13 @@ const groupOptions = computed(() => {
   accountGroups.value.forEach((group) => {
     options.push({
       value: group.id,
-      label: `${group.name} (${group.platform === 'claude' ? 'Claude' : 'Gemini'})`,
-      icon: group.platform === 'claude' ? 'fa-brain' : 'fa-robot'
+      label: `${group.name} (${group.platform === 'claude' ? 'Claude' : group.platform === 'gemini' ? 'Gemini' : 'OpenAI'})`,
+      icon:
+        group.platform === 'claude'
+          ? 'fa-brain'
+          : group.platform === 'gemini'
+            ? 'fa-robot'
+            : 'fa-openai'
     })
   })
   return options
@@ -1326,6 +1331,8 @@ const toggleSchedulable = async (account) => {
       endpoint = `/admin/bedrock-accounts/${account.id}/toggle-schedulable`
     } else if (account.platform === 'gemini') {
       endpoint = `/admin/gemini-accounts/${account.id}/toggle-schedulable`
+    } else if (account.platform === 'openai') {
+      endpoint = `/admin/openai-accounts/${account.id}/toggle-schedulable`
     } else {
       showToast('该账户类型暂不支持调度控制', 'warning')
       return

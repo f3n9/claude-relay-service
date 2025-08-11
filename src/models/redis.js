@@ -836,7 +836,7 @@ class RedisClient {
     for (const key of keys) {
       const accountData = await this.client.hgetall(key)
       if (accountData && Object.keys(accountData).length > 0) {
-        accounts.push({ id: key.replace('claude:account:', ''), ...accountData })
+        accounts.push({ id: key.replace('openai:account:', ''), ...accountData })
       }
     }
     return accounts

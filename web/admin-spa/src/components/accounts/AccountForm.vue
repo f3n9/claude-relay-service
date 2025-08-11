@@ -606,6 +606,25 @@
                 </div>
               </div>
 
+              <!-- OpenAI 平台需要 ID Token -->
+              <div v-if="form.platform === 'openai'">
+                <label class="mb-3 block text-sm font-semibold text-gray-700">ID Token *</label>
+                <textarea
+                  v-model="form.idToken"
+                  class="form-input w-full resize-none font-mono text-xs"
+                  :class="{ 'border-red-500': errors.idToken }"
+                  placeholder="请输入 ID Token (JWT 格式)..."
+                  required
+                  rows="4"
+                />
+                <p v-if="errors.idToken" class="mt-1 text-xs text-red-500">
+                  {{ errors.idToken }}
+                </p>
+                <p class="mt-2 text-xs text-gray-500">
+                  ID Token 是 OpenAI OAuth 认证返回的 JWT token，包含用户信息和组织信息
+                </p>
+              </div>
+
               <div>
                 <label class="mb-3 block text-sm font-semibold text-gray-700">Access Token *</label>
                 <textarea
@@ -1332,6 +1351,7 @@ const form = ref({
   accountType: props.account?.accountType || 'shared',
   groupId: '',
   projectId: props.account?.projectId || '',
+  idToken: '',
   accessToken: '',
   refreshToken: '',
   proxy: initProxyConfig(),
@@ -1391,6 +1411,7 @@ const initModelMappings = () => {
 // 表单验证错误
 const errors = ref({
   name: '',
+  idToken: '',
   accessToken: '',
   apiUrl: '',
   apiKey: '',
@@ -1653,12 +1674,20 @@ const createAccount = async () => {
       errors.value.region = '请选择 AWS 区域'
       hasError = true
     }
-  } else if (
-    form.value.addType === 'manual' &&
-    (!form.value.accessToken || form.value.accessToken.trim() === '')
-  ) {
-    errors.value.accessToken = '请填写 Access Token'
-    hasError = true
+  } else if (form.value.addType === 'manual') {
+    // 手动模式验证
+    if (!form.value.accessToken || form.value.accessToken.trim() === '') {
+      errors.value.accessToken = '请填写 Access Token'
+      hasError = true
+    }
+    // OpenAI 平台需要验证 ID Token
+    if (
+      form.value.platform === 'openai' &&
+      (!form.value.idToken || form.value.idToken.trim() === '')
+    ) {
+      errors.value.idToken = '请填写 ID Token'
+      hasError = true
+    }
   }
 
   // 分组类型验证
@@ -1722,6 +1751,57 @@ const createAccount = async () => {
       if (form.value.projectId) {
         data.projectId = form.value.projectId
       }
+    } else if (form.value.platform === 'openai') {
+      // OpenAI手动模式需要构建openaiOauth对象
+      const expiresInMs = form.value.refreshToken
+        ? 10 * 60 * 1000 // 10分钟
+        : 365 * 24 * 60 * 60 * 1000 // 1年
+
+      data.openaiOauth = {
+        idToken: form.value.idToken, // 使用用户输入的 ID Token
+        accessToken: form.value.accessToken,
+        refreshToken: form.value.refreshToken || '',
+        expires_in: Math.floor(expiresInMs / 1000) // 转换为秒
+      }
+
+      // 手动模式下，尝试从 ID Token 解析用户信息
+      let accountInfo = {
+        accountId: '',
+        chatgptUserId: '',
+        organizationId: '',
+        organizationRole: '',
+        organizationTitle: '',
+        planType: '',
+        email: '',
+        emailVerified: false
+      }
+
+      // 尝试解析 ID Token (JWT)
+      if (form.value.idToken) {
+        try {
+          const idTokenParts = form.value.idToken.split('.')
+          if (idTokenParts.length === 3) {
+            const payload = JSON.parse(atob(idTokenParts[1]))
+            const authClaims = payload['https://api.openai.com/auth'] || {}
+
+            accountInfo = {
+              accountId: authClaims.accountId || '',
+              chatgptUserId: authClaims.chatgptUserId || '',
+              organizationId: authClaims.organizationId || '',
+              organizationRole: authClaims.organizationRole || '',
+              organizationTitle: authClaims.organizationTitle || '',
+              planType: authClaims.planType || '',
+              email: payload.email || '',
+              emailVerified: payload.email_verified || false
+            }
+          }
+        } catch (e) {
+          console.warn('Failed to parse ID Token:', e)
+        }
+      }
+
+      data.accountInfo = accountInfo
+      data.priority = form.value.priority || 50
     } else if (form.value.platform === 'claude-console') {
       // Claude Console 账户特定数据
       data.apiUrl = form.value.apiUrl
@@ -1846,6 +1926,18 @@ const updateAccount = async () => {
           token_type: 'Bearer',
           expiry_date: Date.now() + expiresInMs
         }
+      } else if (props.account.platform === 'openai') {
+        // OpenAI需要构建openaiOauth对象
+        const expiresInMs = form.value.refreshToken
+          ? 10 * 60 * 1000 // 10分钟
+          : 365 * 24 * 60 * 60 * 1000 // 1年
+
+        data.openaiOauth = {
+          idToken: form.value.idToken || '', // 更新时使用用户输入的 ID Token
+          accessToken: form.value.accessToken || '',
+          refreshToken: form.value.refreshToken || '',
+          expires_in: Math.floor(expiresInMs / 1000) // 转换为秒
+        }
       }
     }
 
@@ -1855,6 +1947,11 @@ const updateAccount = async () => {
 
     // Claude 官方账号优先级更新
     if (props.account.platform === 'claude') {
+      data.priority = form.value.priority || 50
+    }
+
+    // OpenAI 账号优先级更新
+    if (props.account.platform === 'openai') {
       data.priority = form.value.priority || 50
     }
 
@@ -2140,13 +2237,19 @@ watch(
               password: ''
             }
 
+      // 获取分组ID - 可能来自 groupId 字段或 groupInfo 对象
+      let groupId = ''
+      if (newAccount.accountType === 'group') {
+        groupId = newAccount.groupId || (newAccount.groupInfo && newAccount.groupInfo.id) || ''
+      }
+
       form.value = {
         platform: newAccount.platform,
         addType: 'oauth',
         name: newAccount.name,
         description: newAccount.description || '',
         accountType: newAccount.accountType || 'shared',
-        groupId: '',
+        groupId: groupId,
         projectId: newAccount.projectId || '',
         accessToken: '',
         refreshToken: '',
