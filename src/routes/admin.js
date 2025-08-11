@@ -2308,16 +2308,21 @@ router.put(
         return res.status(404).json({ error: 'Account not found' })
       }
 
-      // 将字符串 'true'/'false' 转换为布尔值，然后取反
-      const currentSchedulable = account.schedulable === 'true'
-      const newSchedulable = !currentSchedulable
+      // 现在 account.schedulable 已经是布尔值了，直接取反即可
+      const newSchedulable = !account.schedulable
 
       await geminiAccountService.updateAccount(accountId, { schedulable: String(newSchedulable) })
 
+      // 验证更新是否成功，重新获取账户信息
+      const updatedAccount = await geminiAccountService.getAccount(accountId)
+      const actualSchedulable = updatedAccount ? updatedAccount.schedulable : newSchedulable
+
       logger.success(
-        `🔄 Admin toggled Gemini account schedulable status: ${accountId} -> ${newSchedulable ? 'schedulable' : 'not schedulable'}`
+        `🔄 Admin toggled Gemini account schedulable status: ${accountId} -> ${actualSchedulable ? 'schedulable' : 'not schedulable'}`
       )
-      return res.json({ success: true, schedulable: newSchedulable })
+
+      // 返回实际的数据库值，确保前端状态与后端一致
+      return res.json({ success: true, schedulable: actualSchedulable })
     } catch (error) {
       logger.error('❌ Failed to toggle Gemini account schedulable status:', error)
       return res
