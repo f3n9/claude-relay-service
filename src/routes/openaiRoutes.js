@@ -237,7 +237,7 @@ router.post('/responses', authenticateApiKey, async (req, res) => {
         const chunkStr = chunk.toString()
 
         // 转发数据给客户端
-        if (!res.headersSent) {
+        if (!res.destroyed) {
           res.write(chunk)
         }
 
