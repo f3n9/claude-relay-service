@@ -502,7 +502,7 @@ http://你的服务器:3000/openai/claude/v1/
 ```
 
 **接入示例：**
-- **Cherry Studio**: 使用OpenAI格式 `http://你的服务器:3000/openai/claude/v1/`
+- **Cherry Studio**: 使用OpenAI格式 `http://你的服务器:3000/openai/claude/v1/` 使用Codex cli API `http://你的服务器:3000/openai/responses`
 - **其他支持自定义API的工具**: 根据工具要求选择合适的格式
 
 **重要说明：**
