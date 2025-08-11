@@ -481,14 +481,9 @@ gemini  # 或其他 Gemini CLI 命令
 **Codex 设置环境变量：**
 ```bash
 export OPENAI_BASE_URL="http://127.0.0.1:3000/openai" # 根据实际填写你服务器的ip地址或者域名
-export OPENAI_API_KEY="后台创建的API密钥"  # 使用后台创建的API密钥，格式如 cr_9022cccc8d42e94db4d6f6d27bc93a5d271be86cf86d4d167627eb31eb4492eb
+export OPENAI_API_KEY="后台创建的API密钥"  # 使用后台创建的API密钥
 ```
 
-**使用 Codex：**
-```bash
-# 配置环境变量后，即可正常使用支持 OpenAI API 的工具
-# 例如使用支持 OpenAI API 的代码补全工具等
-```
 
 ### 5. 第三方工具API接入
 
