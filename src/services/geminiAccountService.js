@@ -363,6 +363,9 @@ async function getAccount(accountId) {
     }
   }
 
+  // 转换 schedulable 字符串为布尔值（与 claudeConsoleAccountService 保持一致）
+  accountData.schedulable = accountData.schedulable !== 'false' // 默认为true，只有明确设置为'false'才为false
+
   return accountData
 }
 
@@ -384,6 +387,11 @@ async function updateAccount(accountId, updates) {
   // 处理代理设置
   if (updates.proxy !== undefined) {
     updates.proxy = updates.proxy ? JSON.stringify(updates.proxy) : ''
+  }
+
+  // 处理 schedulable 字段，确保正确转换为字符串存储
+  if (updates.schedulable !== undefined) {
+    updates.schedulable = updates.schedulable.toString()
   }
 
   // 加密敏感字段
@@ -516,6 +524,9 @@ async function getAllAccounts() {
           accountData.proxy = null
         }
       }
+
+      // 转换 schedulable 字符串为布尔值（与 getAccount 保持一致）
+      accountData.schedulable = accountData.schedulable !== 'false' // 默认为true，只有明确设置为'false'才为false
 
       // 不解密敏感字段，只返回基本信息
       accounts.push({
