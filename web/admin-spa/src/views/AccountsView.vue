@@ -1010,8 +1010,12 @@ const loadAccounts = async (forceReload = false) => {
     }
     if (openaiData.success) {
       const openaiAccounts = (openaiData.data || []).map((acc) => {
+        // 计算每个OpenAI账户绑定的API Key数量
+        const boundApiKeysCount = apiKeys.value.filter(
+          (key) => key.openaiAccountId === acc.id
+        ).length
         const groupInfo = accountGroupMap.value.get(acc.id) || null
-        return { ...acc, platform: 'openai', boundApiKeysCount: 0, groupInfo }
+        return { ...acc, platform: 'openai', boundApiKeysCount, groupInfo }
       })
       allAccounts.push(...openaiAccounts)
     }
@@ -1210,7 +1214,10 @@ const editAccount = (account) => {
 const deleteAccount = async (account) => {
   // 检查是否有API Key绑定到此账号
   const boundKeysCount = apiKeys.value.filter(
-    (key) => key.claudeAccountId === account.id || key.geminiAccountId === account.id
+    (key) =>
+      key.claudeAccountId === account.id ||
+      key.geminiAccountId === account.id ||
+      key.openaiAccountId === account.id
   ).length
 
   if (boundKeysCount > 0) {
