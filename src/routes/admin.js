@@ -4582,13 +4582,60 @@ router.post('/openai-accounts/exchange-code', authenticateAdmin, async (req, res
 // 获取所有 OpenAI 账户
 router.get('/openai-accounts', authenticateAdmin, async (req, res) => {
   try {
-    const accounts = await openaiAccountService.getAllAccounts()
+    const { platform, groupId } = req.query
+    let accounts = await openaiAccountService.getAllAccounts()
 
-    logger.info(`获取 OpenAI 账户列表: ${accounts.length} 个账户`)
+    // 根据查询参数进行筛选
+    if (platform && platform !== 'all' && platform !== 'openai') {
+      // 如果指定了其他平台，返回空数组
+      accounts = []
+    }
+
+    // 如果指定了分组筛选
+    if (groupId && groupId !== 'all') {
+      if (groupId === 'ungrouped') {
+        // 筛选未分组账户
+        accounts = accounts.filter((account) => !account.groupInfo)
+      } else {
+        // 筛选特定分组的账户
+        accounts = accounts.filter(
+          (account) => account.groupInfo && account.groupInfo.id === groupId
+        )
+      }
+    }
+
+    // 为每个账户添加使用统计信息
+    const accountsWithStats = await Promise.all(
+      accounts.map(async (account) => {
+        try {
+          const usageStats = await redis.getAccountUsageStats(account.id)
+          return {
+            ...account,
+            usage: {
+              daily: usageStats.daily,
+              total: usageStats.total,
+              monthly: usageStats.monthly
+            }
+          }
+        } catch (error) {
+          logger.debug(`Failed to get usage stats for OpenAI account ${account.id}:`, error)
+          return {
+            ...account,
+            usage: {
+              daily: { requests: 0, tokens: 0, allTokens: 0 },
+              total: { requests: 0, tokens: 0, allTokens: 0 },
+              monthly: { requests: 0, tokens: 0, allTokens: 0 }
+            }
+          }
+        }
+      })
+    )
+
+    logger.info(`获取 OpenAI 账户列表: ${accountsWithStats.length} 个账户`)
 
     return res.json({
       success: true,
-      data: accounts
+      data: accountsWithStats
     })
   } catch (error) {
     logger.error('获取 OpenAI 账户列表失败:', error)

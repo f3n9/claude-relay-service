@@ -56,7 +56,7 @@ router.post('/responses', authenticateApiKey, async (req, res) => {
   let upstream = null
   try {
     // 从中间件获取 API Key 数据
-    const apiKeyData = req.apiKeyData || {}
+    const apiKeyData = req.apiKey || {}
 
     // 从请求头或请求体中提取会话 ID
     const sessionId =
