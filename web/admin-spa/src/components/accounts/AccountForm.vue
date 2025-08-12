@@ -350,19 +350,34 @@
               </div>
 
               <div>
-                <label class="mb-3 block text-sm font-semibold text-gray-700"
-                  >限流时间 (分钟)</label
-                >
-                <input
-                  v-model.number="form.rateLimitDuration"
-                  class="form-input w-full"
-                  min="1"
-                  placeholder="默认60分钟"
-                  type="number"
-                />
-                <p class="mt-1 text-xs text-gray-500">
-                  当账号返回429错误时，暂停调度的时间（分钟）
-                </p>
+                <label class="mb-3 block text-sm font-semibold text-gray-700">限流机制</label>
+                <div class="mb-3">
+                  <label class="inline-flex cursor-pointer items-center">
+                    <input
+                      v-model="form.enableRateLimit"
+                      type="checkbox"
+                      class="mr-2 rounded border-gray-300 text-blue-600 focus:border-blue-500 focus:ring focus:ring-blue-200"
+                    />
+                    <span class="text-sm text-gray-700">启用限流机制</span>
+                  </label>
+                  <p class="mt-1 text-xs text-gray-500">
+                    启用后，当账号返回429错误时将暂停调度一段时间
+                  </p>
+                </div>
+
+                <div v-if="form.enableRateLimit">
+                  <label class="mb-3 block text-sm font-semibold text-gray-700"
+                    >限流时间 (分钟)</label
+                  >
+                  <input
+                    v-model.number="form.rateLimitDuration"
+                    class="form-input w-full"
+                    min="1"
+                    placeholder="默认60分钟"
+                    type="number"
+                  />
+                  <p class="mt-1 text-xs text-gray-500">账号被限流后暂停调度的时间（分钟）</p>
+                </div>
               </div>
             </div>
 
@@ -509,19 +524,34 @@
               </div>
 
               <div>
-                <label class="mb-3 block text-sm font-semibold text-gray-700"
-                  >限流时间 (分钟)</label
-                >
-                <input
-                  v-model.number="form.rateLimitDuration"
-                  class="form-input w-full"
-                  min="1"
-                  placeholder="默认60分钟"
-                  type="number"
-                />
-                <p class="mt-1 text-xs text-gray-500">
-                  当账号返回429错误时，暂停调度的时间（分钟）
-                </p>
+                <label class="mb-3 block text-sm font-semibold text-gray-700">限流机制</label>
+                <div class="mb-3">
+                  <label class="inline-flex cursor-pointer items-center">
+                    <input
+                      v-model="form.enableRateLimit"
+                      type="checkbox"
+                      class="mr-2 rounded border-gray-300 text-blue-600 focus:border-blue-500 focus:ring focus:ring-blue-200"
+                    />
+                    <span class="text-sm text-gray-700">启用限流机制</span>
+                  </label>
+                  <p class="mt-1 text-xs text-gray-500">
+                    启用后，当账号返回429错误时将暂停调度一段时间
+                  </p>
+                </div>
+
+                <div v-if="form.enableRateLimit">
+                  <label class="mb-3 block text-sm font-semibold text-gray-700"
+                    >限流时间 (分钟)</label
+                  >
+                  <input
+                    v-model.number="form.rateLimitDuration"
+                    class="form-input w-full"
+                    min="1"
+                    placeholder="默认60分钟"
+                    type="number"
+                  />
+                  <p class="mt-1 text-xs text-gray-500">账号被限流后暂停调度的时间（分钟）</p>
+                </div>
               </div>
             </div>
 
@@ -1080,13 +1110,33 @@
             </div>
 
             <div>
-              <label class="mb-3 block text-sm font-semibold text-gray-700">限流时间 (分钟)</label>
-              <input
-                v-model.number="form.rateLimitDuration"
-                class="form-input w-full"
-                min="1"
-                type="number"
-              />
+              <label class="mb-3 block text-sm font-semibold text-gray-700">限流机制</label>
+              <div class="mb-3">
+                <label class="inline-flex cursor-pointer items-center">
+                  <input
+                    v-model="form.enableRateLimit"
+                    type="checkbox"
+                    class="mr-2 rounded border-gray-300 text-blue-600 focus:border-blue-500 focus:ring focus:ring-blue-200"
+                  />
+                  <span class="text-sm text-gray-700">启用限流机制</span>
+                </label>
+                <p class="mt-1 text-xs text-gray-500">
+                  启用后，当账号返回429错误时将暂停调度一段时间
+                </p>
+              </div>
+
+              <div v-if="form.enableRateLimit">
+                <label class="mb-3 block text-sm font-semibold text-gray-700"
+                  >限流时间 (分钟)</label
+                >
+                <input
+                  v-model.number="form.rateLimitDuration"
+                  class="form-input w-full"
+                  min="1"
+                  type="number"
+                />
+                <p class="mt-1 text-xs text-gray-500">账号被限流后暂停调度的时间（分钟）</p>
+              </div>
             </div>
           </div>
 
@@ -1179,13 +1229,33 @@
             </div>
 
             <div>
-              <label class="mb-3 block text-sm font-semibold text-gray-700">限流时间 (分钟)</label>
-              <input
-                v-model.number="form.rateLimitDuration"
-                class="form-input w-full"
-                min="1"
-                type="number"
-              />
+              <label class="mb-3 block text-sm font-semibold text-gray-700">限流机制</label>
+              <div class="mb-3">
+                <label class="inline-flex cursor-pointer items-center">
+                  <input
+                    v-model="form.enableRateLimit"
+                    type="checkbox"
+                    class="mr-2 rounded border-gray-300 text-blue-600 focus:border-blue-500 focus:ring focus:ring-blue-200"
+                  />
+                  <span class="text-sm text-gray-700">启用限流机制</span>
+                </label>
+                <p class="mt-1 text-xs text-gray-500">
+                  启用后，当账号返回429错误时将暂停调度一段时间
+                </p>
+              </div>
+
+              <div v-if="form.enableRateLimit">
+                <label class="mb-3 block text-sm font-semibold text-gray-700"
+                  >限流时间 (分钟)</label
+                >
+                <input
+                  v-model.number="form.rateLimitDuration"
+                  class="form-input w-full"
+                  min="1"
+                  type="number"
+                />
+                <p class="mt-1 text-xs text-gray-500">账号被限流后暂停调度的时间（分钟）</p>
+              </div>
             </div>
           </div>
 
@@ -1373,6 +1443,8 @@ const form = ref({
     return ''
   })(),
   userAgent: props.account?.userAgent || '',
+  enableRateLimit:
+    props.account?.rateLimitDuration && props.account?.rateLimitDuration > 0 ? true : false,
   rateLimitDuration: props.account?.rateLimitDuration || 60,
   // Bedrock 特定字段
   accessKeyId: props.account?.accessKeyId || '',
@@ -1809,7 +1881,8 @@ const createAccount = async () => {
       data.priority = form.value.priority || 50
       data.supportedModels = convertMappingsToObject() || {}
       data.userAgent = form.value.userAgent || null
-      data.rateLimitDuration = form.value.rateLimitDuration || 60
+      // 如果不启用限流，传递 0 表示不限流
+      data.rateLimitDuration = form.value.enableRateLimit ? form.value.rateLimitDuration || 60 : 0
     } else if (form.value.platform === 'bedrock') {
       // Bedrock 账户特定数据 - 构造 awsCredentials 对象
       data.awsCredentials = {
@@ -1821,7 +1894,8 @@ const createAccount = async () => {
       data.defaultModel = form.value.defaultModel || null
       data.smallFastModel = form.value.smallFastModel || null
       data.priority = form.value.priority || 50
-      data.rateLimitDuration = form.value.rateLimitDuration || 60
+      // 如果不启用限流，传递 0 表示不限流
+      data.rateLimitDuration = form.value.enableRateLimit ? form.value.rateLimitDuration || 60 : 0
     }
 
     let result
@@ -1964,7 +2038,8 @@ const updateAccount = async () => {
       data.priority = form.value.priority || 50
       data.supportedModels = convertMappingsToObject() || {}
       data.userAgent = form.value.userAgent || null
-      data.rateLimitDuration = form.value.rateLimitDuration || 60
+      // 如果不启用限流，传递 0 表示不限流
+      data.rateLimitDuration = form.value.enableRateLimit ? form.value.rateLimitDuration || 60 : 0
     }
 
     // Bedrock 特定更新
@@ -1989,7 +2064,8 @@ const updateAccount = async () => {
       data.defaultModel = form.value.defaultModel || null
       data.smallFastModel = form.value.smallFastModel || null
       data.priority = form.value.priority || 50
-      data.rateLimitDuration = form.value.rateLimitDuration || 60
+      // 如果不启用限流，传递 0 表示不限流
+      data.rateLimitDuration = form.value.enableRateLimit ? form.value.rateLimitDuration || 60 : 0
     }
 
     if (props.account.platform === 'claude') {
@@ -2272,6 +2348,8 @@ watch(
           return ''
         })(),
         userAgent: newAccount.userAgent || '',
+        enableRateLimit:
+          newAccount.rateLimitDuration && newAccount.rateLimitDuration > 0 ? true : false,
         rateLimitDuration: newAccount.rateLimitDuration || 60,
         // Bedrock 特定字段
         accessKeyId: '', // 编辑模式不显示现有的访问密钥
