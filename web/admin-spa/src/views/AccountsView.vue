@@ -808,6 +808,7 @@ const platformOptions = ref([
   { value: 'claude-console', label: 'Claude Console', icon: 'fa-terminal' },
   { value: 'gemini', label: 'Gemini', icon: 'fa-google' },
   { value: 'openai', label: 'OpenAi', icon: 'fa-openai' },
+  { value: 'azure_openai', label: 'Azure OpenAI', icon: 'fab fa-microsoft' },
   { value: 'bedrock', label: 'Bedrock', icon: 'fab fa-aws' }
 ])
 
@@ -900,7 +901,8 @@ const loadAccounts = async (forceReload = false) => {
         apiClient.get('/admin/claude-console-accounts', { params }),
         apiClient.get('/admin/bedrock-accounts', { params }),
         apiClient.get('/admin/gemini-accounts', { params }),
-        apiClient.get('/admin/openai-accounts', { params })
+        apiClient.get('/admin/openai-accounts', { params }),
+        apiClient.get('/admin/azure-openai-accounts', { params })
       )
     } else {
       // 只请求指定平台，其他平台设为null占位
@@ -910,7 +912,9 @@ const loadAccounts = async (forceReload = false) => {
             apiClient.get('/admin/claude-accounts', { params }),
             Promise.resolve({ success: true, data: [] }), // claude-console 占位
             Promise.resolve({ success: true, data: [] }), // bedrock 占位
-            Promise.resolve({ success: true, data: [] }) // gemini 占位
+            Promise.resolve({ success: true, data: [] }), // gemini 占位
+            Promise.resolve({ success: true, data: [] }), // openai 占位
+            Promise.resolve({ success: true, data: [] }) // azure-openai 占位
           )
           break
         case 'claude-console':
@@ -918,7 +922,9 @@ const loadAccounts = async (forceReload = false) => {
             Promise.resolve({ success: true, data: [] }), // claude 占位
             apiClient.get('/admin/claude-console-accounts', { params }),
             Promise.resolve({ success: true, data: [] }), // bedrock 占位
-            Promise.resolve({ success: true, data: [] }) // gemini 占位
+            Promise.resolve({ success: true, data: [] }), // gemini 占位
+            Promise.resolve({ success: true, data: [] }), // openai 占位
+            Promise.resolve({ success: true, data: [] }) // azure-openai 占位
           )
           break
         case 'bedrock':
@@ -926,7 +932,9 @@ const loadAccounts = async (forceReload = false) => {
             Promise.resolve({ success: true, data: [] }), // claude 占位
             Promise.resolve({ success: true, data: [] }), // claude-console 占位
             apiClient.get('/admin/bedrock-accounts', { params }),
-            Promise.resolve({ success: true, data: [] }) // gemini 占位
+            Promise.resolve({ success: true, data: [] }), // gemini 占位
+            Promise.resolve({ success: true, data: [] }), // openai 占位
+            Promise.resolve({ success: true, data: [] }) // azure-openai 占位
           )
           break
         case 'gemini':
@@ -934,7 +942,29 @@ const loadAccounts = async (forceReload = false) => {
             Promise.resolve({ success: true, data: [] }), // claude 占位
             Promise.resolve({ success: true, data: [] }), // claude-console 占位
             Promise.resolve({ success: true, data: [] }), // bedrock 占位
-            apiClient.get('/admin/gemini-accounts', { params })
+            apiClient.get('/admin/gemini-accounts', { params }),
+            Promise.resolve({ success: true, data: [] }), // openai 占位
+            Promise.resolve({ success: true, data: [] }) // azure-openai 占位
+          )
+          break
+        case 'openai':
+          requests.push(
+            Promise.resolve({ success: true, data: [] }), // claude 占位
+            Promise.resolve({ success: true, data: [] }), // claude-console 占位
+            Promise.resolve({ success: true, data: [] }), // bedrock 占位
+            Promise.resolve({ success: true, data: [] }), // gemini 占位
+            apiClient.get('/admin/openai-accounts', { params }),
+            Promise.resolve({ success: true, data: [] }) // azure-openai 占位
+          )
+          break
+        case 'azure_openai':
+          requests.push(
+            Promise.resolve({ success: true, data: [] }), // claude 占位
+            Promise.resolve({ success: true, data: [] }), // claude-console 占位
+            Promise.resolve({ success: true, data: [] }), // bedrock 占位
+            Promise.resolve({ success: true, data: [] }), // gemini 占位
+            Promise.resolve({ success: true, data: [] }), // openai 占位
+            apiClient.get('/admin/azure-openai-accounts', { params })
           )
           break
       }
@@ -946,7 +976,7 @@ const loadAccounts = async (forceReload = false) => {
     // 加载分组成员关系（需要在分组数据加载完成后）
     await loadGroupMembers(forceReload)
 
-    const [claudeData, claudeConsoleData, bedrockData, geminiData, openaiData] =
+    const [claudeData, claudeConsoleData, bedrockData, geminiData, openaiData, azureOpenaiData] =
       await Promise.all(requests)
 
     const allAccounts = []
@@ -1003,6 +1033,18 @@ const loadAccounts = async (forceReload = false) => {
         return { ...acc, platform: 'openai', boundApiKeysCount, groupInfo }
       })
       allAccounts.push(...openaiAccounts)
+    }
+
+    if (azureOpenaiData.success) {
+      const azureOpenaiAccounts = (azureOpenaiData.data || []).map((acc) => {
+        // 计算每个Azure OpenAI账户绑定的API Key数量
+        const boundApiKeysCount = apiKeys.value.filter(
+          (key) => key.azureOpenaiAccountId === acc.id
+        ).length
+        const groupInfo = accountGroupMap.value.get(acc.id) || null
+        return { ...acc, platform: 'azure_openai', boundApiKeysCount, groupInfo }
+      })
+      allAccounts.push(...azureOpenaiAccounts)
     }
 
     accounts.value = allAccounts
