@@ -123,11 +123,12 @@ async function createAccount(accountData) {
     // Azure OpenAI 特有字段
     azureEndpoint: accountData.azureEndpoint || '',
     apiVersion: accountData.apiVersion || '2024-02-01', // 使用稳定版本
-    deploymentName: accountData.deploymentName || '',
-    resourceName: accountData.resourceName || '',
+    deploymentName: accountData.deploymentName || 'gpt-5', // 使用默认部署名称
     apiKey: encrypt(accountData.apiKey || ''),
     // 支持的模型
-    supportedModels: JSON.stringify(accountData.supportedModels || ['gpt-4', 'codex-mini']),
+    supportedModels: JSON.stringify(
+      accountData.supportedModels || ['gpt-4', 'gpt-5', 'codex-mini']
+    ),
     // 状态字段
     isActive: accountData.isActive !== false ? 'true' : 'false',
     status: 'active',

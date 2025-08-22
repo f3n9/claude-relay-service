@@ -14,6 +14,7 @@ const ALLOWED_MODELS = {
     'gpt-4-turbo',
     'gpt-4o',
     'gpt-4o-mini',
+    'gpt-5',
     'gpt-35-turbo',
     'gpt-35-turbo-16k'
   ],
@@ -182,7 +183,7 @@ function normalizeAzureError(error) {
 // 模型验证函数
 function validateAndNormalizeModel(requestedModel, endpoint = 'chat/completions') {
   if (!requestedModel) {
-    return endpoint === 'chat/completions' ? 'gpt-4' : 'codex-mini'
+    return endpoint === 'chat/completions' ? 'gpt-5' : 'codex-mini'
   }
 
   // 移除可能的前缀
@@ -202,7 +203,7 @@ function validateAndNormalizeModel(requestedModel, endpoint = 'chat/completions'
   // 验证模型是否在允许列表中
   if (!ALL_ALLOWED_MODELS.includes(normalizedModel)) {
     logger.warn(`Invalid model requested: ${requestedModel}, using default`)
-    return endpoint === 'chat/completions' ? 'gpt-4' : 'codex-mini'
+    return endpoint === 'chat/completions' ? 'gpt-5' : 'codex-mini'
   }
 
   return normalizedModel
