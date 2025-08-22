@@ -349,9 +349,9 @@ router.post('/chat/completions', authenticateApiKey, (req, res) =>
 router.post('/responses', authenticateApiKey, (req, res) =>
   handleAzureOpenAIEndpoint(req, res, {
     endpoint: 'responses',
-    defaultModel: 'codex-mini',
+    defaultModel: 'gpt-5',
     defaultStream: true, // Codex默认为流式
-    allowedModels: ALLOWED_MODELS.CODEX_MODELS
+    allowedModels: ALL_ALLOWED_MODELS
   })
 )
 
