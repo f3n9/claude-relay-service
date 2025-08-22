@@ -160,7 +160,7 @@ async function handleAzureOpenAIRequest({
     const requestDuration = Date.now() - requestStartTime
     logger.debug(`✅ Azure OpenAI HTTP request completed at ${new Date().toISOString()}`)
 
-    logger.info(`Azure OpenAI response received`, {
+    logger.debug(`Azure OpenAI response received`, {
       status: response.status,
       statusText: response.statusText,
       duration: `${requestDuration}ms`,
