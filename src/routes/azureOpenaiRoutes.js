@@ -324,7 +324,11 @@ async function handleAzureOpenAIEndpoint(req, res, options = {}) {
 
     // 验证和规范化模型
     const requestedModel = validateAndNormalizeModel(req.body?.model || defaultModel, endpoint)
-    const isStream = req.body?.stream === defaultStream ? true : req.body?.stream === true
+    // 强制禁用 Azure 流式输出，统一返回非流式响应
+    // 忽略客户端传入的 stream 标志以保证 usage 记录稳定
+    const isStream = false
+    // 同步修改请求体，避免上游服务误判
+    if (req.body) req.body.stream = false
 
     logger.info(`${debugPrefix}: Request parameters`, {
       originalModel: req.body?.model,
@@ -431,7 +435,7 @@ router.post('/responses', authenticateApiKey, (req, res) =>
   handleAzureOpenAIEndpoint(req, res, {
     endpoint: 'responses',
     defaultModel: 'gpt-5',
-    defaultStream: true, // Codex默认为流式
+    defaultStream: false, // 显式禁用流式，保证 usage 记录
     allowedModels: ALL_ALLOWED_MODELS
   })
 )
