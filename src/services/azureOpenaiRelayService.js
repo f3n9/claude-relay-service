@@ -42,13 +42,16 @@ async function handleAzureOpenAIRequest({
   isStream = false,
   endpoint = 'chat/completions'
 }) {
+  // 声明变量在函数顶部，确保在 catch 块中也能访问
+  let requestUrl = ''
+  let proxyAgent = null
+  let deploymentName = ''
+
   try {
     // 构建 Azure OpenAI 请求 URL
     const baseUrl = account.azureEndpoint
-    const { deploymentName } = account
+    deploymentName = account.deploymentName || 'default'
     const apiVersion = account.apiVersion || '2024-02-01' // 使用稳定版本
-
-    let requestUrl
     if (endpoint === 'chat/completions') {
       requestUrl = `${baseUrl}/openai/deployments/${deploymentName}/chat/completions?api-version=${apiVersion}`
     } else if (endpoint === 'responses') {
@@ -78,7 +81,7 @@ async function handleAzureOpenAIRequest({
     }
 
     // 创建代理 agent
-    const proxyAgent = createProxyAgent(account.proxy)
+    proxyAgent = createProxyAgent(account.proxy)
 
     // 配置请求选项
     const axiosConfig = {
@@ -147,11 +150,11 @@ async function handleAzureOpenAIRequest({
       status: error.response?.status,
       statusText: error.response?.statusText,
       responseData: error.response?.data,
-      requestUrl,
+      requestUrl: requestUrl || 'unknown',
       endpoint,
-      deploymentName,
+      deploymentName: deploymentName || account?.deploymentName || 'unknown',
       hasProxy: !!proxyAgent,
-      proxyType: account.proxy?.type || 'none',
+      proxyType: account?.proxy?.type || 'none',
       isTimeout: error.code === 'ECONNABORTED',
       isNetworkError: !error.response,
       stack: error.stack
@@ -161,7 +164,7 @@ async function handleAzureOpenAIRequest({
     if (error.code === 'ENOTFOUND') {
       logger.error('🚨 DNS Resolution Failed for Azure OpenAI', {
         ...errorDetails,
-        hostname: new URL(requestUrl).hostname,
+        hostname: requestUrl && requestUrl !== 'unknown' ? new URL(requestUrl).hostname : 'unknown',
         suggestion: 'Check if Azure endpoint URL is correct and accessible'
       })
     } else if (error.code === 'ECONNREFUSED') {
