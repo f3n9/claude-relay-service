@@ -614,7 +614,8 @@
               v-if="
                 form.addType === 'manual' &&
                 form.platform !== 'claude-console' &&
-                form.platform !== 'bedrock'
+                form.platform !== 'bedrock' &&
+                form.platform !== 'azure_openai'
               "
               class="space-y-4 rounded-lg border border-blue-200 bg-blue-50 p-4"
             >
@@ -2652,7 +2653,11 @@ watch(
         region: newAccount.region || '',
         sessionToken: '', // 编辑模式不显示现有的会话令牌
         defaultModel: newAccount.defaultModel || '',
-        smallFastModel: newAccount.smallFastModel || ''
+        smallFastModel: newAccount.smallFastModel || '',
+        // Azure OpenAI 特定字段
+        azureEndpoint: newAccount.azureEndpoint || '',
+        apiVersion: newAccount.apiVersion || '2024-02-01',
+        defaultDeploymentName: newAccount.deploymentName || 'gpt-5'
       }
 
       // 如果是分组类型，加载分组ID
