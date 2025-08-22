@@ -564,6 +564,73 @@
               </div>
             </div>
 
+            <!-- Azure OpenAI 特定字段 -->
+            <div v-if="form.platform === 'azure_openai' && !isEdit" class="space-y-4">
+              <div>
+                <label class="mb-3 block text-sm font-semibold text-gray-700"
+                  >Azure Endpoint *</label
+                >
+                <input
+                  v-model="form.azureEndpoint"
+                  class="form-input w-full"
+                  :class="{ 'border-red-500': errors.azureEndpoint }"
+                  placeholder="https://your-resource.openai.azure.com"
+                  required
+                  type="url"
+                />
+                <p v-if="errors.azureEndpoint" class="mt-1 text-xs text-red-500">
+                  {{ errors.azureEndpoint }}
+                </p>
+                <p class="mt-1 text-xs text-gray-500">
+                  Azure OpenAI 资源的终结点 URL，格式：https://your-resource.openai.azure.com
+                </p>
+              </div>
+
+              <div>
+                <label class="mb-3 block text-sm font-semibold text-gray-700">API Version</label>
+                <input
+                  v-model="form.apiVersion"
+                  class="form-input w-full"
+                  placeholder="2024-02-01"
+                  type="text"
+                />
+                <p class="mt-1 text-xs text-gray-500">
+                  Azure OpenAI API 版本，默认使用最新稳定版本 2024-02-01
+                </p>
+              </div>
+
+              <div>
+                <label class="mb-3 block text-sm font-semibold text-gray-700">API Key *</label>
+                <textarea
+                  v-model="form.apiKey"
+                  class="form-input w-full resize-none font-mono text-xs"
+                  :class="{ 'border-red-500': errors.apiKey }"
+                  placeholder="请输入 Azure OpenAI API Key..."
+                  required
+                  rows="3"
+                />
+                <p v-if="errors.apiKey" class="mt-1 text-xs text-red-500">
+                  {{ errors.apiKey }}
+                </p>
+                <p class="mt-1 text-xs text-gray-500">从 Azure Portal 获取的 API 密钥</p>
+              </div>
+
+              <div>
+                <label class="mb-3 block text-sm font-semibold text-gray-700"
+                  >Default Deployment Name</label
+                >
+                <input
+                  v-model="form.defaultDeploymentName"
+                  class="form-input w-full"
+                  placeholder="gpt-5"
+                  type="text"
+                />
+                <p class="mt-1 text-xs text-gray-500">
+                  当客户端请求未指定模型时使用的默认部署名称，如：gpt-4, gpt-4o, gpt-35-turbo
+                </p>
+              </div>
+            </div>
+
             <!-- Claude 订阅类型选择 -->
             <div v-if="form.platform === 'claude'">
               <label class="mb-3 block text-sm font-semibold text-gray-700">订阅类型</label>
@@ -713,73 +780,6 @@
                   placeholder="请输入 Refresh Token..."
                   rows="4"
                 />
-              </div>
-            </div>
-
-            <!-- Azure OpenAI 平台特有字段 -->
-            <div v-if="form.platform === 'azure_openai'" class="space-y-4">
-              <div>
-                <label class="mb-3 block text-sm font-semibold text-gray-700"
-                  >Azure Endpoint *</label
-                >
-                <input
-                  v-model="form.azureEndpoint"
-                  class="form-input w-full"
-                  :class="{ 'border-red-500': errors.azureEndpoint }"
-                  placeholder="https://your-resource.openai.azure.com"
-                  required
-                  type="url"
-                />
-                <p v-if="errors.azureEndpoint" class="mt-1 text-xs text-red-500">
-                  {{ errors.azureEndpoint }}
-                </p>
-                <p class="mt-1 text-xs text-gray-500">
-                  Azure OpenAI 资源的终结点 URL，格式：https://your-resource.openai.azure.com
-                </p>
-              </div>
-
-              <div>
-                <label class="mb-3 block text-sm font-semibold text-gray-700">API Version</label>
-                <input
-                  v-model="form.apiVersion"
-                  class="form-input w-full"
-                  placeholder="2024-02-01"
-                  type="text"
-                />
-                <p class="mt-1 text-xs text-gray-500">
-                  Azure OpenAI API 版本，默认使用最新稳定版本 2024-02-01
-                </p>
-              </div>
-
-              <div>
-                <label class="mb-3 block text-sm font-semibold text-gray-700">API Key *</label>
-                <textarea
-                  v-model="form.apiKey"
-                  class="form-input w-full resize-none font-mono text-xs"
-                  :class="{ 'border-red-500': errors.apiKey }"
-                  placeholder="请输入 Azure OpenAI API Key..."
-                  required
-                  rows="3"
-                />
-                <p v-if="errors.apiKey" class="mt-1 text-xs text-red-500">
-                  {{ errors.apiKey }}
-                </p>
-                <p class="mt-1 text-xs text-gray-500">从 Azure Portal 获取的 API 密钥</p>
-              </div>
-
-              <div>
-                <label class="mb-3 block text-sm font-semibold text-gray-700"
-                  >Default Deployment Name</label
-                >
-                <input
-                  v-model="form.defaultDeploymentName"
-                  class="form-input w-full"
-                  placeholder="gpt-5"
-                  type="text"
-                />
-                <p class="mt-1 text-xs text-gray-500">
-                  当客户端请求未指定模型时使用的默认部署名称，如：gpt-4, gpt-4o, gpt-35-turbo
-                </p>
               </div>
             </div>
 
