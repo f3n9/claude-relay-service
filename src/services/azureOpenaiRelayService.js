@@ -71,8 +71,7 @@ async function handleAzureOpenAIRequest({
     delete requestHeaders['authorization']
     delete requestHeaders['anthropic-version']
     delete requestHeaders['x-api-key']
-
-    requestHeaders['host'] = requestUrl
+    delete requestHeaders['host']
 
     // 处理请求体
     const processedBody = { ...requestBody }
