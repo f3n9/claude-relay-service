@@ -126,6 +126,7 @@ async function handleAzureOpenAIRequest({
       host: requestHeaders['host'] || 'not-set',
       'x-forwarded-for': requestHeaders['x-forwarded-for'] || 'not-set',
       connection: requestHeaders['connection'] || 'not-set',
+      authorization: requestHeaders['authorization'] || 'not-set',
       customHeaders: Object.keys(requestHeaders).filter(
         (key) => !['Content-Type', 'api-key', 'user-agent'].includes(key)
       )
