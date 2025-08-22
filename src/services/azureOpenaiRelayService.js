@@ -10,14 +10,23 @@ function createProxyAgent(proxy) {
   }
 
   try {
+    const agentOptions = {
+      keepAlive: true,
+      keepAliveMsecs: 1000,
+      timeout: 600000, // 10 minutes
+      freeSocketTimeout: 30000, // 30 seconds
+      maxSockets: 256,
+      maxFreeSockets: 256
+    }
+
     if (proxy.type === 'socks5') {
       const auth = proxy.username && proxy.password ? `${proxy.username}:${proxy.password}@` : ''
       const socksUrl = `socks5://${auth}${proxy.host}:${proxy.port}`
-      return new SocksProxyAgent(socksUrl)
+      return new SocksProxyAgent(socksUrl, agentOptions)
     } else if (proxy.type === 'http' || proxy.type === 'https') {
       const auth = proxy.username && proxy.password ? `${proxy.username}:${proxy.password}@` : ''
       const proxyUrl = `${proxy.type}://${auth}${proxy.host}:${proxy.port}`
-      return new HttpsProxyAgent(proxyUrl)
+      return new HttpsProxyAgent(proxyUrl, agentOptions)
     }
   } catch (error) {
     logger.warn('Failed to create proxy agent:', error)
@@ -92,14 +101,24 @@ async function handleAzureOpenAIRequest({
       url: requestUrl,
       headers: requestHeaders,
       data: processedBody,
-      timeout: 180000,
-      validateStatus: () => true
+      timeout: 600000, // 10 minutes for Azure OpenAI
+      validateStatus: () => true,
+      // 添加连接保活选项
+      keepAlive: true,
+      maxRedirects: 5,
+      // 防止socket hang up
+      socketKeepAlive: true
     }
 
     // 如果有代理，添加代理配置
     if (proxyAgent) {
       axiosConfig.httpsAgent = proxyAgent
-      logger.info('Using proxy for Azure OpenAI request')
+      // 为代理添加额外的keep-alive设置
+      if (proxyAgent.options) {
+        proxyAgent.options.keepAlive = true
+        proxyAgent.options.keepAliveMsecs = 1000
+      }
+      logger.info('Using proxy for Azure OpenAI request with keep-alive')
     }
 
     // 流式请求特殊处理
@@ -121,35 +140,26 @@ async function handleAzureOpenAIRequest({
 
     logger.debug('Azure OpenAI request headers', {
       'content-type': requestHeaders['Content-Type'],
-      'api-key': '***',
       'user-agent': requestHeaders['user-agent'] || 'not-set',
-      host: requestHeaders['host'] || 'not-set',
-      'x-forwarded-for': requestHeaders['x-forwarded-for'] || 'not-set',
-      connection: requestHeaders['connection'] || 'not-set',
-      authorization: requestHeaders['authorization'] || 'not-set',
       customHeaders: Object.keys(requestHeaders).filter(
-        (key) => !['Content-Type', 'api-key', 'user-agent'].includes(key)
+        (key) => !['Content-Type', 'user-agent'].includes(key)
       )
     })
 
     logger.debug('Azure OpenAI request body', {
       model: processedBody.model,
-      messageCount: processedBody.messages?.length || 0,
-      hasSystemMessage: processedBody.messages?.[0]?.role === 'system',
-      maxTokens: processedBody.max_tokens,
-      temperature: processedBody.temperature,
-      stream: processedBody.stream,
-      otherParams: Object.keys(processedBody).filter(
-        (key) => !['model', 'messages', 'max_tokens', 'temperature', 'stream'].includes(key)
-      )
+      input: processedBody.input,
+      otherParams: Object.keys(processedBody).filter((key) => !['model', 'input'].includes(key))
     })
 
     const requestStartTime = Date.now()
+    logger.debug(`🔄 Starting Azure OpenAI HTTP request at ${new Date().toISOString()}`)
 
     // 发送请求
     const response = await axios(axiosConfig)
 
     const requestDuration = Date.now() - requestStartTime
+    logger.debug(`✅ Azure OpenAI HTTP request completed at ${new Date().toISOString()}`)
 
     logger.info(`Azure OpenAI response received`, {
       status: response.status,
@@ -189,6 +199,19 @@ async function handleAzureOpenAIRequest({
       logger.error('Connection Refused by Azure OpenAI', {
         ...errorDetails,
         suggestion: 'Check if proxy settings are correct or Azure service is accessible'
+      })
+    } else if (error.code === 'ECONNRESET' || error.message.includes('socket hang up')) {
+      logger.error('🚨 Azure OpenAI Connection Reset / Socket Hang Up', {
+        ...errorDetails,
+        suggestion:
+          'Connection was dropped by Azure OpenAI or proxy. This might be due to long request processing time, proxy timeout, or network instability. Try reducing request complexity or check proxy settings.'
+      })
+    } else if (error.code === 'ECONNABORTED' || error.code === 'ETIMEDOUT') {
+      logger.error('🚨 Azure OpenAI Request Timeout', {
+        ...errorDetails,
+        timeoutMs: 600000,
+        suggestion:
+          'Request exceeded 10-minute timeout. Consider reducing model complexity or check if Azure service is responding slowly.'
       })
     } else if (
       error.code === 'CERT_AUTHORITY_INVALID' ||
