@@ -39,7 +39,7 @@ async function handleAzureOpenAIRequest({
   account,
   requestBody,
   headers = {},
-  isStream = false,
+  isStream = true,
   endpoint = 'chat/completions'
 }) {
   // 声明变量在函数顶部，确保在 catch 块中也能访问
@@ -92,7 +92,7 @@ async function handleAzureOpenAIRequest({
       url: requestUrl,
       headers: requestHeaders,
       data: processedBody,
-      timeout: 60000,
+      timeout: 180000,
       validateStatus: () => true
     }
 
