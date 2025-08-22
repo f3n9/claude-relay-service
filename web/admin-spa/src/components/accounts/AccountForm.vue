@@ -82,6 +82,10 @@
                   <span class="text-sm text-gray-700">OpenAI</span>
                 </label>
                 <label class="flex cursor-pointer items-center">
+                  <input v-model="form.platform" class="mr-2" type="radio" value="azure_openai" />
+                  <span class="text-sm text-gray-700">Azure OpenAI</span>
+                </label>
+                <label class="flex cursor-pointer items-center">
                   <input v-model="form.platform" class="mr-2" type="radio" value="bedrock" />
                   <span class="text-sm text-gray-700">Bedrock</span>
                 </label>
@@ -89,7 +93,12 @@
             </div>
 
             <div
-              v-if="!isEdit && form.platform !== 'claude-console' && form.platform !== 'bedrock'"
+              v-if="
+                !isEdit &&
+                form.platform !== 'claude-console' &&
+                form.platform !== 'bedrock' &&
+                form.platform !== 'azure_openai'
+              "
             >
               <label class="mb-3 block text-sm font-semibold text-gray-700">添加方式</label>
               <div class="flex flex-wrap gap-4">
@@ -678,6 +687,106 @@
                 </p>
               </div>
 
+              <!-- Azure OpenAI 平台特有字段 -->
+              <div v-if="form.platform === 'azure_openai'" class="space-y-4">
+                <div>
+                  <label class="mb-3 block text-sm font-semibold text-gray-700"
+                    >Azure Endpoint *</label
+                  >
+                  <input
+                    v-model="form.azureEndpoint"
+                    class="form-input w-full"
+                    :class="{ 'border-red-500': errors.azureEndpoint }"
+                    placeholder="https://your-resource.openai.azure.com"
+                    required
+                    type="url"
+                  />
+                  <p v-if="errors.azureEndpoint" class="mt-1 text-xs text-red-500">
+                    {{ errors.azureEndpoint }}
+                  </p>
+                  <p class="mt-1 text-xs text-gray-500">
+                    Azure OpenAI 资源的终结点 URL，格式：https://your-resource.openai.azure.com
+                  </p>
+                </div>
+
+                <div>
+                  <label class="mb-3 block text-sm font-semibold text-gray-700"
+                    >Deployment Name *</label
+                  >
+                  <input
+                    v-model="form.deploymentName"
+                    class="form-input w-full"
+                    :class="{ 'border-red-500': errors.deploymentName }"
+                    placeholder="your-deployment-name"
+                    required
+                    type="text"
+                  />
+                  <p v-if="errors.deploymentName" class="mt-1 text-xs text-red-500">
+                    {{ errors.deploymentName }}
+                  </p>
+                  <p class="mt-1 text-xs text-gray-500">
+                    Azure OpenAI 中的部署名称，用于指定要使用的模型部署
+                  </p>
+                </div>
+
+                <div>
+                  <label class="mb-3 block text-sm font-semibold text-gray-700">API Version</label>
+                  <input
+                    v-model="form.apiVersion"
+                    class="form-input w-full"
+                    placeholder="2024-02-01"
+                    type="text"
+                  />
+                  <p class="mt-1 text-xs text-gray-500">
+                    Azure OpenAI API 版本，默认使用最新稳定版本 2024-02-01
+                  </p>
+                </div>
+
+                <div>
+                  <label class="mb-3 block text-sm font-semibold text-gray-700"
+                    >Resource Name</label
+                  >
+                  <input
+                    v-model="form.resourceName"
+                    class="form-input w-full"
+                    placeholder="your-azure-resource-name"
+                    type="text"
+                  />
+                  <p class="mt-1 text-xs text-gray-500">Azure 资源名称（可选），用于管理和标识</p>
+                </div>
+
+                <div>
+                  <label class="mb-3 block text-sm font-semibold text-gray-700">API Key *</label>
+                  <textarea
+                    v-model="form.apiKey"
+                    class="form-input w-full resize-none font-mono text-xs"
+                    :class="{ 'border-red-500': errors.apiKey }"
+                    placeholder="请输入 Azure OpenAI API Key..."
+                    required
+                    rows="3"
+                  />
+                  <p v-if="errors.apiKey" class="mt-1 text-xs text-red-500">
+                    {{ errors.apiKey }}
+                  </p>
+                  <p class="mt-1 text-xs text-gray-500">从 Azure Portal 获取的 API 密钥</p>
+                </div>
+
+                <div>
+                  <label class="mb-3 block text-sm font-semibold text-gray-700"
+                    >Supported Models</label
+                  >
+                  <input
+                    v-model="form.supportedModelsInput"
+                    class="form-input w-full"
+                    placeholder="gpt-4,gpt-4o,gpt-35-turbo"
+                    type="text"
+                  />
+                  <p class="mt-1 text-xs text-gray-500">
+                    此部署支持的模型列表，用逗号分隔。如：gpt-4,gpt-4o,gpt-35-turbo
+                  </p>
+                </div>
+              </div>
+
               <div>
                 <label class="mb-3 block text-sm font-semibold text-gray-700">Access Token *</label>
                 <textarea
@@ -721,7 +830,8 @@
                 v-if="
                   (form.addType === 'oauth' || form.addType === 'setup-token') &&
                   form.platform !== 'claude-console' &&
-                  form.platform !== 'bedrock'
+                  form.platform !== 'bedrock' &&
+                  form.platform !== 'azure_openai'
                 "
                 class="btn btn-primary flex-1 px-6 py-3 font-semibold"
                 :disabled="loading"
@@ -1498,7 +1608,19 @@ const form = ref({
   region: props.account?.region || '',
   sessionToken: props.account?.sessionToken || '',
   defaultModel: props.account?.defaultModel || '',
-  smallFastModel: props.account?.smallFastModel || ''
+  smallFastModel: props.account?.smallFastModel || '',
+  // Azure OpenAI 特定字段
+  azureEndpoint: props.account?.azureEndpoint || '',
+  deploymentName: props.account?.deploymentName || '',
+  apiVersion: props.account?.apiVersion || '2024-02-01',
+  resourceName: props.account?.resourceName || '',
+  supportedModelsInput: (() => {
+    const models = props.account?.supportedModels
+    if (Array.isArray(models)) {
+      return models.join(',')
+    }
+    return 'gpt-4,gpt-4o,gpt-35-turbo'
+  })()
 })
 
 // 模型映射表数据
@@ -1751,6 +1873,8 @@ const handleOAuthSuccess = async (tokenInfo) => {
       result = await accountsStore.createClaudeAccount(data)
     } else if (form.value.platform === 'openai') {
       result = await accountsStore.createOpenAIAccount(data)
+    } else if (form.value.platform === 'azure_openai') {
+      result = await accountsStore.createAzureOpenAIAccount(data)
     } else {
       result = await accountsStore.createGeminiAccount(data)
     }
@@ -1800,6 +1924,23 @@ const createAccount = async () => {
     }
     if (!form.value.region || form.value.region.trim() === '') {
       errors.value.region = '请选择 AWS 区域'
+      hasError = true
+    }
+  } else if (form.value.platform === 'azure_openai') {
+    // Azure OpenAI 验证
+    if (!form.value.azureEndpoint || form.value.azureEndpoint.trim() === '') {
+      errors.value.azureEndpoint = '请填写 Azure Endpoint'
+      hasError = true
+    } else if (!form.value.azureEndpoint.match(/^https:\/\/[\w-]+\.openai\.azure\.com$/)) {
+      errors.value.azureEndpoint = '请输入有效的 Azure OpenAI Endpoint 格式'
+      hasError = true
+    }
+    if (!form.value.deploymentName || form.value.deploymentName.trim() === '') {
+      errors.value.deploymentName = '请填写 Deployment Name'
+      hasError = true
+    }
+    if (!form.value.apiKey || form.value.apiKey.trim() === '') {
+      errors.value.apiKey = '请填写 API Key'
       hasError = true
     }
   } else if (form.value.addType === 'manual') {
@@ -1962,6 +2103,23 @@ const createAccount = async () => {
       data.priority = form.value.priority || 50
       // 如果不启用限流，传递 0 表示不限流
       data.rateLimitDuration = form.value.enableRateLimit ? form.value.rateLimitDuration || 60 : 0
+    } else if (form.value.platform === 'azure_openai') {
+      // Azure OpenAI 账户特定数据
+      data.azureEndpoint = form.value.azureEndpoint
+      data.deploymentName = form.value.deploymentName
+      data.apiVersion = form.value.apiVersion || '2024-02-01'
+      data.resourceName = form.value.resourceName
+      data.apiKey = form.value.apiKey
+      data.priority = form.value.priority || 50
+      // 处理支持的模型列表
+      if (form.value.supportedModelsInput) {
+        data.supportedModels = form.value.supportedModelsInput
+          .split(',')
+          .map((m) => m.trim())
+          .filter((m) => m.length > 0)
+      } else {
+        data.supportedModels = ['gpt-4', 'gpt-4o', 'gpt-35-turbo']
+      }
     }
 
     let result
@@ -1973,6 +2131,8 @@ const createAccount = async () => {
       result = await accountsStore.createBedrockAccount(data)
     } else if (form.value.platform === 'openai') {
       result = await accountsStore.createOpenAIAccount(data)
+    } else if (form.value.platform === 'azure_openai') {
+      result = await accountsStore.createAzureOpenAIAccount(data)
     } else {
       result = await accountsStore.createGeminiAccount(data)
     }

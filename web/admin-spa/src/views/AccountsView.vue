@@ -287,9 +287,18 @@
                     class="flex items-center gap-1.5 rounded-lg border border-gray-700 bg-gray-100 bg-gradient-to-r from-gray-100 to-gray-100 px-2.5 py-1"
                   >
                     <div class="fa-openai" />
-                    <span class="text-xs font-semibold text-gray-950">OpenAi</span>
+                    <span class="text-xs font-semibold text-gray-950">OpenAI</span>
                     <span class="mx-1 h-4 w-px bg-gray-400" />
                     <span class="text-xs font-medium text-gray-950">{{ getOpenAIAuthType() }}</span>
+                  </div>
+                  <div
+                    v-else-if="account.platform === 'azure_openai'"
+                    class="flex items-center gap-1.5 rounded-lg border border-blue-200 bg-gradient-to-r from-blue-100 to-cyan-100 px-2.5 py-1"
+                  >
+                    <i class="fab fa-microsoft text-xs text-blue-700" />
+                    <span class="text-xs font-semibold text-blue-800">Azure OpenAI</span>
+                    <span class="mx-1 h-4 w-px bg-blue-300" />
+                    <span class="text-xs font-medium text-blue-700">API Key</span>
                   </div>
                   <div
                     v-else-if="account.platform === 'claude' || account.platform === 'claude-oauth'"
@@ -393,7 +402,8 @@
                     account.platform === 'claude-console' ||
                     account.platform === 'bedrock' ||
                     account.platform === 'gemini' ||
-                    account.platform === 'openai'
+                    account.platform === 'openai' ||
+                    account.platform === 'azure_openai'
                   "
                   class="flex items-center gap-2"
                 >
@@ -571,7 +581,9 @@
                     ? 'bg-gradient-to-br from-purple-500 to-purple-600'
                     : account.platform === 'bedrock'
                       ? 'bg-gradient-to-br from-orange-500 to-red-600'
-                      : 'bg-gradient-to-br from-blue-500 to-blue-600'
+                      : account.platform === 'azure_openai'
+                        ? 'bg-gradient-to-br from-blue-500 to-cyan-600'
+                        : 'bg-gradient-to-br from-blue-500 to-blue-600'
                 ]"
               >
                 <i
@@ -581,7 +593,9 @@
                       ? 'fas fa-brain'
                       : account.platform === 'bedrock'
                         ? 'fab fa-aws'
-                        : 'fas fa-robot'
+                        : account.platform === 'azure_openai'
+                          ? 'fab fa-microsoft'
+                          : 'fas fa-robot'
                   ]"
                 />
               </div>
@@ -1244,7 +1258,8 @@ const deleteAccount = async (account) => {
     (key) =>
       key.claudeAccountId === account.id ||
       key.geminiAccountId === account.id ||
-      key.openaiAccountId === account.id
+      key.openaiAccountId === account.id ||
+      key.azureOpenaiAccountId === account.id
   ).length
 
   if (boundKeysCount > 0) {
@@ -1274,6 +1289,8 @@ const deleteAccount = async (account) => {
       endpoint = `/admin/bedrock-accounts/${account.id}`
     } else if (account.platform === 'openai') {
       endpoint = `/admin/openai-accounts/${account.id}`
+    } else if (account.platform === 'azure_openai') {
+      endpoint = `/admin/azure-openai-accounts/${account.id}`
     } else {
       endpoint = `/admin/gemini-accounts/${account.id}`
     }
@@ -1346,6 +1363,8 @@ const toggleSchedulable = async (account) => {
       endpoint = `/admin/gemini-accounts/${account.id}/toggle-schedulable`
     } else if (account.platform === 'openai') {
       endpoint = `/admin/openai-accounts/${account.id}/toggle-schedulable`
+    } else if (account.platform === 'azure_openai') {
+      endpoint = `/admin/azure-openai-accounts/${account.id}/toggle-schedulable`
     } else {
       showToast('该账户类型暂不支持调度控制', 'warning')
       return
