@@ -144,7 +144,6 @@ async function handleAzureOpenAIRequest({
     logger.debug('Azure OpenAI request headers', {
       'content-type': requestHeaders['Content-Type'],
       'user-agent': requestHeaders['user-agent'] || 'not-set',
-      'api-key': requestHeaders['api-key'] || 'not-set',
       customHeaders: Object.keys(requestHeaders).filter(
         (key) => !['Content-Type', 'user-agent'].includes(key)
       )
