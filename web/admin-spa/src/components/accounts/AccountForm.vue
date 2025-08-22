@@ -1657,7 +1657,9 @@ const errors = ref({
   apiKey: '',
   accessKeyId: '',
   secretAccessKey: '',
-  region: ''
+  region: '',
+  azureEndpoint: '',
+  deploymentName: ''
 })
 
 // 计算是否可以进入下一步
@@ -2366,6 +2368,26 @@ watch(
   }
 )
 
+// 监听Azure Endpoint变化，清除错误
+watch(
+  () => form.value.azureEndpoint,
+  () => {
+    if (errors.value.azureEndpoint && form.value.azureEndpoint?.trim()) {
+      errors.value.azureEndpoint = ''
+    }
+  }
+)
+
+// 监听Deployment Name变化，清除错误
+watch(
+  () => form.value.deploymentName,
+  () => {
+    if (errors.value.deploymentName && form.value.deploymentName?.trim()) {
+      errors.value.deploymentName = ''
+    }
+  }
+)
+
 // 分组相关数据
 const groups = ref([])
 const loadingGroups = ref(false)
@@ -2407,8 +2429,12 @@ watch(
   () => form.value.platform,
   (newPlatform) => {
     // 处理添加方式的自动切换
-    if (newPlatform === 'claude-console' || newPlatform === 'bedrock') {
-      form.value.addType = 'manual' // Claude Console 和 Bedrock 只支持手动模式
+    if (
+      newPlatform === 'claude-console' ||
+      newPlatform === 'bedrock' ||
+      newPlatform === 'azure_openai'
+    ) {
+      form.value.addType = 'manual' // Claude Console、Bedrock 和 Azure OpenAI 只支持手动模式
     } else if (newPlatform === 'claude') {
       // 切换到 Claude 时，使用 Setup Token 作为默认方式
       form.value.addType = 'setup-token'
