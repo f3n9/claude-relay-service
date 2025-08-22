@@ -68,9 +68,9 @@ async function handleAzureOpenAIRequest({
     }
 
     // 移除不需要的头部
-    delete requestHeaders['authorization']
     delete requestHeaders['anthropic-version']
     delete requestHeaders['x-api-key']
+    delete requestHeaders['api-key']
     delete requestHeaders['host']
 
     // 处理请求体
