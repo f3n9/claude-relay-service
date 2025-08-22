@@ -60,7 +60,9 @@ async function handleAzureOpenAIRequest({
     // 构建 Azure OpenAI 请求 URL
     const baseUrl = account.azureEndpoint
     deploymentName = account.deploymentName || 'default'
-    const apiVersion = account.apiVersion || '2024-02-01' // 使用稳定版本
+    // Azure Responses API requires preview versions; fall back appropriately
+    const apiVersion =
+      account.apiVersion || (endpoint === 'responses' ? '2024-10-01-preview' : '2024-02-01')
     if (endpoint === 'chat/completions') {
       requestUrl = `${baseUrl}/openai/deployments/${deploymentName}/chat/completions?api-version=${apiVersion}`
     } else if (endpoint === 'responses') {
@@ -72,7 +74,7 @@ async function handleAzureOpenAIRequest({
     // 准备请求头
     const requestHeaders = {
       'Content-Type': 'application/json',
-      authorization: `Bearer ${account.apiKey}`
+      'api-key': account.apiKey
     }
 
     // 移除不需要的头部
@@ -123,6 +125,9 @@ async function handleAzureOpenAIRequest({
     // 流式请求特殊处理
     if (isStream) {
       axiosConfig.responseType = 'stream'
+      requestHeaders.accept = 'text/event-stream'
+    } else {
+      requestHeaders.accept = 'application/json'
     }
 
     logger.debug(`Making Azure OpenAI request`, {
@@ -342,10 +347,21 @@ function handleStreamResponse(upstreamResponse, clientResponse, options = {}) {
               actualModel = eventData.model
             }
 
-            // 获取使用统计（通常在最后一个 chunk 中）
-            if (eventData.usage) {
+            // 获取使用统计（Responses API: response.completed -> response.usage）
+            if (eventData.type === 'response.completed' && eventData.response) {
+              if (eventData.response.model) {
+                actualModel = eventData.response.model
+              }
+              if (eventData.response.usage) {
+                usageData = eventData.response.usage
+                logger.debug('Captured Azure OpenAI nested usage (response.usage):', usageData)
+              }
+            }
+
+            // 兼容 Chat Completions 风格（顶层 usage）
+            if (!usageData && eventData.usage) {
               usageData = eventData.usage
-              logger.debug('Captured Azure OpenAI usage data:', usageData)
+              logger.debug('Captured Azure OpenAI usage (top-level):', usageData)
             }
 
             // 检查是否是完成事件

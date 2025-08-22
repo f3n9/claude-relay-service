@@ -647,9 +647,18 @@ class RedisClient {
       this.client.hgetall(accountMonthlyKey)
     ])
 
-    // 获取账户创建时间来计算平均值
-    const accountData = await this.client.hgetall(`claude_account:${accountId}`)
-    const createdAt = accountData.createdAt ? new Date(accountData.createdAt) : new Date()
+    // 获取账户创建时间来计算平均值（兼容多种账户类型）
+    let accountData = await this.client.hgetall(`claude_account:${accountId}`)
+    if (!accountData || Object.keys(accountData).length === 0) {
+      accountData = await this.client.hgetall(`claude:account:${accountId}`)
+    }
+    if (!accountData || Object.keys(accountData).length === 0) {
+      accountData = await this.client.hgetall(`azure_openai:account:${accountId}`)
+    }
+    if (!accountData || Object.keys(accountData).length === 0) {
+      accountData = await this.client.hgetall(`openai:account:${accountId}`)
+    }
+    const createdAt = accountData && accountData.createdAt ? new Date(accountData.createdAt) : new Date()
     const now = new Date()
     const daysSinceCreated = Math.max(1, Math.ceil((now - createdAt) / (1000 * 60 * 60 * 24)))
 
@@ -708,15 +717,50 @@ class RedisClient {
   // 📈 获取所有账户的使用统计
   async getAllAccountsUsageStats() {
     try {
-      // 获取所有Claude账户
-      const accountKeys = await this.client.keys('claude_account:*')
       const accountStats = []
 
-      for (const accountKey of accountKeys) {
-        const accountId = accountKey.replace('claude_account:', '')
-        const accountData = await this.client.hgetall(accountKey)
+      // Claude accounts (legacy key pattern)
+      const claudeKeys = await this.client.keys('claude_account:*')
+      for (const key of claudeKeys) {
+        const accountId = key.replace('claude_account:', '')
+        const accountData = await this.client.hgetall(key)
+        if (accountData && accountData.name) {
+          const stats = await this.getAccountUsageStats(accountId)
+          accountStats.push({
+            id: accountId,
+            name: accountData.name,
+            email: accountData.email || '',
+            status: accountData.status || 'unknown',
+            isActive: accountData.isActive === 'true',
+            ...stats
+          })
+        }
+      }
 
-        if (accountData.name) {
+      // Claude accounts (current key pattern)
+      const claudeKeysNew = await this.client.keys('claude:account:*')
+      for (const key of claudeKeysNew) {
+        const accountId = key.replace('claude:account:', '')
+        const accountData = await this.client.hgetall(key)
+        if (accountData && accountData.name) {
+          const stats = await this.getAccountUsageStats(accountId)
+          accountStats.push({
+            id: accountId,
+            name: accountData.name,
+            email: accountData.email || '',
+            status: accountData.status || 'unknown',
+            isActive: accountData.isActive === 'true',
+            ...stats
+          })
+        }
+      }
+
+      // Azure OpenAI accounts
+      const azureKeys = await this.client.keys('azure_openai:account:*')
+      for (const key of azureKeys) {
+        const accountId = key.replace('azure_openai:account:', '')
+        const accountData = await this.client.hgetall(key)
+        if (accountData && accountData.name) {
           const stats = await this.getAccountUsageStats(accountId)
           accountStats.push({
             id: accountId,

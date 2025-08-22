@@ -69,10 +69,13 @@ class AtomicUsageReporter {
       const inputTokens = usageData.prompt_tokens || usageData.input_tokens || 0
       const outputTokens = usageData.completion_tokens || usageData.output_tokens || 0
       const cacheCreateTokens =
-        usageData.prompt_tokens_details?.cached_tokens ||
+        usageData.prompt_tokens_details?.cache_creation_tokens ||
         usageData.input_tokens_details?.cache_creation_tokens ||
         0
-      const cacheReadTokens = usageData.input_tokens_details?.cached_tokens || 0
+      const cacheReadTokens =
+        usageData.prompt_tokens_details?.cached_tokens ||
+        usageData.input_tokens_details?.cached_tokens ||
+        0
 
       await apiKeyService.recordUsage(
         apiKeyId,
@@ -83,6 +86,16 @@ class AtomicUsageReporter {
         modelToRecord,
         accountId
       )
+
+      // 同步更新 Azure 账户的 lastUsedAt 和累计使用量
+      try {
+        const totalTokens = inputTokens + outputTokens + cacheCreateTokens + cacheReadTokens
+        if (accountId) {
+          await azureOpenaiAccountService.updateAccountUsage(accountId, totalTokens)
+        }
+      } catch (acctErr) {
+        logger.warn(`Failed to update Azure account usage for ${accountId}: ${acctErr.message}`)
+      }
 
       logger.info(
         `📊 Recorded Azure OpenAI usage - Request: ${requestId}, Input: ${inputTokens}, Output: ${outputTokens}, Model: ${modelToRecord}`
