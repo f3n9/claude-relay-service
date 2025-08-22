@@ -117,7 +117,7 @@ async function handleAzureOpenAIRequest({
         proxyAgent.options.keepAlive = true
         proxyAgent.options.keepAliveMsecs = 1000
       }
-      logger.info('Using proxy for Azure OpenAI request with keep-alive')
+      logger.debug('Using proxy for Azure OpenAI request with keep-alive')
     }
 
     // 流式请求特殊处理
@@ -125,7 +125,7 @@ async function handleAzureOpenAIRequest({
       axiosConfig.responseType = 'stream'
     }
 
-    logger.info(`Making Azure OpenAI request`, {
+    logger.debug(`Making Azure OpenAI request`, {
       requestUrl,
       method: 'POST',
       endpoint,
