@@ -101,23 +101,96 @@ async function handleAzureOpenAIRequest({
       axiosConfig.responseType = 'stream'
     }
 
-    logger.info(`🔄 Making Azure OpenAI request to: ${requestUrl}`)
-    logger.debug('Request headers:', { ...requestHeaders, 'api-key': '***' })
-    logger.debug('Request body:', processedBody)
+    logger.info(`🔄 Making Azure OpenAI request`, {
+      requestUrl,
+      method: 'POST',
+      endpoint,
+      deploymentName,
+      apiVersion,
+      hasProxy: !!proxyAgent,
+      proxyType: account.proxy?.type || 'none',
+      isStream,
+      requestBodySize: JSON.stringify(processedBody).length
+    })
+
+    logger.debug('📋 Request details', {
+      headers: { ...requestHeaders, 'api-key': '***' },
+      body: processedBody,
+      axiosConfig: {
+        ...axiosConfig,
+        data: '[BODY_DATA]',
+        headers: { ...axiosConfig.headers, 'api-key': '***' }
+      }
+    })
+
+    const requestStartTime = Date.now()
 
     // 发送请求
     const response = await axios(axiosConfig)
 
-    logger.info(`📥 Azure OpenAI response status: ${response.status}`)
+    const requestDuration = Date.now() - requestStartTime
+
+    logger.info(`📥 Azure OpenAI response received`, {
+      status: response.status,
+      statusText: response.statusText,
+      duration: `${requestDuration}ms`,
+      responseHeaders: Object.keys(response.headers || {}),
+      hasData: !!response.data,
+      contentType: response.headers?.['content-type'] || 'unknown'
+    })
 
     return response
   } catch (error) {
-    logger.error('Azure OpenAI request failed:', {
+    const errorDetails = {
       message: error.message,
+      code: error.code,
       status: error.response?.status,
       statusText: error.response?.statusText,
-      data: error.response?.data
-    })
+      responseData: error.response?.data,
+      requestUrl,
+      endpoint,
+      deploymentName,
+      hasProxy: !!proxyAgent,
+      proxyType: account.proxy?.type || 'none',
+      isTimeout: error.code === 'ECONNABORTED',
+      isNetworkError: !error.response,
+      stack: error.stack
+    }
+
+    // 特殊错误类型的详细日志
+    if (error.code === 'ENOTFOUND') {
+      logger.error('🚨 DNS Resolution Failed for Azure OpenAI', {
+        ...errorDetails,
+        hostname: new URL(requestUrl).hostname,
+        suggestion: 'Check if Azure endpoint URL is correct and accessible'
+      })
+    } else if (error.code === 'ECONNREFUSED') {
+      logger.error('🚨 Connection Refused by Azure OpenAI', {
+        ...errorDetails,
+        suggestion: 'Check if proxy settings are correct or Azure service is accessible'
+      })
+    } else if (
+      error.code === 'CERT_AUTHORITY_INVALID' ||
+      error.code === 'UNABLE_TO_VERIFY_LEAF_SIGNATURE'
+    ) {
+      logger.error('🚨 SSL Certificate Error for Azure OpenAI', {
+        ...errorDetails,
+        suggestion: 'SSL certificate validation failed - check proxy SSL settings'
+      })
+    } else if (error.response?.status === 401) {
+      logger.error('🚨 Azure OpenAI Authentication Failed', {
+        ...errorDetails,
+        suggestion: 'Check if Azure OpenAI API key is valid and not expired'
+      })
+    } else if (error.response?.status === 404) {
+      logger.error('🚨 Azure OpenAI Deployment Not Found', {
+        ...errorDetails,
+        suggestion: 'Check if deployment name and Azure endpoint are correct'
+      })
+    } else {
+      logger.error('🚨 Azure OpenAI Request Failed', errorDetails)
+    }
+
     throw error
   }
 }
@@ -165,6 +238,16 @@ const MAX_EVENT_SIZE = 16 * 1024 // 16KB 单个事件最大大小
 function handleStreamResponse(upstreamResponse, clientResponse, options = {}) {
   const { onData, onEnd, onError } = options
   const streamId = `stream_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
+
+  logger.info(`🔄 Starting Azure OpenAI stream handling`, {
+    streamId,
+    upstreamStatus: upstreamResponse.status,
+    upstreamHeaders: Object.keys(upstreamResponse.headers || {}),
+    clientRemoteAddress: clientResponse.req?.connection?.remoteAddress,
+    hasOnData: !!onData,
+    hasOnEnd: !!onEnd,
+    hasOnError: !!onError
+  })
 
   return new Promise((resolve, reject) => {
     let buffer = ''

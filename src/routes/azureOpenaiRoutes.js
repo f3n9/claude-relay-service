@@ -219,28 +219,63 @@ function generateSecureSessionHash(sessionId, config) {
   return crypto.createHmac('sha256', sessionSalt).update(sessionId).digest('hex')
 }
 
-// 使用 Azure OpenAI 服务选择账户 - 增强安全性
+// 使用 Azure OpenAI 服务选择账户 - 增强安全性和详细日志
 async function getAzureOpenAIAccount(apiKeyData, sessionId = null, requestedModel = null) {
+  const debugPrefix = `🔍 Azure Account Selection`
+  logger.info(`${debugPrefix}: Starting account selection`, {
+    apiKeyId: apiKeyData.id,
+    apiKeyName: apiKeyData.name,
+    sessionId: sessionId ? `${sessionId.substring(0, 8)}...` : null,
+    requestedModel
+  })
+
   try {
     const config = require('../../config/config')
     // 生成安全的会话哈希
     const sessionHash = generateSecureSessionHash(sessionId, config)
+    logger.debug(`${debugPrefix}: Generated session hash`, {
+      sessionId: sessionId ? 'present' : 'null',
+      sessionHash: sessionHash ? `${sessionHash.substring(0, 8)}...` : null
+    })
 
     // 选择可用账户
+    logger.info(`${debugPrefix}: Attempting to select available account`)
     const account = await azureOpenaiAccountService.selectAvailableAccount(
       apiKeyData.id,
       sessionHash,
       requestedModel
     )
 
-    if (!account || !account.apiKey) {
-      throw new Error('No available Azure OpenAI account found')
+    if (!account) {
+      logger.error(`${debugPrefix}: No account returned from selectAvailableAccount`)
+      throw new Error('No available Azure OpenAI account found - account is null')
     }
 
-    logger.info(`Selected Azure OpenAI account: ${account.name} (${account.id})`)
+    if (!account.apiKey) {
+      logger.error(`${debugPrefix}: Account found but missing API key`, {
+        accountId: account.id,
+        accountName: account.name,
+        hasEndpoint: !!account.azureEndpoint
+      })
+      throw new Error('No available Azure OpenAI account found - missing API key')
+    }
+
+    logger.info(`${debugPrefix}: Successfully selected account`, {
+      accountId: account.id,
+      accountName: account.name,
+      azureEndpoint: account.azureEndpoint,
+      deploymentName: account.deploymentName,
+      apiVersion: account.apiVersion,
+      hasApiKey: !!account.apiKey,
+      hasProxy: !!account.proxy
+    })
     return account
   } catch (error) {
-    logger.error('Failed to get Azure OpenAI account:', error)
+    logger.error(`${debugPrefix}: Failed to get Azure OpenAI account`, {
+      error: error.message,
+      stack: error.stack,
+      apiKeyId: apiKeyData.id
+    })
     throw error
   }
 }
@@ -249,9 +284,29 @@ async function getAzureOpenAIAccount(apiKeyData, sessionId = null, requestedMode
 async function handleAzureOpenAIEndpoint(req, res, options = {}) {
   const { endpoint = 'chat/completions', defaultModel = 'gpt-5', defaultStream = false } = options
 
+  // 生成请求ID用于全程跟踪
+  const requestId = `azure_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
+  const debugPrefix = `🔄 Azure Request [${requestId}]`
+
+  logger.info(`${debugPrefix}: Starting Azure OpenAI endpoint handler`, {
+    endpoint,
+    method: req.method,
+    url: req.url,
+    defaultModel,
+    defaultStream,
+    userAgent: req.headers['user-agent']?.substring(0, 50),
+    contentType: req.headers['content-type']
+  })
+
   try {
     // 从中间件获取 API Key 数据
     const apiKeyData = req.apiKey || {}
+    logger.info(`${debugPrefix}: API Key data retrieved`, {
+      hasApiKey: !!apiKeyData,
+      apiKeyId: apiKeyData.id,
+      apiKeyName: apiKeyData.name,
+      apiKeyType: apiKeyData.type
+    })
 
     // 从请求头或请求体中提取会话 ID
     const sessionId =
@@ -261,27 +316,53 @@ async function handleAzureOpenAIEndpoint(req, res, options = {}) {
       req.body?.conversation_id ||
       null
 
+    logger.debug(`${debugPrefix}: Session information`, {
+      sessionId: sessionId ? `${sessionId.substring(0, 8)}...` : null,
+      hasSessionHeaders: !!(req.headers['session_id'] || req.headers['x-session-id']),
+      hasSessionBody: !!(req.body?.session_id || req.body?.conversation_id)
+    })
+
     // 验证和规范化模型
     const requestedModel = validateAndNormalizeModel(req.body?.model || defaultModel, endpoint)
     const isStream = req.body?.stream === defaultStream ? true : req.body?.stream === true
 
-    // 生成请求ID用于去重
-    const requestId = `${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
-
-    logger.info(
-      `📤 Azure OpenAI ${endpoint} request - Model: ${requestedModel}, Stream: ${isStream}, RequestID: ${requestId}`
-    )
+    logger.info(`${debugPrefix}: Request parameters`, {
+      originalModel: req.body?.model,
+      requestedModel,
+      isStream,
+      endpoint,
+      bodySize: JSON.stringify(req.body || {}).length
+    })
 
     // 选择账户
+    logger.info(`${debugPrefix}: Selecting Azure OpenAI account`)
     const account = await getAzureOpenAIAccount(apiKeyData, sessionId, requestedModel)
 
+    logger.info(`${debugPrefix}: Selected Azure account details`, {
+      accountId: account.id,
+      accountName: account.name,
+      azureEndpoint: account.azureEndpoint,
+      deploymentName: account.deploymentName,
+      apiVersion: account.apiVersion,
+      hasProxy: !!account.proxy,
+      proxyType: account.proxy?.type || 'none'
+    })
+
     // 处理请求
+    logger.info(`${debugPrefix}: Making upstream request to Azure OpenAI`)
     const upstreamResponse = await azureOpenaiRelayService.handleAzureOpenAIRequest({
       account,
       requestBody: req.body,
       headers: req.headers,
       isStream,
       endpoint
+    })
+
+    logger.info(`${debugPrefix}: Received upstream response`, {
+      status: upstreamResponse.status,
+      statusText: upstreamResponse.statusText,
+      hasData: !!upstreamResponse.data,
+      responseHeaders: Object.keys(upstreamResponse.headers || {})
     })
 
     // 设置响应状态码

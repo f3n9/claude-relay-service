@@ -365,38 +365,79 @@ async function getAllAccounts() {
 
 // 选择可用账户（支持专属和共享账户）
 async function selectAvailableAccount(apiKeyId, sessionHash = null, requestedModel = null) {
+  const debugPrefix = `🔍 Azure Account Selection [${apiKeyId}]`
+
+  logger.info(`${debugPrefix}: Starting account selection process`, {
+    apiKeyId,
+    sessionHash: sessionHash ? `${sessionHash.substring(0, 8)}...` : null,
+    requestedModel
+  })
+
   // 首先检查是否有粘性会话
   const client = redisClient.getClientSafe()
   if (sessionHash) {
+    logger.debug(`${debugPrefix}: Checking sticky session mapping`)
     const mappedAccountId = await client.get(`${ACCOUNT_SESSION_MAPPING_PREFIX}${sessionHash}`)
 
     if (mappedAccountId) {
+      logger.info(`${debugPrefix}: Found sticky session mapping to account: ${mappedAccountId}`)
       const account = await getAccount(mappedAccountId)
       if (account && account.isActive === 'true') {
-        logger.debug(`Using sticky session account: ${mappedAccountId}`)
+        logger.info(`${debugPrefix}: Using sticky session account: ${mappedAccountId}`)
         return account
+      } else {
+        logger.warn(
+          `${debugPrefix}: Sticky session account is inactive or not found: ${mappedAccountId}`
+        )
       }
+    } else {
+      logger.debug(`${debugPrefix}: No sticky session mapping found`)
     }
   }
 
   // 获取 API Key 信息
+  logger.debug(`${debugPrefix}: Getting API Key data from Redis`)
   const apiKeyData = await client.hgetall(`api_key:${apiKeyId}`)
+
+  logger.info(`${debugPrefix}: API Key data retrieved`, {
+    hasApiKeyData: !!apiKeyData && Object.keys(apiKeyData).length > 0,
+    hasAzureBinding: !!apiKeyData.azureOpenaiAccountId,
+    azureAccountId: apiKeyData.azureOpenaiAccountId || 'none'
+  })
 
   // 检查是否绑定了 Azure OpenAI 账户
   if (apiKeyData.azureOpenaiAccountId) {
+    logger.info(
+      `${debugPrefix}: API Key has Azure OpenAI account binding: ${apiKeyData.azureOpenaiAccountId}`
+    )
     const account = await getAccount(apiKeyData.azureOpenaiAccountId)
+
     if (account && account.isActive === 'true') {
+      logger.info(`${debugPrefix}: Bound Azure account is active`, {
+        accountId: account.id,
+        accountName: account.name,
+        azureEndpoint: account.azureEndpoint,
+        deploymentName: account.deploymentName,
+        supportedModels: account.supportedModels
+      })
+
       // 检查模型支持
       if (
         requestedModel &&
         account.supportedModels &&
         !account.supportedModels.includes(requestedModel)
       ) {
+        logger.error(`${debugPrefix}: Account does not support requested model`, {
+          accountName: account.name,
+          requestedModel,
+          supportedModels: account.supportedModels
+        })
         throw new Error(`Account ${account.name} does not support model ${requestedModel}`)
       }
 
       // 创建粘性会话映射
       if (sessionHash) {
+        logger.debug(`${debugPrefix}: Creating sticky session mapping`)
         await client.setex(
           `${ACCOUNT_SESSION_MAPPING_PREFIX}${sessionHash}`,
           3600, // 1小时过期
@@ -404,42 +445,87 @@ async function selectAvailableAccount(apiKeyId, sessionHash = null, requestedMod
         )
       }
 
+      logger.info(`${debugPrefix}: Selected bound Azure account: ${account.id}`)
       return account
+    } else {
+      logger.warn(
+        `${debugPrefix}: Bound Azure account is inactive or not found: ${apiKeyData.azureOpenaiAccountId}`
+      )
     }
+  } else {
+    logger.debug(
+      `${debugPrefix}: API Key has no Azure OpenAI account binding, will check shared accounts`
+    )
   }
 
   // 从共享账户池选择
+  logger.info(`${debugPrefix}: Checking shared Azure OpenAI accounts`)
   const sharedAccountIds = await client.smembers(SHARED_AZURE_OPENAI_ACCOUNTS_KEY)
+
+  logger.info(`${debugPrefix}: Found ${sharedAccountIds.length} shared Azure OpenAI accounts`, {
+    sharedAccountIds: sharedAccountIds.slice(0, 5) // 只显示前5个ID避免日志过长
+  })
+
   const availableAccounts = []
 
   for (const accountId of sharedAccountIds) {
+    logger.debug(`${debugPrefix}: Checking shared account: ${accountId}`)
     const account = await getAccount(accountId)
+
     if (account && account.isActive === 'true' && !isRateLimited(account)) {
+      logger.debug(`${debugPrefix}: Account ${accountId} is active and not rate limited`)
+
       // 检查模型支持
       if (
         requestedModel &&
         account.supportedModels &&
         !account.supportedModels.includes(requestedModel)
       ) {
+        logger.debug(
+          `${debugPrefix}: Account ${accountId} does not support model ${requestedModel}`
+        )
         continue
       }
+
+      logger.debug(`${debugPrefix}: Account ${accountId} is available for selection`)
       availableAccounts.push(account)
+    } else {
+      logger.debug(`${debugPrefix}: Account ${accountId} is not available`, {
+        isActive: account?.isActive,
+        isRateLimited: account ? isRateLimited(account) : 'unknown'
+      })
     }
   }
 
+  logger.info(`${debugPrefix}: Found ${availableAccounts.length} available Azure OpenAI accounts`)
+
   if (availableAccounts.length === 0) {
+    logger.error(`${debugPrefix}: No available Azure OpenAI accounts found`, {
+      totalSharedAccounts: sharedAccountIds.length,
+      requestedModel,
+      checkedAccounts: sharedAccountIds
+    })
     throw new Error('No available Azure OpenAI accounts')
   }
 
   // 选择使用最少的账户
+  logger.debug(`${debugPrefix}: Selecting account with least usage`)
   const selectedAccount = availableAccounts.reduce((prev, curr) => {
     const prevUsage = parseInt(prev.totalUsage || 0)
     const currUsage = parseInt(curr.totalUsage || 0)
     return prevUsage <= currUsage ? prev : curr
   })
 
+  logger.info(`${debugPrefix}: Selected shared Azure account`, {
+    accountId: selectedAccount.id,
+    accountName: selectedAccount.name,
+    totalUsage: selectedAccount.totalUsage || 0,
+    availableAccountCount: availableAccounts.length
+  })
+
   // 创建粘性会话映射
   if (sessionHash) {
+    logger.debug(`${debugPrefix}: Creating sticky session mapping for selected account`)
     await client.setex(
       `${ACCOUNT_SESSION_MAPPING_PREFIX}${sessionHash}`,
       3600, // 1小时过期
