@@ -106,7 +106,7 @@ async function handleAzureOpenAIRequest({
       axiosConfig.responseType = 'stream'
     }
 
-    logger.info(`🔄 Making Azure OpenAI request`, {
+    logger.info(`Making Azure OpenAI request`, {
       requestUrl,
       method: 'POST',
       endpoint,
@@ -118,16 +118,19 @@ async function handleAzureOpenAIRequest({
       requestBodySize: JSON.stringify(processedBody).length
     })
 
-    logger.debug('📋 Azure OpenAI request headers', {
+    logger.debug('Azure OpenAI request headers', {
       'content-type': requestHeaders['Content-Type'],
       'api-key': '***',
       'user-agent': requestHeaders['user-agent'] || 'not-set',
+      host: requestHeaders['host'] || 'not-set',
+      'x-forwarded-for': requestHeaders['x-forwarded-for'] || 'not-set',
+      connection: requestHeaders['connection'] || 'not-set',
       customHeaders: Object.keys(requestHeaders).filter(
         (key) => !['Content-Type', 'api-key', 'user-agent'].includes(key)
       )
     })
 
-    logger.debug('📋 Azure OpenAI request body', {
+    logger.debug('Azure OpenAI request body', {
       model: processedBody.model,
       messageCount: processedBody.messages?.length || 0,
       hasSystemMessage: processedBody.messages?.[0]?.role === 'system',
@@ -146,7 +149,7 @@ async function handleAzureOpenAIRequest({
 
     const requestDuration = Date.now() - requestStartTime
 
-    logger.info(`📥 Azure OpenAI response received`, {
+    logger.info(`Azure OpenAI response received`, {
       status: response.status,
       statusText: response.statusText,
       duration: `${requestDuration}ms`,
@@ -175,13 +178,13 @@ async function handleAzureOpenAIRequest({
 
     // 特殊错误类型的详细日志
     if (error.code === 'ENOTFOUND') {
-      logger.error('🚨 DNS Resolution Failed for Azure OpenAI', {
+      logger.error('DNS Resolution Failed for Azure OpenAI', {
         ...errorDetails,
         hostname: requestUrl && requestUrl !== 'unknown' ? new URL(requestUrl).hostname : 'unknown',
         suggestion: 'Check if Azure endpoint URL is correct and accessible'
       })
     } else if (error.code === 'ECONNREFUSED') {
-      logger.error('🚨 Connection Refused by Azure OpenAI', {
+      logger.error('Connection Refused by Azure OpenAI', {
         ...errorDetails,
         suggestion: 'Check if proxy settings are correct or Azure service is accessible'
       })
@@ -189,22 +192,22 @@ async function handleAzureOpenAIRequest({
       error.code === 'CERT_AUTHORITY_INVALID' ||
       error.code === 'UNABLE_TO_VERIFY_LEAF_SIGNATURE'
     ) {
-      logger.error('🚨 SSL Certificate Error for Azure OpenAI', {
+      logger.error('SSL Certificate Error for Azure OpenAI', {
         ...errorDetails,
         suggestion: 'SSL certificate validation failed - check proxy SSL settings'
       })
     } else if (error.response?.status === 401) {
-      logger.error('🚨 Azure OpenAI Authentication Failed', {
+      logger.error('Azure OpenAI Authentication Failed', {
         ...errorDetails,
         suggestion: 'Check if Azure OpenAI API key is valid and not expired'
       })
     } else if (error.response?.status === 404) {
-      logger.error('🚨 Azure OpenAI Deployment Not Found', {
+      logger.error('Azure OpenAI Deployment Not Found', {
         ...errorDetails,
         suggestion: 'Check if deployment name and Azure endpoint are correct'
       })
     } else {
-      logger.error('🚨 Azure OpenAI Request Failed', errorDetails)
+      logger.error('Azure OpenAI Request Failed', errorDetails)
     }
 
     throw error
@@ -255,7 +258,7 @@ function handleStreamResponse(upstreamResponse, clientResponse, options = {}) {
   const { onData, onEnd, onError } = options
   const streamId = `stream_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
 
-  logger.info(`🔄 Starting Azure OpenAI stream handling`, {
+  logger.info(`Starting Azure OpenAI stream handling`, {
     streamId,
     upstreamStatus: upstreamResponse.status,
     upstreamHeaders: Object.keys(upstreamResponse.headers || {}),
@@ -318,7 +321,7 @@ function handleStreamResponse(upstreamResponse, clientResponse, options = {}) {
             // 获取使用统计（通常在最后一个 chunk 中）
             if (eventData.usage) {
               usageData = eventData.usage
-              logger.debug('📊 Captured Azure OpenAI usage data:', usageData)
+              logger.debug('Captured Azure OpenAI usage data:', usageData)
             }
 
             // 检查是否是完成事件
