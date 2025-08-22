@@ -63,7 +63,7 @@ async function handleAzureOpenAIRequest({
     // 准备请求头
     const requestHeaders = {
       'Content-Type': 'application/json',
-      Authorization: `Bearer: ${account.apiKey}`,
+      authorization: `Bearer: ${account.apiKey}`,
       ...headers
     }
 
