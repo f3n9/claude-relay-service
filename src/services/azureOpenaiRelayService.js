@@ -78,6 +78,8 @@ async function handleAzureOpenAIRequest({
     // 标准化模型名称
     if (processedBody.model) {
       processedBody.model = normalizeModelName(processedBody.model)
+    } else {
+      processedBody.model = 'gpt-5'
     }
 
     // 创建代理 agent
@@ -116,14 +118,25 @@ async function handleAzureOpenAIRequest({
       requestBodySize: JSON.stringify(processedBody).length
     })
 
-    logger.debug('📋 Request details', {
-      headers: { ...requestHeaders, 'api-key': '***' },
-      body: processedBody,
-      axiosConfig: {
-        ...axiosConfig,
-        data: '[BODY_DATA]',
-        headers: { ...axiosConfig.headers, 'api-key': '***' }
-      }
+    logger.debug('📋 Azure OpenAI request headers', {
+      'content-type': requestHeaders['Content-Type'],
+      'api-key': '***',
+      'user-agent': requestHeaders['user-agent'] || 'not-set',
+      customHeaders: Object.keys(requestHeaders).filter(
+        (key) => !['Content-Type', 'api-key', 'user-agent'].includes(key)
+      )
+    })
+
+    logger.debug('📋 Azure OpenAI request body', {
+      model: processedBody.model,
+      messageCount: processedBody.messages?.length || 0,
+      hasSystemMessage: processedBody.messages?.[0]?.role === 'system',
+      maxTokens: processedBody.max_tokens,
+      temperature: processedBody.temperature,
+      stream: processedBody.stream,
+      otherParams: Object.keys(processedBody).filter(
+        (key) => !['model', 'messages', 'max_tokens', 'temperature', 'stream'].includes(key)
+      )
     })
 
     const requestStartTime = Date.now()
