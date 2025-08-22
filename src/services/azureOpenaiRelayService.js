@@ -52,8 +52,7 @@ async function handleAzureOpenAIRequest({
     if (endpoint === 'chat/completions') {
       requestUrl = `${baseUrl}/openai/deployments/${deploymentName}/chat/completions?api-version=${apiVersion}`
     } else if (endpoint === 'responses') {
-      // Azure OpenAI 的 codex responses 端点
-      requestUrl = `${baseUrl}/openai/deployments/${deploymentName}/responses?api-version=${apiVersion}`
+      requestUrl = `${baseUrl}/openai/responses?api-version=${apiVersion}`
     } else {
       requestUrl = `${baseUrl}/openai/deployments/${deploymentName}/${endpoint}?api-version=${apiVersion}`
     }
