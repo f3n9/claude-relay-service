@@ -338,7 +338,9 @@ async function handleAzureOpenAIEndpoint(req, res, options = {}) {
 
     // 验证和规范化模型
     const requestedModel = validateAndNormalizeModel(req.body?.model || defaultModel, endpoint)
-    const isStream = req.body?.stream === defaultStream ? true : req.body?.stream === true
+    // Determine stream mode: respect explicit boolean, otherwise use endpoint default
+    const isStream =
+      typeof req.body?.stream === 'boolean' ? req.body.stream : Boolean(defaultStream)
 
     logger.info(`${debugPrefix}: Request parameters`, {
       originalModel: req.body?.model,
