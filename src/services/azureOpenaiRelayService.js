@@ -89,7 +89,7 @@ async function handleAzureOpenAIRequest({
     if (processedBody.model) {
       processedBody.model = normalizeModelName(processedBody.model)
     } else {
-      processedBody.model = 'gpt-5'
+      processedBody.model = 'gpt-5-mini'
     }
 
     // 创建代理 agent

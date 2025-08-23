@@ -15,6 +15,7 @@ const ALLOWED_MODELS = {
     'gpt-4o',
     'gpt-4o-mini',
     'gpt-5',
+    'gpt-5-mini',
     'gpt-35-turbo',
     'gpt-35-turbo-16k'
   ],
@@ -196,7 +197,7 @@ function normalizeAzureError(error) {
 // 模型验证函数
 function validateAndNormalizeModel(requestedModel, endpoint = 'chat/completions') {
   if (!requestedModel) {
-    return endpoint === 'chat/completions' ? 'gpt-5' : 'codex-mini'
+    return 'gpt-5-mini'
   }
 
   // 移除可能的前缀
@@ -216,7 +217,7 @@ function validateAndNormalizeModel(requestedModel, endpoint = 'chat/completions'
   // 验证模型是否在允许列表中
   if (!ALL_ALLOWED_MODELS.includes(normalizedModel)) {
     logger.warn(`Invalid model requested: ${requestedModel}, using default`)
-    return endpoint === 'chat/completions' ? 'gpt-5' : 'codex-mini'
+    return 'gpt-5-mini'
   }
 
   return normalizedModel
@@ -295,7 +296,7 @@ async function getAzureOpenAIAccount(apiKeyData, sessionId = null, requestedMode
 
 // 通用的 Azure OpenAI 端点处理器
 async function handleAzureOpenAIEndpoint(req, res, options = {}) {
-  const { endpoint = 'chat/completions', defaultModel = 'gpt-5', defaultStream = false } = options
+  const { endpoint = 'chat/completions', defaultModel = 'gpt-5-mini', defaultStream = false } = options
 
   // 生成请求ID用于全程跟踪
   const requestId = `azure_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
@@ -433,17 +434,17 @@ async function handleAzureOpenAIEndpoint(req, res, options = {}) {
 router.post('/chat/completions', authenticateApiKey, (req, res) =>
   handleAzureOpenAIEndpoint(req, res, {
     endpoint: 'chat/completions',
-    defaultModel: 'gpt-5',
+    defaultModel: 'gpt-5-mini',
     defaultStream: false,
     allowedModels: ALLOWED_MODELS.CHAT_MODELS
   })
 )
 
-// Codex Responses 端点 (支持 codex-mini 模型) - 使用通用处理器
+// Codex Responses 端点 (支持 gpt-5, codex-mini 模型) - 使用通用处理器
 router.post('/responses', authenticateApiKey, (req, res) =>
   handleAzureOpenAIEndpoint(req, res, {
     endpoint: 'responses',
-    defaultModel: 'gpt-5',
+    defaultModel: 'gpt-5-mini',
     defaultStream: true, // Codex默认为流式
     allowedModels: ALL_ALLOWED_MODELS
   })

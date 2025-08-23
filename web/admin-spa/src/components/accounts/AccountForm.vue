@@ -622,7 +622,7 @@
                 <input
                   v-model="form.defaultDeploymentName"
                   class="form-input w-full"
-                  placeholder="gpt-5"
+                  placeholder="gpt-5-mini"
                   type="text"
                 />
                 <p class="mt-1 text-xs text-gray-500">
@@ -1434,7 +1434,7 @@
               <input
                 v-model="form.defaultDeploymentName"
                 class="form-input w-full"
-                placeholder="gpt-5"
+                placeholder="gpt-5-mini"
                 type="text"
               />
               <p class="mt-1 text-xs text-gray-500">
@@ -1644,7 +1644,7 @@ const form = ref({
   // Azure OpenAI 特定字段
   azureEndpoint: props.account?.azureEndpoint || '',
   apiVersion: props.account?.apiVersion || '2024-02-01',
-  defaultDeploymentName: props.account?.deploymentName || 'gpt-5'
+  defaultDeploymentName: props.account?.deploymentName || 'gpt-5-mini'
 })
 
 // 模型映射表数据
@@ -2128,7 +2128,7 @@ const createAccount = async () => {
       // Azure OpenAI 账户特定数据
       data.azureEndpoint = form.value.azureEndpoint
       data.apiVersion = form.value.apiVersion || '2024-02-01'
-      data.deploymentName = form.value.defaultDeploymentName || 'gpt-5'
+      data.deploymentName = form.value.defaultDeploymentName || 'gpt-5-mini'
       data.apiKey = form.value.apiKey
       data.priority = form.value.priority || 50
     }
@@ -2321,7 +2321,7 @@ const updateAccount = async () => {
     if (props.account.platform === 'azure_openai') {
       data.azureEndpoint = form.value.azureEndpoint
       data.apiVersion = form.value.apiVersion || '2024-02-01'
-      data.deploymentName = form.value.defaultDeploymentName || 'gpt-5'
+      data.deploymentName = form.value.defaultDeploymentName || 'gpt-5-mini'
       if (form.value.apiKey) {
         data.apiKey = form.value.apiKey
       }
@@ -2657,7 +2657,7 @@ watch(
         // Azure OpenAI 特定字段
         azureEndpoint: newAccount.azureEndpoint || '',
         apiVersion: newAccount.apiVersion || '2024-02-01',
-        defaultDeploymentName: newAccount.deploymentName || 'gpt-5'
+        defaultDeploymentName: newAccount.deploymentName || 'gpt-5-mini'
       }
 
       // 如果是分组类型，加载分组ID

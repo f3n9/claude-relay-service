@@ -5013,7 +5013,7 @@ router.post('/azure-openai-accounts', authenticateAdmin, async (req, res) => {
       deploymentName,
       resourceName,
       apiKey,
-      supportedModels = ['gpt-5', 'codex-mini'],
+      supportedModels = ['gpt-5', 'codex-mini', 'gpt-5-mini'],
       proxy = null,
       isActive = true,
       schedulable = true
