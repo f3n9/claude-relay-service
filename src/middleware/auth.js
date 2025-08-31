@@ -1,9 +1,11 @@
 const apiKeyService = require('../services/apiKeyService')
 const userService = require('../services/userService')
 const logger = require('../utils/logger')
+const { securityAudit } = require('../utils/securityAudit')
 const redis = require('../models/redis')
 const { RateLimiterRedis } = require('rate-limiter-flexible')
 const config = require('../../config/config')
+const crypto = require('crypto')
 
 // 🔑 API Key验证中间件（优化版）
 const authenticateApiKey = async (req, res, next) => {
@@ -19,6 +21,14 @@ const authenticateApiKey = async (req, res, next) => {
       req.query.key
 
     if (!apiKey) {
+      // 记录安全事件：缺少API密钥
+      securityAudit.logAuthentication('API_KEY_AUTH', 'MISSING_CREDENTIAL', req, {
+        error: 'Missing API key',
+        attemptedHeaders: Object.keys(req.headers).filter(
+          (h) => h.toLowerCase().includes('auth') || h.toLowerCase().includes('key')
+        )
+      })
+
       logger.security(`🔒 Missing API key attempt from ${req.ip || 'unknown'}`)
       return res.status(401).json({
         error: 'Missing API key',
@@ -28,6 +38,13 @@ const authenticateApiKey = async (req, res, next) => {
 
     // 基本API Key格式验证
     if (typeof apiKey !== 'string' || apiKey.length < 10 || apiKey.length > 512) {
+      // 记录安全事件：无效的API密钥格式
+      securityAudit.logAuthentication('API_KEY_AUTH', 'INVALID_FORMAT', req, {
+        error: 'Invalid API key format',
+        keyLength: apiKey?.length || 0,
+        keyType: typeof apiKey
+      })
+
       logger.security(`🔒 Invalid API key format from ${req.ip || 'unknown'}`)
       return res.status(401).json({
         error: 'Invalid API key format',
@@ -40,6 +57,19 @@ const authenticateApiKey = async (req, res, next) => {
 
     if (!validation.valid) {
       const clientIP = req.ip || req.connection?.remoteAddress || 'unknown'
+
+      // 记录安全事件：API密钥验证失败
+      securityAudit.logAuthentication('API_KEY_AUTH', 'INVALID_CREDENTIAL', req, {
+        error: validation.error,
+        keyPrefix: `${apiKey.substring(0, 8)}...`, // 只记录前8个字符
+        clientIP,
+        validationDetails: {
+          reason: validation.reason || 'unknown',
+          expired: validation.expired || false,
+          disabled: validation.disabled || false
+        }
+      })
+
       logger.security(`🔒 Invalid API key attempt: ${validation.error} from ${clientIP}`)
       return res.status(401).json({
         error: 'Invalid API key',
@@ -92,6 +122,16 @@ const authenticateApiKey = async (req, res, next) => {
       }
 
       if (!clientAllowed) {
+        // 记录安全事件：客户端限制失败
+        securityAudit.logAuthorization('CLIENT_ACCESS', 'API_KEY_USAGE', 'DENIED', req, {
+          reason: 'Client not in allowed list',
+          apiKeyId: validation.keyData.id,
+          apiKeyName: validation.keyData.name,
+          userAgent,
+          allowedClients: validation.keyData.allowedClients,
+          predefinedClients: predefinedClients.map((c) => c.name)
+        })
+
         logger.security(
           `🚫 Client restriction failed for key: ${validation.keyData.id} (${validation.keyData.name}) from ${clientIP}, User-Agent: ${userAgent}`
         )
@@ -101,6 +141,14 @@ const authenticateApiKey = async (req, res, next) => {
           allowedClients: validation.keyData.allowedClients
         })
       }
+
+      // 记录成功的客户端验证
+      securityAudit.logAuthorization('CLIENT_ACCESS', 'API_KEY_USAGE', 'GRANTED', req, {
+        apiKeyId: validation.keyData.id,
+        apiKeyName: validation.keyData.name,
+        matchedClient,
+        userAgent
+      })
 
       logger.api(
         `✅ Client validated: ${matchedClient} for key: ${validation.keyData.id} (${validation.keyData.name})`
@@ -119,6 +167,14 @@ const authenticateApiKey = async (req, res, next) => {
       if (currentConcurrency > concurrencyLimit) {
         // 如果超过限制，立即减少计数
         await redis.decrConcurrency(validation.keyData.id)
+
+        // 记录安全事件：并发限制超出
+        securityAudit.logRateLimit('CONCURRENCY', concurrencyLimit, currentConcurrency, req, {
+          apiKeyId: validation.keyData.id,
+          apiKeyName: validation.keyData.name,
+          action: 'REQUEST_REJECTED'
+        })
+
         logger.security(
           `🚦 Concurrency limit exceeded for key: ${validation.keyData.id} (${validation.keyData.name}), current: ${currentConcurrency - 1}, limit: ${concurrencyLimit}`
         )
@@ -324,6 +380,23 @@ const authenticateApiKey = async (req, res, next) => {
 
     const authDuration = Date.now() - startTime
     const userAgent = req.headers['user-agent'] || 'No User-Agent'
+
+    // 记录成功的API密钥认证
+    securityAudit.logAuthentication('API_KEY_AUTH', 'SUCCESS', req, {
+      apiKeyId: validation.keyData.id,
+      apiKeyName: validation.keyData.name,
+      authDuration,
+      userAgent,
+      permissions: validation.keyData.permissions,
+      restrictions: {
+        concurrencyLimit: validation.keyData.concurrencyLimit,
+        rateLimitWindow: validation.keyData.rateLimitWindow,
+        dailyCostLimit: validation.keyData.dailyCostLimit,
+        enableModelRestriction: validation.keyData.enableModelRestriction,
+        enableClientRestriction: validation.keyData.enableClientRestriction
+      }
+    })
+
     logger.api(
       `🔓 Authenticated request from key: ${validation.keyData.name} (${validation.keyData.id}) in ${authDuration}ms`
     )
@@ -347,9 +420,10 @@ const authenticateApiKey = async (req, res, next) => {
   }
 }
 
-// 🛡️ 管理员验证中间件（优化版）
+// 🛡️ 管理员验证中间件（安全增强版 - 防止会话竞争条件）
 const authenticateAdmin = async (req, res, next) => {
   const startTime = Date.now()
+  const { distributedLock } = require('../utils/distributedLock')
 
   try {
     // 安全提取token，支持多种方式
@@ -375,65 +449,86 @@ const authenticateAdmin = async (req, res, next) => {
       })
     }
 
-    // 获取管理员会话（带超时处理）
-    const adminSession = await Promise.race([
-      redis.getSession(token),
-      new Promise((_, reject) =>
-        setTimeout(() => reject(new Error('Session lookup timeout')), 5000)
-      )
-    ])
+    // 🔒 使用分布式锁防止会话竞争条件 - 添加随机熵防止锁名称预测
+    const tokenHash = crypto.createHash('sha256').update(token).digest('hex').slice(0, 16)
+    const entropy = crypto.randomBytes(8).toString('hex') // 随机熵增强安全性
+    const lockResource = `admin_session:${tokenHash}:${entropy}`
+    const lockValue = await distributedLock.acquire(lockResource, 10, 10, 50) // 10秒TTL, 最多重试10次
 
-    if (!adminSession || Object.keys(adminSession).length === 0) {
-      logger.security(`🔒 Invalid admin token attempt from ${req.ip || 'unknown'}`)
-      return res.status(401).json({
-        error: 'Invalid admin token',
-        message: 'Invalid or expired admin session'
+    if (!lockValue) {
+      logger.warn(
+        `⚠️ Failed to acquire session lock for admin authentication from ${req.ip || 'unknown'}`
+      )
+      return res.status(503).json({
+        error: 'Service temporarily unavailable',
+        message: 'Please try again in a moment'
       })
     }
 
-    // 检查会话活跃性（可选：检查最后活动时间）
-    const now = new Date()
-    const lastActivity = new Date(adminSession.lastActivity || adminSession.loginTime)
-    const inactiveDuration = now - lastActivity
-    const maxInactivity = 24 * 60 * 60 * 1000 // 24小时
+    try {
+      // 获取管理员会话（带超时处理）
+      const adminSession = await Promise.race([
+        redis.getSession(token),
+        new Promise((_, reject) =>
+          setTimeout(() => reject(new Error('Session lookup timeout')), 5000)
+        )
+      ])
 
-    if (inactiveDuration > maxInactivity) {
-      logger.security(
-        `🔒 Expired admin session for ${adminSession.username} from ${req.ip || 'unknown'}`
-      )
-      await redis.deleteSession(token) // 清理过期会话
-      return res.status(401).json({
-        error: 'Session expired',
-        message: 'Admin session has expired due to inactivity'
-      })
+      if (!adminSession || Object.keys(adminSession).length === 0) {
+        logger.security(`🔒 Invalid admin token attempt from ${req.ip || 'unknown'}`)
+        return res.status(401).json({
+          error: 'Invalid admin token',
+          message: 'Invalid or expired admin session'
+        })
+      }
+
+      // 检查会话活跃性（可选：检查最后活动时间）
+      const now = new Date()
+      const lastActivity = new Date(adminSession.lastActivity || adminSession.loginTime)
+      const inactiveDuration = now - lastActivity
+      const maxInactivity = 24 * 60 * 60 * 1000 // 24小时
+
+      if (inactiveDuration > maxInactivity) {
+        logger.security(
+          `🔒 Expired admin session for ${adminSession.username} from ${req.ip || 'unknown'}`
+        )
+        await redis.deleteSession(token) // 清理过期会话
+        return res.status(401).json({
+          error: 'Session expired',
+          message: 'Admin session has expired due to inactivity'
+        })
+      }
+
+      // 🔄 原子性更新最后活动时间（在锁保护下）
+      const updatedSession = {
+        ...adminSession,
+        lastActivity: now.toISOString(),
+        lastIP: req.ip || 'unknown',
+        lastUserAgent: req.get('User-Agent') || 'unknown'
+      }
+
+      await redis.setSession(token, updatedSession, 86400)
+
+      // 设置管理员信息（只包含必要信息）
+      req.admin = {
+        id: adminSession.adminId || 'admin',
+        username: adminSession.username,
+        sessionId: token,
+        loginTime: adminSession.loginTime
+      }
+
+      const authDuration = Date.now() - startTime
+      logger.security(`🔐 Admin authenticated: ${adminSession.username} in ${authDuration}ms`)
+
+      return next()
+    } finally {
+      // 🔓 确保锁被释放
+      try {
+        await distributedLock.release(lockResource, lockValue)
+      } catch (lockError) {
+        logger.error('Failed to release admin session lock:', lockError)
+      }
     }
-
-    // 更新最后活动时间（异步，不阻塞请求）
-    redis
-      .setSession(
-        token,
-        {
-          ...adminSession,
-          lastActivity: now.toISOString()
-        },
-        86400
-      )
-      .catch((error) => {
-        logger.error('Failed to update admin session activity:', error)
-      })
-
-    // 设置管理员信息（只包含必要信息）
-    req.admin = {
-      id: adminSession.adminId || 'admin',
-      username: adminSession.username,
-      sessionId: token,
-      loginTime: adminSession.loginTime
-    }
-
-    const authDuration = Date.now() - startTime
-    logger.security(`🔐 Admin authenticated: ${adminSession.username} in ${authDuration}ms`)
-
-    return next()
   } catch (error) {
     const authDuration = Date.now() - startTime
     logger.error(`❌ Admin authentication error (${authDuration}ms):`, {
@@ -681,7 +776,7 @@ const requireAdmin = (req, res, next) => {
 // 注意：使用统计现在直接在/api/v1/messages路由中处理，
 // 以便从Claude API响应中提取真实的usage数据
 
-// 🚦 CORS中间件（优化版）
+// 🚦 CORS中间件（安全增强版 - 防止null origin绕过）
 const corsMiddleware = (req, res, next) => {
   const { origin } = req.headers
 
@@ -693,11 +788,75 @@ const corsMiddleware = (req, res, next) => {
     'https://127.0.0.1:3000'
   ]
 
-  // 设置CORS头
-  if (allowedOrigins.includes(origin) || !origin) {
-    res.header('Access-Control-Allow-Origin', origin || '*')
+  // 🔒 安全的Origin验证逻辑
+  let allowedOrigin = null
+
+  if (origin) {
+    // 1. 明确拒绝 null origin (可能是恶意请求)
+    if (origin === 'null') {
+      logger.security(`🚨 Rejected null origin CORS request from ${req.ip || 'unknown'}`)
+      securityAudit.logSecurityViolation(
+        'CORS_VIOLATION',
+        'Null origin not allowed',
+        'BLOCKED',
+        req,
+        { rejectedOrigin: origin, reason: 'null_origin_blocked' }
+      )
+      // 不设置 CORS 头，让浏览器阻止请求
+      return res.status(403).json({
+        error: 'Origin not allowed',
+        message: 'Null origins are not permitted for security reasons'
+      })
+    }
+
+    // 2. 验证origin是否在允许列表中
+    if (allowedOrigins.includes(origin)) {
+      allowedOrigin = origin
+    } else {
+      // 3. 记录被拒绝的origin（可能是攻击尝试）
+      logger.security(
+        `🚨 Rejected CORS request from unauthorized origin: ${origin} (IP: ${req.ip || 'unknown'})`
+      )
+      securityAudit.logSecurityViolation('CORS_VIOLATION', 'Unauthorized origin', 'BLOCKED', req, {
+        rejectedOrigin: origin,
+        allowedOrigins
+      })
+    }
   }
 
+  // 4. 设置CORS头（只对允许的origin）
+  if (allowedOrigin) {
+    res.header('Access-Control-Allow-Origin', allowedOrigin)
+    res.header('Access-Control-Allow-Credentials', 'true')
+    logger.debug(`✅ CORS allowed for origin: ${allowedOrigin}`)
+  } else if (!origin) {
+    // 5. 对于没有origin的请求（如直接访问、非浏览器请求），谨慎处理
+    // 只对特定的非敏感端点允许无origin访问
+    const publicEndpoints = ['/health', '/metrics', '/api/v1/models']
+    const isPublicEndpoint = publicEndpoints.some((endpoint) => req.path.startsWith(endpoint))
+
+    if (isPublicEndpoint) {
+      res.header('Access-Control-Allow-Origin', '*')
+      logger.debug(`✅ CORS allowed for public endpoint: ${req.path}`)
+    } else {
+      logger.security(
+        `🚨 Rejected CORS request without origin header to protected endpoint: ${req.path} (IP: ${req.ip || 'unknown'})`
+      )
+      securityAudit.logSecurityViolation(
+        'CORS_VIOLATION',
+        'Missing origin header for protected endpoint',
+        'BLOCKED',
+        req,
+        { endpoint: req.path, reason: 'missing_origin_protected_endpoint' }
+      )
+      return res.status(403).json({
+        error: 'Origin required',
+        message: 'Origin header is required for this endpoint'
+      })
+    }
+  }
+
+  // 6. 设置其他CORS头
   res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS')
   res.header(
     'Access-Control-Allow-Headers',
@@ -714,10 +873,9 @@ const corsMiddleware = (req, res, next) => {
   )
 
   res.header('Access-Control-Expose-Headers', ['X-Request-ID', 'Content-Type'].join(', '))
-
   res.header('Access-Control-Max-Age', '86400') // 24小时预检缓存
-  res.header('Access-Control-Allow-Credentials', 'true')
 
+  // 7. 处理预检请求
   if (req.method === 'OPTIONS') {
     res.status(204).end()
   } else {

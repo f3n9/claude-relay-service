@@ -95,13 +95,94 @@ class Application {
         next()
       })
 
-      // 🛡️ 安全中间件
+      // 🛡️ 增强的安全中间件
       this.app.use(
         helmet({
-          contentSecurityPolicy: false, // 允许内联样式和脚本
-          crossOriginEmbedderPolicy: false
+          // 内容安全策略 - 防止XSS攻击
+          contentSecurityPolicy: {
+            directives: {
+              defaultSrc: ["'self'"],
+              scriptSrc: [
+                "'self'",
+                "'unsafe-inline'",
+                "'unsafe-eval'",
+                'cdn.jsdelivr.net',
+                'unpkg.com'
+              ],
+              styleSrc: ["'self'", "'unsafe-inline'", 'cdn.jsdelivr.net', 'fonts.googleapis.com'],
+              fontSrc: ["'self'", 'fonts.gstatic.com', 'data:'],
+              imgSrc: ["'self'", 'data:', 'https:'],
+              connectSrc: ["'self'", 'https:'],
+              mediaSrc: ["'self'"],
+              objectSrc: ["'none'"],
+              childSrc: ["'none'"],
+              frameAncestors: ["'none'"],
+              formAction: ["'self'"],
+              baseUri: ["'self'"],
+              manifestSrc: ["'self'"]
+            }
+          },
+          // 防止点击劫持攻击
+          frameguard: { action: 'deny' },
+          // 防止MIME类型嗅探
+          noSniff: true,
+          // 强制HTTPS传输
+          hsts: {
+            maxAge: 31536000, // 1年
+            includeSubDomains: true,
+            preload: true
+          },
+          // X-XSS-Protection头
+          xssFilter: true,
+          // 引荐来源策略
+          referrerPolicy: { policy: 'same-origin' },
+          // 禁用X-Powered-By头
+          hidePoweredBy: true,
+          // DNS预取控制
+          dnsPrefetchControl: { allow: false },
+          // 跨源嵌入政策
+          crossOriginEmbedderPolicy: false, // 保持现有设置兼容性
+          // 权限策略
+          permissionsPolicy: {
+            features: {
+              accelerometer: [],
+              camera: [],
+              geolocation: [],
+              gyroscope: [],
+              magnetometer: [],
+              microphone: [],
+              payment: [],
+              usb: []
+            }
+          }
         })
       )
+
+      // 🔒 额外的安全头
+      this.app.use((req, res, next) => {
+        // 防止缓存敏感信息
+        if (req.path.startsWith('/admin') || req.path.startsWith('/api')) {
+          res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, private')
+          res.setHeader('Pragma', 'no-cache')
+          res.setHeader('Expires', '0')
+        }
+
+        // 安全相关的自定义头
+        res.setHeader('X-Content-Type-Options', 'nosniff')
+        res.setHeader('X-Frame-Options', 'DENY')
+        res.setHeader('X-XSS-Protection', '1; mode=block')
+
+        // 服务器信息隐藏
+        res.removeHeader('Server')
+        res.removeHeader('X-Powered-By')
+
+        // 安全Cookie设置
+        if (req.secure || req.get('x-forwarded-proto') === 'https') {
+          res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains; preload')
+        }
+
+        next()
+      })
 
       // 🌐 CORS
       if (config.web.enableCors) {

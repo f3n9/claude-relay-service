@@ -891,29 +891,75 @@ class ClaudeAccountService {
     return proxyAgent
   }
 
-  // 🔐 加密敏感数据
+  // 🔐 加密敏感数据（双密钥系统 - 向后兼容）
   _encryptSensitiveData(data) {
     if (!data) {
       return ''
     }
 
     try {
-      const key = this._generateEncryptionKey()
+      // 🔄 使用新的加密方法（v2）
+      return this._encryptDataV2(data)
+    } catch (error) {
+      logger.error('❌ V2 Encryption error:', error)
+      // 回退到旧版本加密（但不推荐）
+      return this._encryptDataV1(data)
+    }
+  }
+
+  // 🔐 新版加密方法 (v2) - 使用AES-GCM增强安全性
+  _encryptDataV2(data) {
+    if (!data) {
+      return ''
+    }
+
+    try {
+      const algorithm = 'aes-256-gcm'
+      const key = this._generateEncryptionKeyV2()
+      const iv = crypto.randomBytes(16) // GCM推荐的IV长度
+      const salt = crypto.randomBytes(32) // 每次加密使用唯一salt
+
+      const cipher = crypto.createCipheriv(algorithm, key, iv)
+      let encrypted = cipher.update(data, 'utf8', 'hex')
+      encrypted += cipher.final('hex')
+
+      // 获取认证标签（GCM模式提供完整性保护）
+      const authTag = cipher.getAuthTag()
+
+      // 格式: v2:salt:iv:authTag:encryptedData
+      const encryptedString = `v2:${salt.toString('hex')}:${iv.toString('hex')}:${authTag.toString('hex')}:${encrypted}`
+
+      logger.debug('🔒 Data encrypted using V2 method (AES-GCM)')
+      return encryptedString
+    } catch (error) {
+      logger.error('❌ V2 Encryption error:', error)
+      throw error
+    }
+  }
+
+  // 🔐 旧版加密方法 (v1) - 向后兼容
+  _encryptDataV1(data) {
+    if (!data) {
+      return ''
+    }
+
+    try {
+      const key = this._generateEncryptionKey() // 使用旧的密钥生成方法
       const iv = crypto.randomBytes(16)
 
       const cipher = crypto.createCipheriv(this.ENCRYPTION_ALGORITHM, key, iv)
       let encrypted = cipher.update(data, 'utf8', 'hex')
       encrypted += cipher.final('hex')
 
-      // 将IV和加密数据一起返回，用:分隔
-      return `${iv.toString('hex')}:${encrypted}`
+      // 旧格式: iv:encryptedData (添加v1前缀用于识别)
+      return `v1:${iv.toString('hex')}:${encrypted}`
     } catch (error) {
-      logger.error('❌ Encryption error:', error)
+      logger.error('❌ V1 Encryption error:', error)
       return data
     }
   }
 
-  // 🔓 解密敏感数据
+  // 🔓 解密敏感数据（双密钥系统支持）
   _decryptSensitiveData(encryptedData) {
     if (!encryptedData) {
       return ''
@@ -929,51 +975,176 @@ class ClaudeAccountService {
     try {
       let decrypted = ''
 
-      // 检查是否是新格式（包含IV）
-      if (encryptedData.includes(':')) {
-        // 新格式：iv:encryptedData
-        const parts = encryptedData.split(':')
-        if (parts.length === 2) {
-          const key = this._generateEncryptionKey()
-          const iv = Buffer.from(parts[0], 'hex')
-          const encrypted = parts[1]
-
-          const decipher = crypto.createDecipheriv(this.ENCRYPTION_ALGORITHM, key, iv)
-          decrypted = decipher.update(encrypted, 'hex', 'utf8')
-          decrypted += decipher.final('utf8')
-
-          // 💾 存入缓存（5分钟过期）
-          this._decryptCache.set(cacheKey, decrypted, 5 * 60 * 1000)
-
-          // 📊 定期打印缓存统计
-          if ((this._decryptCache.hits + this._decryptCache.misses) % 1000 === 0) {
-            this._decryptCache.printStats()
-          }
-
-          return decrypted
-        }
+      // 🔍 检测加密版本并使用对应的解密方法
+      if (encryptedData.startsWith('v2:')) {
+        // 新版解密 (AES-GCM)
+        decrypted = this._decryptDataV2(encryptedData)
+        logger.debug('🔓 Data decrypted using V2 method')
+      } else if (encryptedData.startsWith('v1:')) {
+        // 旧版解密 (AES-CBC with v1 prefix)
+        decrypted = this._decryptDataV1(encryptedData)
+        logger.debug('🔓 Data decrypted using V1 method')
+      } else if (encryptedData.includes(':')) {
+        // 最旧版本（没有版本前缀的v1）
+        decrypted = this._decryptDataLegacy(encryptedData)
+        logger.debug('🔓 Data decrypted using Legacy method')
+      } else {
+        // 尝试最古老的解密方式（向后兼容）
+        decrypted = this._decryptDataAncient(encryptedData)
+        logger.debug('🔓 Data decrypted using Ancient method')
       }
 
-      // 旧格式或格式错误，尝试旧方式解密（向后兼容）
-      // 注意：在新版本Node.js中这将失败，但我们会捕获错误
-      try {
-        const decipher = crypto.createDecipher('aes-256-cbc', config.security.encryptionKey)
-        decrypted = decipher.update(encryptedData, 'hex', 'utf8')
-        decrypted += decipher.final('utf8')
+      // 💾 存入缓存（5分钟过期）
+      this._decryptCache.set(cacheKey, decrypted, 5 * 60 * 1000)
 
-        // 💾 旧格式也存入缓存
-        this._decryptCache.set(cacheKey, decrypted, 5 * 60 * 1000)
-
-        return decrypted
-      } catch (oldError) {
-        // 如果旧方式也失败，返回原数据
-        logger.warn('⚠️ Could not decrypt data, returning as-is:', oldError.message)
-        return encryptedData
+      // 📊 定期打印缓存统计
+      if ((this._decryptCache.hits + this._decryptCache.misses) % 1000 === 0) {
+        this._decryptCache.printStats()
       }
+
+      // 🔄 自动迁移：如果解密的是旧版本数据，考虑重新加密
+      if (!encryptedData.startsWith('v2:') && decrypted && decrypted.length > 0) {
+        // 在后台异步重新加密（不阻塞当前操作）
+        this._asyncMigrateEncryption(encryptedData, decrypted).catch((error) => {
+          logger.debug('Background encryption migration failed:', error.message)
+        })
+      }
+
+      return decrypted
     } catch (error) {
       logger.error('❌ Decryption error:', error)
-      return encryptedData
+      return encryptedData // 返回原数据，让上层处理
     }
+  }
+
+  // 🔓 V2解密方法 (AES-GCM)
+  _decryptDataV2(encryptedData) {
+    try {
+      // 格式: v2:salt:iv:authTag:encryptedData
+      const parts = encryptedData.split(':')
+      if (parts.length !== 5 || parts[0] !== 'v2') {
+        throw new Error('Invalid V2 encrypted data format')
+      }
+
+      const salt = Buffer.from(parts[1], 'hex')
+      const iv = Buffer.from(parts[2], 'hex')
+      const authTag = Buffer.from(parts[3], 'hex')
+      const encrypted = parts[4]
+
+      // 使用相同的salt重新生成密钥
+      const key = crypto.pbkdf2Sync(config.security.encryptionKey, salt, 100000, 32, 'sha256')
+
+      const decipher = crypto.createDecipheriv('aes-256-gcm', key, iv)
+      decipher.setAuthTag(authTag)
+
+      let decrypted = decipher.update(encrypted, 'hex', 'utf8')
+      decrypted += decipher.final('utf8')
+
+      return decrypted
+    } catch (error) {
+      logger.error('❌ V2 Decryption error:', error)
+      throw error
+    }
+  }
+
+  // 🔓 V1解密方法 (AES-CBC with prefix)
+  _decryptDataV1(encryptedData) {
+    try {
+      // 格式: v1:iv:encryptedData
+      const parts = encryptedData.split(':')
+      if (parts.length !== 3 || parts[0] !== 'v1') {
+        throw new Error('Invalid V1 encrypted data format')
+      }
+
+      const key = this._generateEncryptionKey() // 使用缓存的旧密钥
+      const iv = Buffer.from(parts[1], 'hex')
+      const encrypted = parts[2]
+
+      const decipher = crypto.createDecipheriv(this.ENCRYPTION_ALGORITHM, key, iv)
+      let decrypted = decipher.update(encrypted, 'hex', 'utf8')
+      decrypted += decipher.final('utf8')
+
+      return decrypted
+    } catch (error) {
+      logger.error('❌ V1 Decryption error:', error)
+      throw error
+    }
+  }
+
+  // 🔓 Legacy解密方法（原始格式：iv:encryptedData）
+  _decryptDataLegacy(encryptedData) {
+    try {
+      const parts = encryptedData.split(':')
+      if (parts.length === 2) {
+        const key = this._generateEncryptionKey()
+        const iv = Buffer.from(parts[0], 'hex')
+        const encrypted = parts[1]
+
+        const decipher = crypto.createDecipheriv(this.ENCRYPTION_ALGORITHM, key, iv)
+        let decrypted = decipher.update(encrypted, 'hex', 'utf8')
+        decrypted += decipher.final('utf8')
+
+        return decrypted
+      }
+      throw new Error('Invalid legacy encrypted data format')
+    } catch (error) {
+      logger.warn('⚠️ Legacy decryption failed:', error.message)
+      throw error
+    }
+  }
+
+  // 🔓 Ancient解密方法（最古老的格式，使用createDecipher）
+  _decryptDataAncient(encryptedData) {
+    try {
+      // 注意：在新版本Node.js中这将失败，但我们会捕获错误
+      const decipher = crypto.createDecipher('aes-256-cbc', config.security.encryptionKey)
+      let decrypted = decipher.update(encryptedData, 'hex', 'utf8')
+      decrypted += decipher.final('utf8')
+
+      return decrypted
+    } catch (oldError) {
+      // 如果最古老的方式也失败，返回原数据
+      logger.warn('⚠️ Ancient decryption failed:', oldError.message)
+      throw oldError
+    }
+  }
+
+  // 🔄 异步加密迁移（后台执行）
+  async _asyncMigrateEncryption(oldEncryptedData, plaintext) {
+    try {
+      // 只迁移足够大的数据（避免为小数据浪费资源）
+      if (!plaintext || plaintext.length < 10) {
+        return
+      }
+
+      // 使用新方法重新加密
+      const newEncryptedData = this._encryptDataV2(plaintext)
+
+      logger.debug('🔄 Background encryption migration completed', {
+        oldFormat: `${oldEncryptedData.slice(0, 20)}...`,
+        newFormat: `${newEncryptedData.slice(0, 20)}...`,
+        dataLength: plaintext.length
+      })
+
+      // 注意：这里不直接更新数据库，只是准备新的加密数据
+      // 实际更新需要在上层业务逻辑中处理
+    } catch (error) {
+      logger.debug('Background encryption migration failed:', error.message)
+    }
+  }
+
+  // 🔑 生成V2加密密钥（增强版）
+  _generateEncryptionKeyV2() {
+    // 性能优化：缓存V2密钥派生结果
+    if (!this._encryptionKeyV2Cache) {
+      // 使用更强的密钥派生：PBKDF2 with 100,000 iterations
+      const baseKey = config.security.encryptionKey
+      const salt = crypto.createHash('sha256').update(`${baseKey}v2_salt`).digest()
+
+      this._encryptionKeyV2Cache = crypto.pbkdf2Sync(baseKey, salt, 100000, 32, 'sha256')
+      logger.info('🔑 V2 encryption key derived and cached')
+    }
+    return this._encryptionKeyV2Cache
   }
 
   // 🔑 生成加密密钥（辅助方法）

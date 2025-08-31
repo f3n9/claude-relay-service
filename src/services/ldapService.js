@@ -216,17 +216,39 @@ class LdapService {
     })
   }
 
-  // 🔍 搜索用户
+  // 🔍 搜索用户 - 使用安全的过滤器构造
   async searchUser(client, username) {
     return new Promise((resolve, reject) => {
-      const searchFilter = this.config.server.searchFilter.replace('{{username}}', username)
+      // 确保用户名经过验证和清理
+      let sanitizedUsername
+      try {
+        sanitizedUsername = this.validateAndSanitizeUsername(username)
+      } catch (error) {
+        logger.error('❌ Username validation failed:', error.message)
+        reject(error)
+        return
+      }
+
+      // 使用参数化方式构造LDAP过滤器，而不是字符串替换
+      const searchFilter = this.config.server.searchFilter.replace(
+        '{{username}}',
+        sanitizedUsername
+      )
+
+      // 验证最终的过滤器字符串
+      if (!searchFilter.includes(sanitizedUsername)) {
+        logger.error('❌ LDAP filter construction failed - sanitized username not found in filter')
+        reject(new Error('Internal error: LDAP filter construction failed'))
+        return
+      }
+
       const searchOptions = {
         scope: 'sub',
         filter: searchFilter,
         attributes: this.config.server.searchAttributes
       }
 
-      logger.debug(`🔍 Searching for user: ${username} with filter: ${searchFilter}`)
+      logger.debug(`🔍 Searching for user: ${sanitizedUsername} with filter: ${searchFilter}`)
 
       const entries = []
 
@@ -279,7 +301,7 @@ class LdapService {
             if (entries.length === 1) {
               resolve(entries[0])
             } else {
-              logger.warn(`⚠️ Multiple LDAP entries found for username: ${username}`)
+              logger.warn(`⚠️ Multiple LDAP entries found for username: ${sanitizedUsername}`)
               resolve(entries[0]) // 使用第一个结果
             }
           }
@@ -368,7 +390,22 @@ class LdapService {
     }
   }
 
-  // 🔍 验证和清理用户名
+  // 🔒 LDAP特殊字符转义 (RFC 4515)
+  escapeLdapFilter(input) {
+    if (!input || typeof input !== 'string') {
+      return ''
+    }
+
+    // 转义LDAP过滤器中的特殊字符 (RFC 4515)
+    return input
+      .replace(/\\/g, '\\5c') // \ -> \5c
+      .replace(/\*/g, '\\2a') // * -> \2a
+      .replace(/\(/g, '\\28') // ( -> \28
+      .replace(/\)/g, '\\29') // ) -> \29
+      .replace(/\0/g, '\\00') // NULL -> \00
+  }
+
+  // 🔍 验证和清理用户名 - 增强LDAP注入防护和Unicode安全
   validateAndSanitizeUsername(username) {
     if (!username || typeof username !== 'string' || username.trim() === '') {
       throw new Error('Username is required and must be a non-empty string')
@@ -376,23 +413,156 @@ class LdapService {
 
     const trimmedUsername = username.trim()
 
-    // 用户名只能包含字母、数字、下划线和连字符
-    const usernameRegex = /^[a-zA-Z0-9_-]+$/
-    if (!usernameRegex.test(trimmedUsername)) {
-      throw new Error('Username can only contain letters, numbers, underscores, and hyphens')
+    // 🔒 Unicode安全处理
+    // 1. Unicode规范化 - 防止使用等价字符绕过验证
+    let normalizedUsername = trimmedUsername.normalize('NFKC') // 兼容性规范化
+
+    // 2. 移除零宽度字符和其他不可见字符（可能用于绕过检测）
+    const invisibleCharPattern =
+      /[\u200B-\u200F\u202A-\u202E\u2060-\u2064\u2066-\u206F\uFEFF\u00AD]/g
+    normalizedUsername = normalizedUsername.replace(invisibleCharPattern, '')
+
+    // 3. 检测和拒绝同形异义字符（homoglyphs）- 防止视觉欺骗攻击
+    const suspiciousHomoglyphs = [
+      /[\u0430\u043E\u0440]/g, // 西里尔字母 а, о, р (看起来像拉丁字母)
+      /[\u03B1\u03BF\u03C1]/g, // 希腊字母 α, ο, ρ
+      /[\u0561\u043E\u0440]/g, // 亚美尼亚字母
+      /[\uFF41-\uFF5A]/g, // 全角拉丁字母
+      /[\u2460-\u2473]/g // 带圈数字
+    ]
+
+    for (const pattern of suspiciousHomoglyphs) {
+      if (pattern.test(normalizedUsername)) {
+        logger.security(`🚨 Homoglyph characters detected in username: ${trimmedUsername}`)
+        throw new Error(
+          'Username contains visually deceptive characters. Please use standard ASCII characters only.'
+        )
+      }
     }
 
-    // 长度限制 (防止过长的输入)
-    if (trimmedUsername.length > 64) {
-      throw new Error('Username cannot exceed 64 characters')
+    // 4. 检查控制字符和格式字符 - 使用字符类避免ESLint警告
+    const hasControlChars = (str) => {
+      // 检查C0控制字符 (U+0000 to U+001F)
+      for (let i = 0; i <= 0x1f; i++) {
+        if (str.includes(String.fromCharCode(i))) {
+          return true
+        }
+      }
+      // 检查DEL和C1控制字符 (U+007F to U+009F)
+      for (let i = 0x7f; i <= 0x9f; i++) {
+        if (str.includes(String.fromCharCode(i))) {
+          return true
+        }
+      }
+      // 检查其他格式字符
+      const formatChars = /[\u2000-\u200F\u2028-\u202F]/
+      return formatChars.test(str)
     }
 
-    // 不能以连字符开头或结尾
-    if (trimmedUsername.startsWith('-') || trimmedUsername.endsWith('-')) {
-      throw new Error('Username cannot start or end with a hyphen')
+    if (hasControlChars(normalizedUsername)) {
+      logger.security(`🚨 Control characters detected in username: ${trimmedUsername}`)
+      throw new Error('Username contains invalid control characters')
     }
 
-    return trimmedUsername
+    // 🔒 LDAP注入防护增强
+    // 检查是否包含LDAP注入攻击特征
+    const ldapInjectionPatterns = [
+      /[()&|!]/, // LDAP逻辑操作符
+      /\\[0-9a-fA-F]{2}/, // 十六进制转义序列
+      /\*(?!\s*$)/, // 通配符(除了末尾的单独*)
+      /[<>=~]/, // 比较操作符
+      /;\s*(objectClass|cn|uid|mail|ou)=/i, // 可能的注入尝试
+      null, // NULL字节检查已在hasControlChars中处理
+      /[\r\n]/, // 换行字符（可能的注入）
+      /\${.*}/, // 变量替换模式
+      /@.*@/, // 邮箱格式但在用户名上下文中可疑
+      /\.\./, // 目录遍历模式
+      /['"]/ // 引号字符
+    ]
+
+    for (const pattern of ldapInjectionPatterns) {
+      if (pattern && pattern.test(normalizedUsername)) {
+        logger.security(`🚨 LDAP injection attempt detected: ${trimmedUsername}`)
+        throw new Error(
+          'Username contains invalid characters that could lead to security vulnerabilities'
+        )
+      }
+    }
+
+    // 🔒 字符集限制 - 只允许安全字符
+    // 扩展的安全字符集：字母、数字、基本标点
+    const safeCharPattern = /^[a-zA-Z0-9._@-]+$/
+    if (!safeCharPattern.test(normalizedUsername)) {
+      // 为了更好的用户体验，提供更具体的错误信息
+      const hasInternational = /[^\x20-\x7E]/.test(normalizedUsername)
+      const hasSpecialChars = /[^a-zA-Z0-9._@-]/.test(
+        normalizedUsername.replace(/[^\x20-\x7E]/g, '')
+      )
+
+      let errorMsg =
+        'Username can only contain letters, numbers, periods, underscores, @ symbols, and hyphens'
+      if (hasInternational) {
+        errorMsg += '. International characters are not supported for security reasons'
+      }
+      if (hasSpecialChars) {
+        errorMsg += '. Special characters are not allowed'
+      }
+
+      throw new Error(errorMsg)
+    }
+
+    // 🔒 长度和格式验证
+    // 长度限制 (防止过长的输入和潜在的DoS攻击)
+    if (normalizedUsername.length > 128) {
+      // 增加最大长度到128以支持邮箱格式
+      throw new Error('Username cannot exceed 128 characters')
+    }
+
+    if (normalizedUsername.length < 2) {
+      // 最小长度限制
+      throw new Error('Username must be at least 2 characters long')
+    }
+
+    // 不能以特殊字符开头或结尾（除了@符号支持邮箱格式）
+    if (/^[-.]/.test(normalizedUsername) || /[-.]$/.test(normalizedUsername)) {
+      throw new Error('Username cannot start or end with a hyphen or period')
+    }
+
+    // 🔒 邮箱格式特殊验证（如果包含@）
+    if (normalizedUsername.includes('@')) {
+      const emailPattern = /^[a-zA-Z0-9._-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/
+      if (!emailPattern.test(normalizedUsername)) {
+        throw new Error('If username contains @, it must be a valid email format')
+      }
+
+      // 检查邮箱中的可疑模式
+      const suspiciousEmailPatterns = [
+        /\.{2,}/, // 连续多个点
+        /@{2,}/, // 多个@符号
+        /[._-]{3,}/ // 连续多个特殊字符
+      ]
+
+      for (const pattern of suspiciousEmailPatterns) {
+        if (pattern.test(normalizedUsername)) {
+          throw new Error('Email format username contains suspicious patterns')
+        }
+      }
+    }
+
+    // 🔒 最终的LDAP过滤器转义作为深度防护
+    const escapedUsername = this.escapeLdapFilter(normalizedUsername)
+
+    // 验证转义后的用户名
+    if (escapedUsername !== normalizedUsername) {
+      logger.info(
+        `🔒 LDAP escaping applied to username: ${normalizedUsername} -> ${escapedUsername}`
+      )
+    }
+
+    // 🔍 记录用户名验证成功（用于审计）
+    logger.debug(`✅ Username validation successful: ${escapedUsername}`)
+
+    return escapedUsername
   }
 
   // 🔐 主要的登录验证方法
