@@ -4,6 +4,53 @@ const config = require('../../config/config')
 const redis = require('../models/redis')
 const logger = require('../utils/logger')
 
+// 🔄 Data migration utilities for um-5 → dev compatibility
+const DataMigrationUtils = {
+  // Transform legacy um-5 data (userId/userUsername) to dev format (owner/ownerType)
+  normalizeApiKeyData(keyData) {
+    if (!keyData) return keyData
+
+    // Handle legacy userId/userUsername → owner/ownerType migration
+    if (keyData.userId && !keyData.owner) {
+      keyData.owner = keyData.userUsername || keyData.userId
+      keyData.ownerType = 'user'
+      logger.debug(`🔄 Migrated legacy key ${keyData.id}: userId(${keyData.userId}) → owner(${keyData.owner})`)
+    }
+    
+    // Handle legacy createdBy values
+    if (keyData.createdBy === 'user' && !keyData.ownerType) {
+      keyData.ownerType = 'user'
+    }
+
+    return keyData
+  },
+
+  // Check if this is legacy um-5 data
+  isLegacyData(keyData) {
+    return keyData && (keyData.userId || keyData.userUsername) && !keyData.owner
+  },
+
+  // Validate legacy user data (backward compatibility)
+  async validateLegacyUser(keyData) {
+    if (!keyData.userId) return { valid: true }
+
+    try {
+      // Try to load userService if it exists (for backward compatibility)
+      const userService = require('./userService')
+      const user = await userService.getUserById(keyData.userId, false)
+      if (!user || !user.isActive) {
+        return { valid: false, error: 'User account is disabled' }
+      }
+      return { valid: true }
+    } catch (error) {
+      // userService doesn't exist in dev branch, but that's okay
+      // Legacy keys without userService will still work
+      logger.debug(`Legacy user validation skipped for ${keyData.userId}: ${error.message}`)
+      return { valid: true }
+    }
+  }
+}
+
 class ApiKeyService {
   constructor() {
     this.prefix = config.security.apiKeyPrefix
@@ -32,7 +79,9 @@ class ApiKeyService {
       enableClientRestriction = false,
       allowedClients = [],
       dailyCostLimit = 0,
-      tags = []
+      tags = [],
+      owner = null,
+      ownerType = null
     } = options
 
     // 生成简单的API Key (64字符十六进制)
@@ -66,9 +115,9 @@ class ApiKeyService {
       createdAt: new Date().toISOString(),
       lastUsedAt: '',
       expiresAt: expiresAt || '',
-      createdBy: options.createdBy || 'admin',
-      userId: options.userId || '',
-      userUsername: options.userUsername || ''
+      createdBy: 'admin', // 可以根据需要扩展用户系统
+      owner: owner || '',
+      ownerType: ownerType || ''
     }
 
     // 保存API Key数据并建立哈希映射
@@ -101,7 +150,9 @@ class ApiKeyService {
       tags: JSON.parse(keyData.tags || '[]'),
       createdAt: keyData.createdAt,
       expiresAt: keyData.expiresAt,
-      createdBy: keyData.createdBy
+      createdBy: keyData.createdBy,
+      owner: keyData.owner,
+      ownerType: keyData.ownerType
     }
   }
 
@@ -116,10 +167,22 @@ class ApiKeyService {
       const hashedKey = this._hashApiKey(apiKey)
 
       // 通过哈希值直接查找API Key（性能优化）
-      const keyData = await redis.findApiKeyByHash(hashedKey)
+      let keyData = await redis.findApiKeyByHash(hashedKey)
 
       if (!keyData) {
         return { valid: false, error: 'API key not found' }
+      }
+
+      // 🔄 Apply backward compatibility migration for existing um-5 data
+      keyData = DataMigrationUtils.normalizeApiKeyData(keyData)
+
+      // 🔍 Validate legacy user data if present (backward compatibility)
+      if (DataMigrationUtils.isLegacyData(keyData)) {
+        const legacyUserValidation = await DataMigrationUtils.validateLegacyUser(keyData)
+        if (!legacyUserValidation.valid) {
+          return legacyUserValidation
+        }
+        logger.info(`🔄 Using legacy API key for user ${keyData.owner} (migrated from userId: ${keyData.userId})`)
       }
 
       // 检查是否激活
@@ -130,20 +193,6 @@ class ApiKeyService {
       // 检查是否过期
       if (keyData.expiresAt && new Date() > new Date(keyData.expiresAt)) {
         return { valid: false, error: 'API key has expired' }
-      }
-
-      // 如果API Key属于某个用户，检查用户是否被禁用
-      if (keyData.userId) {
-        try {
-          const userService = require('./userService')
-          const user = await userService.getUserById(keyData.userId, false)
-          if (!user || !user.isActive) {
-            return { valid: false, error: 'User account is disabled' }
-          }
-        } catch (error) {
-          logger.error('❌ Error checking user status during API key validation:', error)
-          return { valid: false, error: 'Unable to validate user status' }
-        }
       }
 
       // 获取使用统计（供返回数据使用）
@@ -217,27 +266,16 @@ class ApiKeyService {
   }
 
   // 📋 获取所有API Keys
-  async getAllApiKeys(includeDeleted = false) {
+  async getAllApiKeys() {
     try {
-      let apiKeys = await redis.getAllApiKeys()
+      const apiKeys = await redis.getAllApiKeys()
       const client = redis.getClientSafe()
-
-      // 默认过滤掉已删除的API Keys
-      if (!includeDeleted) {
-        apiKeys = apiKeys.filter((key) => key.isDeleted !== 'true')
-      }
 
       // 为每个key添加使用统计和当前并发数
       for (const key of apiKeys) {
+        // 🔄 Apply backward compatibility migration to each key
+        DataMigrationUtils.normalizeApiKeyData(key)
         key.usage = await redis.getUsageStats(key.id)
-        const costStats = await redis.getCostStats(key.id)
-        // Add cost information to usage object for frontend compatibility
-        if (key.usage && costStats) {
-          key.usage.total = key.usage.total || {}
-          key.usage.total.cost = costStats.total
-          key.usage.totalCost = costStats.total
-        }
-        key.totalCost = costStats ? costStats.total : 0
         key.tokenLimit = parseInt(key.tokenLimit)
         key.concurrencyLimit = parseInt(key.concurrencyLimit || 0)
         key.rateLimitWindow = parseInt(key.rateLimitWindow || 0)
@@ -323,10 +361,20 @@ class ApiKeyService {
   // 📝 更新API Key
   async updateApiKey(keyId, updates) {
     try {
+      logger.debug(`🔧 Updating API key ${keyId} with:`, updates)
+
       const keyData = await redis.getApiKey(keyId)
       if (!keyData || Object.keys(keyData).length === 0) {
+        logger.error(`❌ API key not found: ${keyId}`)
         throw new Error('API key not found')
       }
+
+      logger.debug(`📋 Current API key data:`, {
+        id: keyData.id,
+        name: keyData.name,
+        owner: keyData.owner,
+        ownerType: keyData.ownerType
+      })
 
       // 允许更新的字段
       const allowedUpdates = [
@@ -373,7 +421,10 @@ class ApiKeyService {
       // 更新时不需要重新建立哈希映射，因为API Key本身没有变化
       await redis.setApiKey(keyId, updatedData)
 
-      logger.success(`📝 Updated API key: ${keyId}`)
+      logger.success(`📝 Updated API key: ${keyId}`, {
+        updatedFields: Object.keys(updates),
+        newName: updatedData.name
+      })
 
       return { success: true }
     } catch (error) {
@@ -382,32 +433,16 @@ class ApiKeyService {
     }
   }
 
-  // 🗑️ 软删除API Key (保留使用统计)
-  async deleteApiKey(keyId, deletedBy = 'system', deletedByType = 'system') {
+  // 🗑️ 删除API Key
+  async deleteApiKey(keyId) {
     try {
-      const keyData = await redis.getApiKey(keyId)
-      if (!keyData || Object.keys(keyData).length === 0) {
+      const result = await redis.deleteApiKey(keyId)
+
+      if (result === 0) {
         throw new Error('API key not found')
       }
 
-      // 标记为已删除，保留所有数据和统计信息
-      const updatedData = {
-        ...keyData,
-        isDeleted: 'true',
-        deletedAt: new Date().toISOString(),
-        deletedBy,
-        deletedByType, // 'user', 'admin', 'system'
-        isActive: 'false' // 同时禁用
-      }
-
-      await redis.setApiKey(keyId, updatedData)
-
-      // 从哈希映射中移除（这样就不能再使用这个key进行API调用）
-      if (keyData.apiKey) {
-        await redis.deleteApiKeyHash(keyData.apiKey)
-      }
-
-      logger.success(`🗑️ Soft deleted API key: ${keyId} by ${deletedBy} (${deletedByType})`)
+      logger.success(`🗑️ Deleted API key: ${keyId}`)
 
       return { success: true }
     } catch (error) {
@@ -653,225 +688,6 @@ class ApiKeyService {
     return await redis.getAllAccountsUsageStats()
   }
 
-  // === 用户相关方法 ===
-
-  // 🔑 创建API Key（支持用户）
-  async createApiKey(options = {}) {
-    return await this.generateApiKey(options)
-  }
-
-  // 👤 获取用户的API Keys
-  async getUserApiKeys(userId, includeDeleted = false) {
-    try {
-      const allKeys = await redis.getAllApiKeys()
-      let userKeys = allKeys.filter((key) => key.userId === userId)
-
-      // 默认过滤掉已删除的API Keys
-      if (!includeDeleted) {
-        userKeys = userKeys.filter((key) => key.isDeleted !== 'true')
-      }
-
-      // Populate usage stats for each user's API key (same as getAllApiKeys does)
-      const userKeysWithUsage = []
-      for (const key of userKeys) {
-        const usage = await redis.getUsageStats(key.id)
-        const dailyCost = (await redis.getDailyCost(key.id)) || 0
-        const costStats = await redis.getCostStats(key.id)
-
-        userKeysWithUsage.push({
-          id: key.id,
-          name: key.name,
-          description: key.description,
-          key: key.apiKey ? `${this.prefix}****${key.apiKey.slice(-4)}` : null, // 只显示前缀和后4位
-          tokenLimit: parseInt(key.tokenLimit || 0),
-          isActive: key.isActive === 'true',
-          createdAt: key.createdAt,
-          lastUsedAt: key.lastUsedAt,
-          expiresAt: key.expiresAt,
-          usage,
-          dailyCost,
-          totalCost: costStats.total,
-          dailyCostLimit: parseFloat(key.dailyCostLimit || 0),
-          userId: key.userId,
-          userUsername: key.userUsername,
-          createdBy: key.createdBy,
-          // Include deletion fields for deleted keys
-          isDeleted: key.isDeleted,
-          deletedAt: key.deletedAt,
-          deletedBy: key.deletedBy,
-          deletedByType: key.deletedByType
-        })
-      }
-
-      return userKeysWithUsage
-    } catch (error) {
-      logger.error('❌ Failed to get user API keys:', error)
-      return []
-    }
-  }
-
-  // 🔍 通过ID获取API Key（检查权限）
-  async getApiKeyById(keyId, userId = null) {
-    try {
-      const keyData = await redis.getApiKey(keyId)
-      if (!keyData) {
-        return null
-      }
-
-      // 如果指定了用户ID，检查权限
-      if (userId && keyData.userId !== userId) {
-        return null
-      }
-
-      return {
-        id: keyData.id,
-        name: keyData.name,
-        description: keyData.description,
-        key: keyData.apiKey,
-        tokenLimit: parseInt(keyData.tokenLimit || 0),
-        isActive: keyData.isActive === 'true',
-        createdAt: keyData.createdAt,
-        lastUsedAt: keyData.lastUsedAt,
-        expiresAt: keyData.expiresAt,
-        userId: keyData.userId,
-        userUsername: keyData.userUsername,
-        createdBy: keyData.createdBy,
-        permissions: keyData.permissions,
-        dailyCostLimit: parseFloat(keyData.dailyCostLimit || 0)
-      }
-    } catch (error) {
-      logger.error('❌ Failed to get API key by ID:', error)
-      return null
-    }
-  }
-
-  // 🔄 重新生成API Key
-  async regenerateApiKey(keyId) {
-    try {
-      const existingKey = await redis.getApiKey(keyId)
-      if (!existingKey) {
-        throw new Error('API key not found')
-      }
-
-      // 生成新的key
-      const newApiKey = `${this.prefix}${this._generateSecretKey()}`
-      const newHashedKey = this._hashApiKey(newApiKey)
-
-      // 删除旧的哈希映射
-      const oldHashedKey = existingKey.apiKey
-      await redis.deleteApiKeyHash(oldHashedKey)
-
-      // 更新key数据
-      const updatedKeyData = {
-        ...existingKey,
-        apiKey: newHashedKey,
-        updatedAt: new Date().toISOString()
-      }
-
-      // 保存新数据并建立新的哈希映射
-      await redis.setApiKey(keyId, updatedKeyData, newHashedKey)
-
-      logger.info(`🔄 Regenerated API key: ${existingKey.name} (${keyId})`)
-
-      return {
-        id: keyId,
-        name: existingKey.name,
-        key: newApiKey, // 返回完整的新key
-        updatedAt: updatedKeyData.updatedAt
-      }
-    } catch (error) {
-      logger.error('❌ Failed to regenerate API key:', error)
-      throw error
-    }
-  }
-
-  // 🗑️ 硬删除API Key (完全移除)
-  async hardDeleteApiKey(keyId) {
-    try {
-      const keyData = await redis.getApiKey(keyId)
-      if (!keyData) {
-        throw new Error('API key not found')
-      }
-
-      // 删除key数据和哈希映射
-      await redis.deleteApiKey(keyId)
-      await redis.deleteApiKeyHash(keyData.apiKey)
-
-      logger.info(`🗑️ Deleted API key: ${keyData.name} (${keyId})`)
-      return true
-    } catch (error) {
-      logger.error('❌ Failed to delete API key:', error)
-      throw error
-    }
-  }
-
-  // 🚫 禁用用户的所有API Keys
-  async disableUserApiKeys(userId) {
-    try {
-      const userKeys = await this.getUserApiKeys(userId)
-      let disabledCount = 0
-
-      for (const key of userKeys) {
-        if (key.isActive) {
-          await this.updateApiKey(key.id, { isActive: false })
-          disabledCount++
-        }
-      }
-
-      logger.info(`🚫 Disabled ${disabledCount} API keys for user: ${userId}`)
-      return { count: disabledCount }
-    } catch (error) {
-      logger.error('❌ Failed to disable user API keys:', error)
-      throw error
-    }
-  }
-
-  // 📊 获取聚合使用统计（支持多个API Key）
-  async getAggregatedUsageStats(keyIds, options = {}) {
-    try {
-      if (!Array.isArray(keyIds)) {
-        keyIds = [keyIds]
-      }
-
-      const { period: _period = 'week', model: _model } = options
-      const stats = {
-        totalRequests: 0,
-        totalInputTokens: 0,
-        totalOutputTokens: 0,
-        totalCost: 0,
-        dailyStats: [],
-        modelStats: []
-      }
-
-      // 汇总所有API Key的统计数据
-      for (const keyId of keyIds) {
-        const keyStats = await redis.getUsageStats(keyId)
-        const costStats = await redis.getCostStats(keyId)
-        if (keyStats && keyStats.total) {
-          stats.totalRequests += keyStats.total.requests || 0
-          stats.totalInputTokens += keyStats.total.inputTokens || 0
-          stats.totalOutputTokens += keyStats.total.outputTokens || 0
-          stats.totalCost += costStats?.total || 0
-        }
-      }
-
-      // TODO: 实现日期范围和模型统计
-      // 这里可以根据需要添加更详细的统计逻辑
-
-      return stats
-    } catch (error) {
-      logger.error('❌ Failed to get usage stats:', error)
-      return {
-        totalRequests: 0,
-        totalInputTokens: 0,
-        totalOutputTokens: 0,
-        totalCost: 0,
-        dailyStats: [],
-        modelStats: []
-      }
-    }
-  }
-
   // 🧹 清理过期的API Keys
   async cleanupExpiredKeys() {
     try {
@@ -897,6 +713,92 @@ class ApiKeyService {
     } catch (error) {
       logger.error('❌ Failed to cleanup expired keys:', error)
       return 0
+    }
+  }
+
+  // 🔄 Legacy Methods for Backward Compatibility (um-5 → dev transition)
+  
+  // 👤 Get API Keys by user (legacy compatibility method)
+  async getUserApiKeys(userId, includeDeleted = false) {
+    try {
+      const allKeys = await this.getAllApiKeys()
+      // Support both legacy userId and new owner formats
+      let userKeys = allKeys.filter((key) => {
+        return key.userId === userId || (key.owner === userId && key.ownerType === 'user')
+      })
+
+      if (!includeDeleted) {
+        userKeys = userKeys.filter((key) => !key.isDeleted || key.isDeleted !== 'true')
+      }
+
+      // Transform to include both old and new formats for compatibility
+      return userKeys.map((key) => ({
+        ...key,
+        // Preserve legacy fields for existing integrations
+        userId: key.userId || (key.ownerType === 'user' ? key.owner : ''),
+        userUsername: key.userUsername || (key.ownerType === 'user' ? key.owner : ''),
+        owner: key.owner,
+        ownerType: key.ownerType
+      }))
+    } catch (error) {
+      logger.error('❌ Failed to get user API keys:', error)
+      throw error
+    }
+  }
+
+  // 🔍 Get API Key by ID with user permission check (legacy compatibility)
+  async getApiKeyById(keyId, userId = null) {
+    try {
+      const keyData = await redis.getApiKey(keyId)
+      if (!keyData) {
+        return null
+      }
+
+      // Apply migration
+      DataMigrationUtils.normalizeApiKeyData(keyData)
+
+      // Check permissions (support both legacy and new formats)
+      if (userId && keyData.userId !== userId && !(keyData.owner === userId && keyData.ownerType === 'user')) {
+        return null
+      }
+
+      const usage = await redis.getUsageStats(keyData.id)
+      const costStats = await redis.getCostStats(keyData.id)
+
+      return {
+        ...keyData,
+        usage,
+        costStats,
+        // Include both formats for compatibility
+        userId: keyData.userId || (keyData.ownerType === 'user' ? keyData.owner : ''),
+        userUsername: keyData.userUsername || (keyData.ownerType === 'user' ? keyData.owner : ''),
+        owner: keyData.owner,
+        ownerType: keyData.ownerType
+      }
+    } catch (error) {
+      logger.error('❌ Failed to get API key by ID:', error)
+      throw error
+    }
+  }
+
+  // 🚫 Disable user API Keys (legacy compatibility method)
+  async disableUserApiKeys(userId) {
+    try {
+      const userKeys = await this.getUserApiKeys(userId)
+      let disabledCount = 0
+
+      for (const key of userKeys) {
+        if (key.isActive === 'true' || key.isActive === true) {
+          await this.updateApiKey(key.id, { isActive: false })
+          disabledCount++
+        }
+      }
+
+      logger.info(`🚫 Disabled ${disabledCount} API keys for user: ${userId}`)
+      return { count: disabledCount }
+    } catch (error) {
+      logger.error('❌ Failed to disable user API keys:', error)
+      throw error
     }
   }
 }

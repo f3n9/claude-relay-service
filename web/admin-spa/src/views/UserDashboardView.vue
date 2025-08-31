@@ -1,397 +1,344 @@
 <template>
-  <div class="min-h-screen bg-gray-50">
-    <!-- 导航栏 -->
-    <nav class="bg-white shadow">
-      <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-        <div class="flex h-16 justify-between">
-          <div class="flex items-center">
-            <div class="flex flex-shrink-0 items-center">
-              <svg
-                class="h-8 w-8 text-blue-600"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  stroke-width="2"
-                />
-              </svg>
-              <span class="ml-2 text-xl font-bold text-gray-900">Claude Relay</span>
-            </div>
-            <div class="ml-10">
-              <div class="flex items-baseline space-x-4">
-                <button
-                  :class="[
-                    'rounded-md px-3 py-2 text-sm font-medium',
-                    activeTab === 'overview'
-                      ? 'bg-blue-100 text-blue-700'
-                      : 'text-gray-500 hover:text-gray-700'
-                  ]"
-                  @click="handleTabChange('overview')"
-                >
-                  Overview
-                </button>
-                <button
-                  :class="[
-                    'rounded-md px-3 py-2 text-sm font-medium',
-                    activeTab === 'api-keys'
-                      ? 'bg-blue-100 text-blue-700'
-                      : 'text-gray-500 hover:text-gray-700'
-                  ]"
-                  @click="handleTabChange('api-keys')"
-                >
-                  API Keys
-                </button>
-                <button
-                  :class="[
-                    'rounded-md px-3 py-2 text-sm font-medium',
-                    activeTab === 'usage'
-                      ? 'bg-blue-100 text-blue-700'
-                      : 'text-gray-500 hover:text-gray-700'
-                  ]"
-                  @click="handleTabChange('usage')"
-                >
-                  Usage Stats
-                </button>
-              </div>
-            </div>
-          </div>
-          <div class="flex items-center space-x-4">
-            <div class="text-sm text-gray-700">
-              Welcome, <span class="font-medium">{{ userStore.userName }}</span>
-            </div>
-            <button
-              class="rounded-md px-3 py-2 text-sm font-medium text-gray-500 hover:text-gray-700"
-              @click="handleLogout"
-            >
-              Logout
-            </button>
+  <div class="min-h-screen p-4 md:p-6" :class="isDarkMode ? 'gradient-bg-dark' : 'gradient-bg'">
+    <!-- 顶部导航 -->
+    <div class="glass-strong mb-6 rounded-3xl p-4 shadow-xl md:mb-8 md:p-6">
+      <div class="flex flex-col items-center justify-between gap-4 md:flex-row">
+        <div class="flex items-center gap-4">
+          <LogoTitle
+            :loading="false"
+            logo-src="/assets/logo.png"
+            :subtitle="`欢迎，${userInfo.displayName || userInfo.username}`"
+            title="Claude Relay Service"
+          />
+          <div class="text-sm text-gray-600 dark:text-gray-400">
+            <i class="fas fa-building mr-1"></i
+            >{{
+              userInfo.groups && userInfo.groups.length > 0
+                ? extractGroupName(userInfo.groups[0])
+                : '未知部门'
+            }}
           </div>
         </div>
-      </div>
-    </nav>
+        <div class="flex items-center gap-2 md:gap-4">
+          <!-- 主题切换按钮 -->
+          <ThemeToggle mode="dropdown" />
 
-    <!-- 主内容 -->
-    <main class="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
-      <!-- Overview Tab -->
-      <div v-if="activeTab === 'overview'" class="space-y-6">
-        <div>
-          <h1 class="text-2xl font-semibold text-gray-900">Dashboard Overview</h1>
-          <p class="mt-2 text-sm text-gray-600">Welcome to your Claude Relay dashboard</p>
-        </div>
+          <!-- 分隔线 -->
+          <div
+            class="h-8 w-px bg-gradient-to-b from-transparent via-gray-300 to-transparent opacity-50 dark:via-gray-600"
+          />
 
-        <!-- Stats Cards -->
-        <div class="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-5">
-          <div class="overflow-hidden rounded-lg bg-white shadow">
-            <div class="p-5">
-              <div class="flex items-center">
-                <div class="flex-shrink-0">
-                  <svg
-                    class="h-6 w-6 text-green-400"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      d="M15 7a2 2 0 012 2m0 0a2 2 0 012 2m-2-2h-6m6 0v6a2 2 0 01-2 2H9a2 2 0 01-2-2V9a2 2 0 012-2h6z"
-                      stroke-linecap="round"
-                      stroke-linejoin="round"
-                      stroke-width="2"
-                    />
-                  </svg>
-                </div>
-                <div class="ml-5 w-0 flex-1">
-                  <dl>
-                    <dt class="truncate text-sm font-medium text-gray-500">Active API Keys</dt>
-                    <dd class="text-lg font-medium text-gray-900">
-                      {{ apiKeysStats.active }}
-                    </dd>
-                  </dl>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div class="overflow-hidden rounded-lg bg-white shadow">
-            <div class="p-5">
-              <div class="flex items-center">
-                <div class="flex-shrink-0">
-                  <svg
-                    class="h-6 w-6 text-gray-400"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
-                      stroke-linecap="round"
-                      stroke-linejoin="round"
-                      stroke-width="2"
-                    />
-                  </svg>
-                </div>
-                <div class="ml-5 w-0 flex-1">
-                  <dl>
-                    <dt class="truncate text-sm font-medium text-gray-500">Deleted API Keys</dt>
-                    <dd class="text-lg font-medium text-gray-900">
-                      {{ apiKeysStats.deleted }}
-                    </dd>
-                  </dl>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div class="overflow-hidden rounded-lg bg-white shadow">
-            <div class="p-5">
-              <div class="flex items-center">
-                <div class="flex-shrink-0">
-                  <svg
-                    class="h-6 w-6 text-gray-400"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      d="M13 10V3L4 14h7v7l9-11h-7z"
-                      stroke-linecap="round"
-                      stroke-linejoin="round"
-                      stroke-width="2"
-                    />
-                  </svg>
-                </div>
-                <div class="ml-5 w-0 flex-1">
-                  <dl>
-                    <dt class="truncate text-sm font-medium text-gray-500">Total Requests</dt>
-                    <dd class="text-lg font-medium text-gray-900">
-                      {{ formatNumber(userProfile?.totalUsage?.requests || 0) }}
-                    </dd>
-                  </dl>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div class="overflow-hidden rounded-lg bg-white shadow">
-            <div class="p-5">
-              <div class="flex items-center">
-                <div class="flex-shrink-0">
-                  <svg
-                    class="h-6 w-6 text-gray-400"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z"
-                      stroke-linecap="round"
-                      stroke-linejoin="round"
-                      stroke-width="2"
-                    />
-                  </svg>
-                </div>
-                <div class="ml-5 w-0 flex-1">
-                  <dl>
-                    <dt class="truncate text-sm font-medium text-gray-500">Input Tokens</dt>
-                    <dd class="text-lg font-medium text-gray-900">
-                      {{ formatNumber(userProfile?.totalUsage?.inputTokens || 0) }}
-                    </dd>
-                  </dl>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div class="overflow-hidden rounded-lg bg-white shadow">
-            <div class="p-5">
-              <div class="flex items-center">
-                <div class="flex-shrink-0">
-                  <svg
-                    class="h-6 w-6 text-gray-400"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1"
-                      stroke-linecap="round"
-                      stroke-linejoin="round"
-                      stroke-width="2"
-                    />
-                  </svg>
-                </div>
-                <div class="ml-5 w-0 flex-1">
-                  <dl>
-                    <dt class="truncate text-sm font-medium text-gray-500">Total Cost</dt>
-                    <dd class="text-lg font-medium text-gray-900">
-                      ${{ (userProfile?.totalUsage?.totalCost || 0).toFixed(4) }}
-                    </dd>
-                  </dl>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <!-- User Info -->
-        <div class="rounded-lg bg-white shadow">
-          <div class="px-4 py-5 sm:p-6">
-            <h3 class="text-lg font-medium leading-6 text-gray-900">Account Information</h3>
-            <div class="mt-5 border-t border-gray-200">
-              <dl class="divide-y divide-gray-200">
-                <div class="py-4 sm:grid sm:grid-cols-3 sm:gap-4 sm:py-5">
-                  <dt class="text-sm font-medium text-gray-500">Username</dt>
-                  <dd class="mt-1 text-sm text-gray-900 sm:col-span-2 sm:mt-0">
-                    {{ userProfile?.username }}
-                  </dd>
-                </div>
-                <div class="py-4 sm:grid sm:grid-cols-3 sm:gap-4 sm:py-5">
-                  <dt class="text-sm font-medium text-gray-500">Display Name</dt>
-                  <dd class="mt-1 text-sm text-gray-900 sm:col-span-2 sm:mt-0">
-                    {{ userProfile?.displayName || 'N/A' }}
-                  </dd>
-                </div>
-                <div class="py-4 sm:grid sm:grid-cols-3 sm:gap-4 sm:py-5">
-                  <dt class="text-sm font-medium text-gray-500">Email</dt>
-                  <dd class="mt-1 text-sm text-gray-900 sm:col-span-2 sm:mt-0">
-                    {{ userProfile?.email || 'N/A' }}
-                  </dd>
-                </div>
-                <div class="py-4 sm:grid sm:grid-cols-3 sm:gap-4 sm:py-5">
-                  <dt class="text-sm font-medium text-gray-500">Role</dt>
-                  <dd class="mt-1 text-sm text-gray-900 sm:col-span-2 sm:mt-0">
-                    <span
-                      class="inline-flex items-center rounded-full bg-blue-100 px-2.5 py-0.5 text-xs font-medium text-blue-800"
-                    >
-                      {{ userProfile?.role || 'user' }}
-                    </span>
-                  </dd>
-                </div>
-                <div class="py-4 sm:grid sm:grid-cols-3 sm:gap-4 sm:py-5">
-                  <dt class="text-sm font-medium text-gray-500">Member Since</dt>
-                  <dd class="mt-1 text-sm text-gray-900 sm:col-span-2 sm:mt-0">
-                    {{ formatDate(userProfile?.createdAt) }}
-                  </dd>
-                </div>
-                <div class="py-4 sm:grid sm:grid-cols-3 sm:gap-4 sm:py-5">
-                  <dt class="text-sm font-medium text-gray-500">Last Login</dt>
-                  <dd class="mt-1 text-sm text-gray-900 sm:col-span-2 sm:mt-0">
-                    {{ formatDate(userProfile?.lastLoginAt) || 'N/A' }}
-                  </dd>
-                </div>
-              </dl>
-            </div>
-          </div>
+          <!-- 退出登录按钮 -->
+          <button
+            class="logout-button flex items-center gap-2 rounded-2xl px-4 py-2 transition-all duration-300 md:px-5 md:py-2.5"
+            @click="handleLogout"
+          >
+            <i class="fas fa-sign-out-alt text-sm md:text-base" />
+            <span class="text-xs font-semibold tracking-wide md:text-sm">退出登录</span>
+          </button>
         </div>
       </div>
+    </div>
 
-      <!-- API Keys Tab -->
-      <div v-else-if="activeTab === 'api-keys'">
-        <UserApiKeysManager />
+    <!-- Tab 切换 -->
+    <div class="mb-6 md:mb-8">
+      <div class="flex justify-center">
+        <div
+          class="inline-flex w-full max-w-2xl rounded-full border border-white/20 bg-white/10 p-1 shadow-lg backdrop-blur-xl md:w-auto"
+        >
+          <button
+            :class="['tab-pill-button', currentTab === 'api-keys' ? 'active' : '']"
+            @click="currentTab = 'api-keys'"
+          >
+            <i class="fas fa-key mr-1 md:mr-2" />
+            <span class="text-sm md:text-base">API Keys 管理</span>
+          </button>
+          <button
+            :class="['tab-pill-button', currentTab === 'tutorial' ? 'active' : '']"
+            @click="currentTab = 'tutorial'"
+          >
+            <i class="fas fa-graduation-cap mr-1 md:mr-2" />
+            <span class="text-sm md:text-base">使用教程</span>
+          </button>
+        </div>
       </div>
+    </div>
 
-      <!-- Usage Stats Tab -->
-      <div v-else-if="activeTab === 'usage'">
-        <UserUsageStats />
+    <!-- API Keys 管理 -->
+    <div v-if="currentTab === 'api-keys'" class="tab-content">
+      <UserApiKeysView :user-info="userInfo" />
+    </div>
+
+    <!-- 使用教程 -->
+    <div v-if="currentTab === 'tutorial'" class="tab-content">
+      <div class="glass-strong rounded-3xl shadow-xl">
+        <TutorialView />
       </div>
-    </main>
+    </div>
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
-import { useRouter } from 'vue-router'
-import { useUserStore } from '@/stores/user'
-import { showToast } from '@/utils/toast'
-import UserApiKeysManager from '@/components/user/UserApiKeysManager.vue'
-import UserUsageStats from '@/components/user/UserUsageStats.vue'
+import { ref, onMounted, computed } from 'vue'
+import { useThemeStore } from '@/stores/theme'
+import LogoTitle from '@/components/common/LogoTitle.vue'
+import ThemeToggle from '@/components/common/ThemeToggle.vue'
+import TutorialView from './TutorialView.vue'
+import UserApiKeysView from '@/components/user/UserApiKeysView.vue'
+const themeStore = useThemeStore()
 
-const router = useRouter()
-const userStore = useUserStore()
+// 当前标签页
+const currentTab = ref('api-keys')
 
-const activeTab = ref('overview')
-const userProfile = ref(null)
-const apiKeysStats = ref({ active: 0, deleted: 0 })
+// 主题相关
+const isDarkMode = computed(() => themeStore.isDarkMode)
 
-const formatNumber = (num) => {
-  if (num >= 1000000) {
-    return (num / 1000000).toFixed(1) + 'M'
-  } else if (num >= 1000) {
-    return (num / 1000).toFixed(1) + 'K'
+// 用户信息
+const userInfo = ref({})
+
+// 从组名中提取部门名称
+const extractGroupName = (group) => {
+  if (!group) return '未知部门'
+  // 从 "CN=总裁办,OU=微店,DC=corp,DC=weidian-inc,DC=com" 中提取 "总裁办"
+  const match = group.match(/CN=([^,]+)/)
+  return match ? match[1] : '未知部门'
+}
+
+// 退出登录
+const handleLogout = () => {
+  localStorage.removeItem('user_token')
+  localStorage.removeItem('user_info')
+  window.location.href = '/admin-next/api-stats'
+}
+
+// 验证用户token
+const verifyToken = async () => {
+  const token = localStorage.getItem('user_token')
+  if (!token) {
+    window.location.href = '/admin-next/api-stats'
+    return false
   }
-  return num.toString()
-}
 
-const formatDate = (dateString) => {
-  if (!dateString) return null
-  return new Date(dateString).toLocaleDateString('en-US', {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit'
-  })
-}
-
-const handleTabChange = (tab) => {
-  activeTab.value = tab
-  // Refresh API keys stats when switching to overview tab
-  if (tab === 'overview') {
-    loadApiKeysStats()
-  }
-}
-
-const handleLogout = async () => {
   try {
-    await userStore.logout()
-    showToast('Logged out successfully', 'success')
-    router.push('/user-login')
+    const response = await fetch('/admin/ldap/verify-token', {
+      headers: {
+        Authorization: `Bearer ${token}`
+      }
+    })
+
+    const result = await response.json()
+    if (result.success) {
+      userInfo.value = result.user
+      return true
+    } else {
+      localStorage.removeItem('user_token')
+      localStorage.removeItem('user_info')
+      window.location.href = '/admin-next/api-stats'
+      return false
+    }
   } catch (error) {
-    console.error('Logout error:', error)
-    showToast('Logout failed', 'error')
+    console.error('Token验证失败:', error)
+    localStorage.removeItem('user_token')
+    localStorage.removeItem('user_info')
+    window.location.href = '/admin-next/api-stats'
+    return false
   }
 }
 
-const loadUserProfile = async () => {
-  try {
-    userProfile.value = await userStore.getUserProfile()
-  } catch (error) {
-    console.error('Failed to load user profile:', error)
-    showToast('Failed to load user profile', 'error')
+// 初始化
+onMounted(async () => {
+  // 初始化主题
+  themeStore.initTheme()
+
+  // 验证token
+  const isValid = await verifyToken()
+  if (!isValid) return
+
+  // 从localStorage获取用户信息作为备份
+  const storedUserInfo = localStorage.getItem('user_info')
+  if (storedUserInfo && !userInfo.value.username) {
+    userInfo.value = JSON.parse(storedUserInfo)
   }
-}
-
-const loadApiKeysStats = async () => {
-  try {
-    const allApiKeys = await userStore.getUserApiKeys(true) // Include deleted keys
-    console.log('All API Keys received:', allApiKeys)
-
-    const activeKeys = allApiKeys.filter(
-      (key) => !(key.isDeleted === 'true' || key.deletedAt) && key.isActive
-    )
-    const deletedKeys = allApiKeys.filter((key) => key.isDeleted === 'true' || key.deletedAt)
-
-    console.log('Active keys:', activeKeys)
-    console.log('Deleted keys:', deletedKeys)
-    console.log('Active count:', activeKeys.length)
-    console.log('Deleted count:', deletedKeys.length)
-
-    apiKeysStats.value = { active: activeKeys.length, deleted: deletedKeys.length }
-  } catch (error) {
-    console.error('Failed to load API keys stats:', error)
-    apiKeysStats.value = { active: 0, deleted: 0 }
-  }
-}
-
-onMounted(() => {
-  loadUserProfile()
-  loadApiKeysStats()
 })
 </script>
 
 <style scoped>
-/* 组件特定样式 */
+/* 渐变背景 */
+.gradient-bg {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 50%, #f093fb 100%);
+  background-attachment: fixed;
+  min-height: 100vh;
+  position: relative;
+}
+
+.gradient-bg-dark {
+  background: linear-gradient(135deg, #1e293b 0%, #334155 50%, #475569 100%);
+  background-attachment: fixed;
+  min-height: 100vh;
+  position: relative;
+}
+
+.gradient-bg::before,
+.gradient-bg-dark::before {
+  content: '';
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.gradient-bg::before {
+  background:
+    radial-gradient(circle at 20% 80%, rgba(240, 147, 251, 0.2) 0%, transparent 50%),
+    radial-gradient(circle at 80% 20%, rgba(102, 126, 234, 0.2) 0%, transparent 50%),
+    radial-gradient(circle at 40% 40%, rgba(118, 75, 162, 0.1) 0%, transparent 50%);
+}
+
+.gradient-bg-dark::before {
+  background:
+    radial-gradient(circle at 20% 80%, rgba(100, 116, 139, 0.1) 0%, transparent 50%),
+    radial-gradient(circle at 80% 20%, rgba(71, 85, 105, 0.1) 0%, transparent 50%),
+    radial-gradient(circle at 40% 40%, rgba(30, 41, 59, 0.1) 0%, transparent 50%);
+}
+
+/* 玻璃态效果 */
+.glass-strong {
+  background: var(--glass-strong-color);
+  backdrop-filter: blur(25px);
+  border: 1px solid var(--border-color);
+  box-shadow:
+    0 25px 50px -12px rgba(0, 0, 0, 0.25),
+    0 0 0 1px rgba(255, 255, 255, 0.05),
+    inset 0 1px 0 rgba(255, 255, 255, 0.1);
+  position: relative;
+  z-index: 1;
+}
+
+:global(.dark) .glass-strong {
+  box-shadow:
+    0 25px 50px -12px rgba(0, 0, 0, 0.7),
+    0 0 0 1px rgba(55, 65, 81, 0.3),
+    inset 0 1px 0 rgba(75, 85, 99, 0.2);
+}
+
+/* 退出登录按钮 */
+.logout-button {
+  background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+  backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  color: white;
+  text-decoration: none;
+  box-shadow:
+    0 4px 12px rgba(239, 68, 68, 0.25),
+    inset 0 1px 1px rgba(255, 255, 255, 0.2);
+  position: relative;
+  overflow: hidden;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+:global(.dark) .logout-button {
+  background: rgba(239, 68, 68, 0.8);
+  border: 1px solid rgba(107, 114, 128, 0.4);
+  color: #f3f4f6;
+  box-shadow:
+    0 4px 12px rgba(0, 0, 0, 0.3),
+    inset 0 1px 1px rgba(255, 255, 255, 0.05);
+}
+
+.logout-button:hover {
+  transform: translateY(-2px) scale(1.02);
+  background: linear-gradient(135deg, #dc2626 0%, #ef4444 100%);
+  box-shadow:
+    0 8px 20px rgba(220, 38, 38, 0.35),
+    inset 0 1px 1px rgba(255, 255, 255, 0.3);
+  border-color: rgba(255, 255, 255, 0.4);
+}
+
+:global(.dark) .logout-button:hover {
+  background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+  border-color: rgba(239, 68, 68, 0.4);
+  box-shadow:
+    0 8px 20px rgba(239, 68, 68, 0.3),
+    inset 0 1px 1px rgba(255, 255, 255, 0.1);
+}
+
+.logout-button:active {
+  transform: translateY(-1px) scale(1);
+}
+
+/* Tab 胶囊按钮样式 */
+.tab-pill-button {
+  padding: 0.5rem 1rem;
+  border-radius: 9999px;
+  font-weight: 500;
+  font-size: 0.875rem;
+  color: rgba(255, 255, 255, 0.8);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  white-space: nowrap;
+  flex: 1;
+  justify-content: center;
+}
+
+:global(html.dark) .tab-pill-button {
+  color: rgba(209, 213, 219, 0.8);
+}
+
+@media (min-width: 768px) {
+  .tab-pill-button {
+    padding: 0.625rem 1.25rem;
+    flex: none;
+  }
+}
+
+.tab-pill-button:hover {
+  color: white;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+:global(html.dark) .tab-pill-button:hover {
+  color: #f3f4f6;
+  background: rgba(100, 116, 139, 0.2);
+}
+
+.tab-pill-button.active {
+  background: white;
+  color: #764ba2;
+  box-shadow:
+    0 4px 6px -1px rgba(0, 0, 0, 0.1),
+    0 2px 4px -1px rgba(0, 0, 0, 0.06);
+}
+
+:global(html.dark) .tab-pill-button.active {
+  background: rgba(71, 85, 105, 0.9);
+  color: #f3f4f6;
+  box-shadow:
+    0 4px 6px -1px rgba(0, 0, 0, 0.3),
+    0 2px 4px -1px rgba(0, 0, 0, 0.2);
+}
+
+/* Tab 内容切换动画 */
+.tab-content {
+  animation: tabFadeIn 0.4s ease-out;
+}
+
+@keyframes tabFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
 </style>
