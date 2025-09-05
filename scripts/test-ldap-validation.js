@@ -62,23 +62,14 @@ async function testLdapValidation(targetUsername = null) {
       usersToTest = [user]
       logger.info(`🎯 Testing specific user: ${targetUsername}`)
     } else {
-      // Test all active users across all pages
-      usersToTest = []
-      const limit = 100
-      let page = 1
-      // eslint-disable-next-line no-constant-condition
-      while (true) {
-        const { users, totalPages } = await userService.getAllUsers({
-          isActive: true,
-          page,
-          limit
-        })
-        usersToTest.push(...users)
-        if (page >= totalPages) {
-          break
-        }
-        page++
-      }
+      // Test all active users in a single scan
+      const { users } = await userService.getAllUsers({
+        isActive: true,
+        page: 1,
+        limit: Number.MAX_SAFE_INTEGER,
+        includeUsageStats: false
+      })
+      usersToTest = users
       logger.info(`🔍 Testing ${usersToTest.length} active users`)
     }
 
