@@ -721,6 +721,64 @@ class LdapService {
     }
   }
 
+  // 🔍 验证用户是否仍在LDAP中存在且有效（用于定期验证）
+  async validateUserInLdap(username) {
+    if (!this.config.enabled) {
+      throw new Error('LDAP authentication is not enabled')
+    }
+
+    // 验证和清理用户名
+    const sanitizedUsername = this.validateAndSanitizeUsername(username)
+
+    // 验证LDAP服务器配置
+    if (!this.config.server || !this.config.server.url) {
+      throw new Error('LDAP server URL is not configured')
+    }
+
+    const client = this.createClient()
+
+    try {
+      // 1. 使用管理员凭据绑定
+      await this.bindClient(client)
+
+      // 2. 搜索用户
+      const ldapEntry = await this.searchUser(client, sanitizedUsername)
+
+      if (!ldapEntry) {
+        logger.debug(`🚫 User not found in LDAP during validation: ${sanitizedUsername}`)
+        return { exists: false, message: 'User not found in LDAP' }
+      }
+
+      // 3. 用户存在，提取基本信息用于更新
+      const userInfo = this.extractUserInfo(ldapEntry, sanitizedUsername)
+
+      logger.debug(`✅ User validated in LDAP: ${sanitizedUsername}`)
+      return {
+        exists: true,
+        userInfo,
+        message: 'User exists and is valid in LDAP'
+      }
+    } catch (error) {
+      logger.error('❌ LDAP validation error:', {
+        username: sanitizedUsername,
+        error: error.message,
+        stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+      })
+
+      // 返回错误信息，让调用方决定如何处理
+      throw new Error(`LDAP validation failed: ${error.message}`)
+    } finally {
+      // 确保客户端连接被关闭
+      if (client) {
+        client.unbind((err) => {
+          if (err) {
+            logger.debug('Error unbinding LDAP validation client:', err)
+          }
+        })
+      }
+    }
+  }
+
   // 📊 获取LDAP配置信息（不包含敏感信息）
   getConfigInfo() {
     const configInfo = {
