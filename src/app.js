@@ -534,9 +534,120 @@ class Application {
       }
     }, config.system.cleanupInterval)
 
+    // 🔍 LDAP用户验证任务 - 根据配置间隔运行
+    if (config.ldap && config.ldap.enabled && config.ldap.userValidationInterval > 0) {
+      setInterval(async () => {
+        try {
+          await this.validateLdapUsers()
+        } catch (error) {
+          logger.error('❌ LDAP user validation task failed:', error)
+        }
+      }, config.ldap.userValidationInterval)
+
+      logger.info(
+        `🔍 LDAP user validation scheduled every ${config.ldap.userValidationInterval / 1000 / 60 / 60} hours`
+      )
+    }
+
     logger.info(
       `🔄 Cleanup tasks scheduled every ${config.system.cleanupInterval / 1000 / 60} minutes`
     )
+  }
+
+  // 🔍 验证LDAP用户有效性
+  async validateLdapUsers() {
+    try {
+      logger.info('🔍 Starting LDAP user validation...')
+
+      const ldapService = require('./services/ldapService')
+      const userService = require('./services/userService')
+
+      // 检查LDAP是否启用
+      if (!ldapService.config.enabled) {
+        logger.debug('🚫 LDAP is not enabled, skipping user validation')
+        return
+      }
+
+      // 获取所有活跃用户，仅扫描一次以避免性能问题
+      const { users: activeUsers } = await userService.getAllUsers({
+        isActive: true,
+        page: 1,
+        limit: Number.MAX_SAFE_INTEGER,
+        includeUsageStats: false
+      })
+
+      if (activeUsers.length === 0) {
+        logger.debug('📝 No active users found for LDAP validation')
+        return
+      }
+
+      logger.info(`🔍 Validating ${activeUsers.length} active users against LDAP...`)
+
+      let validatedCount = 0
+      let deactivatedCount = 0
+      let errorCount = 0
+
+      for (const user of activeUsers) {
+        try {
+          // 验证用户是否仍在LDAP中存在
+          const validationResult = await ldapService.validateUserInLdap(user.username)
+
+          if (validationResult.exists) {
+            // 用户仍然存在，可以选择更新用户信息
+            if (validationResult.userInfo) {
+              try {
+                await userService.createOrUpdateUser({
+                  ...validationResult.userInfo,
+                  role: user.role, // 保持现有角色
+                  isActive: user.isActive // 保持现有状态
+                })
+                logger.debug(`📝 Updated LDAP user info: ${user.username}`)
+              } catch (updateError) {
+                logger.warn(
+                  `⚠️ Failed to update user info for ${user.username}:`,
+                  updateError.message
+                )
+              }
+            }
+            validatedCount++
+          } else {
+            // 用户在LDAP中不存在，需要停用
+            await userService.updateUserStatus(user.id, false)
+            logger.warn(`🚫 Deactivated user ${user.username}: ${validationResult.message}`)
+            deactivatedCount++
+          }
+        } catch (error) {
+          logger.error(`❌ Failed to validate user ${user.username} in LDAP:`, {
+            error: error.message,
+            userId: user.id
+          })
+          errorCount++
+
+          // 如果是连接错误，记录但不停用用户（避免误操作）
+          if (error.message.includes('connection') || error.message.includes('timeout')) {
+            logger.warn(
+              `⚠️ LDAP connection issue for ${user.username}, user not deactivated to avoid false positives`
+            )
+          }
+        }
+      }
+
+      const summary = `✅ LDAP user validation completed: ${validatedCount} validated, ${deactivatedCount} deactivated, ${errorCount} errors`
+      logger.info(summary)
+
+      // 如果有用户被停用，发送安全日志
+      if (deactivatedCount > 0) {
+        logger.security(
+          `🔒 LDAP validation deactivated ${deactivatedCount} users who are no longer valid in LDAP directory`
+        )
+      }
+    } catch (error) {
+      logger.error('❌ LDAP user validation process failed:', {
+        error: error.message,
+        stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+      })
+      throw error
+    }
   }
 
   setupGracefulShutdown() {

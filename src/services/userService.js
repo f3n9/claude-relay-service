@@ -192,7 +192,7 @@ class UserService {
   async getAllUsers(options = {}) {
     try {
       const client = redis.getClientSafe()
-      const { page = 1, limit = 20, role, isActive } = options
+      const { page = 1, limit = 20, role, isActive, includeUsageStats = true } = options
       const pattern = `${this.userPrefix}*`
       const keys = await client.keys(pattern)
 
@@ -210,14 +210,25 @@ class UserService {
             continue
           }
 
-          // Calculate dynamic usage stats for each user
-          try {
-            const usageStats = await this.calculateUserUsageStats(user.id)
-            user.totalUsage = usageStats.totalUsage
-            user.apiKeyCount = usageStats.apiKeyCount
-          } catch (error) {
-            logger.error(`❌ Error calculating usage for user ${user.id}:`, error)
-            // Fallback to stored values
+          if (includeUsageStats) {
+            // Calculate dynamic usage stats for each user
+            try {
+              const usageStats = await this.calculateUserUsageStats(user.id)
+              user.totalUsage = usageStats.totalUsage
+              user.apiKeyCount = usageStats.apiKeyCount
+            } catch (error) {
+              logger.error(`❌ Error calculating usage for user ${user.id}:`, error)
+              // Fallback to stored values
+              user.totalUsage = user.totalUsage || {
+                requests: 0,
+                inputTokens: 0,
+                outputTokens: 0,
+                totalCost: 0
+              }
+              user.apiKeyCount = user.apiKeyCount || 0
+            }
+          } else {
+            // Ensure usage fields exist without recalculation
             user.totalUsage = user.totalUsage || {
               requests: 0,
               inputTokens: 0,
