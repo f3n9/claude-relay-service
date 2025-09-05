@@ -568,9 +568,23 @@ class Application {
         return
       }
 
-      // 获取所有活跃用户
-      const allUsersResult = await userService.getAllUsers({ isActive: true })
-      const activeUsers = allUsersResult.users
+      // 获取所有活跃用户，遍历所有分页
+      const activeUsers = []
+      const limit = 100
+      let page = 1
+      // eslint-disable-next-line no-constant-condition
+      while (true) {
+        const { users, totalPages } = await userService.getAllUsers({
+          isActive: true,
+          page,
+          limit
+        })
+        activeUsers.push(...users)
+        if (page >= totalPages) {
+          break
+        }
+        page++
+      }
 
       if (activeUsers.length === 0) {
         logger.debug('📝 No active users found for LDAP validation')
