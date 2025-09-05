@@ -62,9 +62,14 @@ async function testLdapValidation(targetUsername = null) {
       usersToTest = [user]
       logger.info(`🎯 Testing specific user: ${targetUsername}`)
     } else {
-      // Test all active users
-      const allUsersResult = await userService.getAllUsers({ isActive: true })
-      usersToTest = allUsersResult.users
+      // Test all active users in a single scan
+      const { users } = await userService.getAllUsers({
+        isActive: true,
+        page: 1,
+        limit: Number.MAX_SAFE_INTEGER,
+        includeUsageStats: false
+      })
+      usersToTest = users
       logger.info(`🔍 Testing ${usersToTest.length} active users`)
     }
 

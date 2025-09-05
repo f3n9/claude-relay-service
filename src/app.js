@@ -568,9 +568,13 @@ class Application {
         return
       }
 
-      // 获取所有活跃用户
-      const allUsersResult = await userService.getAllUsers({ isActive: true })
-      const activeUsers = allUsersResult.users
+      // 获取所有活跃用户，仅扫描一次以避免性能问题
+      const { users: activeUsers } = await userService.getAllUsers({
+        isActive: true,
+        page: 1,
+        limit: Number.MAX_SAFE_INTEGER,
+        includeUsageStats: false
+      })
 
       if (activeUsers.length === 0) {
         logger.debug('📝 No active users found for LDAP validation')
