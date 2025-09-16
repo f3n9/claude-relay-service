@@ -148,6 +148,9 @@ const config = {
   // 🔐 LDAP 认证配置
   ldap: {
     enabled: process.env.LDAP_ENABLED === 'true',
+    // 🔍 用户验证间隔配置（毫秒）- 定期验证LDAP用户是否仍然有效
+    userValidationInterval:
+      parseInt(process.env.LDAP_USER_VALIDATION_INTERVAL) || 24 * 60 * 60 * 1000, // 默认24小时
     server: {
       url: process.env.LDAP_URL || 'ldap://localhost:389',
       bindDN: process.env.LDAP_BIND_DN || 'cn=admin,dc=example,dc=com',
