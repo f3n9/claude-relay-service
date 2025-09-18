@@ -92,8 +92,7 @@ class ClaudeConsoleRelayService {
         const baseUrl = cleanUrl.replace(/\/v1\/messages$/, '') // 移除已有的 /v1/messages
         apiEndpoint = `${baseUrl}${options.customPath}`
       } else {
-        // 默认使用 messages 端点
-        apiEndpoint = cleanUrl.endsWith('/v1/messages') ? cleanUrl : `${cleanUrl}/v1/messages`
+        apiEndpoint = cleanUrl
       }
 
       logger.debug(`🎯 Final API endpoint: ${apiEndpoint}`)
