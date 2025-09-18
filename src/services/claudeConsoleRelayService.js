@@ -337,7 +337,7 @@ class ClaudeConsoleRelayService {
 
       // 构建完整的API URL
       const cleanUrl = account.apiUrl.replace(/\/$/, '') // 移除末尾斜杠
-      const apiEndpoint = cleanUrl.endsWith('/v1/messages') ? cleanUrl : `${cleanUrl}/v1/messages`
+      const apiEndpoint = cleanUrl
 
       logger.debug(`🎯 Final API endpoint for stream: ${apiEndpoint}`)
 
