@@ -54,10 +54,10 @@ class ClaudeConsoleRelayService {
       }
 
       // 创建修改后的请求体
-      const modifiedRequestBody = {
+      const modifiedRequestBody = this._prepareRequestBody({
         ...requestBody,
         model: mappedModel
-      }
+      })
 
       // 模型兼容性检查已经在调度器中完成，这里不需要再检查
 
@@ -275,10 +275,10 @@ class ClaudeConsoleRelayService {
       }
 
       // 创建修改后的请求体
-      const modifiedRequestBody = {
+      const modifiedRequestBody = this._prepareRequestBody({
         ...requestBody,
         model: mappedModel
-      }
+      })
 
       // 模型兼容性检查已经在调度器中完成，这里不需要再检查
 
@@ -655,6 +655,77 @@ class ClaudeConsoleRelayService {
         aborted = true
       })
     })
+  }
+
+  // 🛠️ 统一处理Claude Console请求体，确保工具定义符合要求
+  _prepareRequestBody(body) {
+    if (!body || typeof body !== 'object') {
+      return body
+    }
+
+    const preparedBody = { ...body }
+
+    if (Array.isArray(preparedBody.tools)) {
+      preparedBody.tools = preparedBody.tools.map((tool) => {
+        if (!tool || typeof tool !== 'object') {
+          return tool
+        }
+
+        const normalized = { ...tool }
+
+        // 默认使用 function 类型的工具
+        if (!normalized.type) {
+          normalized.type = 'function'
+        }
+
+        if (normalized.type === 'tool') {
+          normalized.type = 'function'
+        }
+
+        if (normalized.type !== 'function') {
+          return normalized
+        }
+
+        const fallbackParameters =
+          normalized.parameters || normalized.input_schema || normalized.schema || {}
+
+        if (normalized.function && typeof normalized.function === 'object') {
+          const functionDef = {
+            ...normalized.function
+          }
+
+          if (!functionDef.name && normalized.name) {
+            functionDef.name = normalized.name
+          }
+          if (!functionDef.description && normalized.description) {
+            functionDef.description = normalized.description
+          }
+          if (!functionDef.parameters) {
+            functionDef.parameters =
+              normalized.function.parameters || fallbackParameters || {}
+          }
+
+          normalized.function = functionDef
+        } else {
+          normalized.function = {
+            name: normalized.name,
+            description: normalized.description,
+            parameters: fallbackParameters || {}
+          }
+        }
+
+        // 清理旧格式字段，避免重复
+        delete normalized.name
+        delete normalized.description
+        delete normalized.parameters
+        delete normalized.input_schema
+        delete normalized.schema
+
+        return normalized
+      })
+    }
+
+    return preparedBody
   }
 
   // 🔧 过滤客户端请求头
