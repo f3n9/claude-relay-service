@@ -875,11 +875,19 @@ class ClaudeConsoleRelayService {
         }
 
         if (contentItems.length === 0) {
-          delete message.content
+          message.content = ''
         } else if (contentItems.length === 1 && contentItems[0].type === 'text') {
           message.content = contentItems[0].text
         } else {
           message.content = contentItems
+        }
+      } else if (message.content === undefined || message.content === null) {
+        message.content = ''
+      } else if (typeof message.content !== 'string' && !Array.isArray(message.content)) {
+        try {
+          message.content = JSON.stringify(message.content)
+        } catch (error) {
+          message.content = ''
         }
       }
 
@@ -897,7 +905,12 @@ class ClaudeConsoleRelayService {
       }
 
       if (followUpMessages.length > 0) {
-        converted.push(...followUpMessages)
+        followUpMessages.forEach((msg) => {
+          if (msg.content === undefined || msg.content === null) {
+            msg.content = ''
+          }
+          converted.push(msg)
+        })
       }
     }
 
