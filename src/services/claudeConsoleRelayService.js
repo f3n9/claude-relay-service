@@ -486,6 +486,8 @@ class ClaudeConsoleRelayService {
           const collectedUsageData = {}
 
           // 处理流数据
+          const openAIStreamState = this._createOpenAIStreamState()
+
           response.data.on('data', (chunk) => {
             try {
               if (aborted) {
@@ -495,74 +497,93 @@ class ClaudeConsoleRelayService {
               const chunkStr = chunk.toString()
               buffer += chunkStr
 
-              // 处理完整的SSE行
               const lines = buffer.split('\n')
               buffer = lines.pop() || ''
 
-              // 转发数据并解析usage
               if (lines.length > 0 && !responseStream.destroyed) {
-                const linesToForward = lines.join('\n') + (lines.length > 0 ? '\n' : '')
+                const transformed = this._transformOpenAIStream(lines, openAIStreamState)
 
-                // 应用流转换器如果有
-                if (streamTransformer) {
-                  const transformed = streamTransformer(linesToForward)
-                  if (transformed) {
+                if (transformed) {
+                  // 应用外部流转换器如果存在
+                  if (streamTransformer) {
+                    const externalTransformed = streamTransformer(transformed)
+                    if (externalTransformed) {
+                      responseStream.write(externalTransformed)
+                    }
+                  } else {
                     responseStream.write(transformed)
                   }
-                } else {
-                  responseStream.write(linesToForward)
-                }
 
-                // 解析SSE数据寻找usage信息
-                for (const line of lines) {
-                  if (line.startsWith('data: ') && line.length > 6) {
-                    try {
-                      const jsonStr = line.slice(6)
-                      const data = JSON.parse(jsonStr)
+                  // 解析转换后的Claude SSE以捕获usage
+                  const transformedLines = transformed.split('\n')
+                  for (const line of transformedLines) {
+                    if (line.startsWith('data: ') && line.length > 6) {
+                      try {
+                        const jsonStr = line.slice(6)
+                        const data = JSON.parse(jsonStr)
 
-                      // 收集usage数据
-                      if (data.type === 'message_start' && data.message && data.message.usage) {
-                        collectedUsageData.input_tokens = data.message.usage.input_tokens || 0
-                        collectedUsageData.cache_creation_input_tokens =
-                          data.message.usage.cache_creation_input_tokens || 0
-                        collectedUsageData.cache_read_input_tokens =
-                          data.message.usage.cache_read_input_tokens || 0
-                        collectedUsageData.model = data.message.model
+                        if (data.type === 'message_start' && data.message && data.message.usage) {
+                          collectedUsageData.input_tokens = data.message.usage.input_tokens || 0
+                          collectedUsageData.cache_creation_input_tokens =
+                            data.message.usage.cache_creation_input_tokens || 0
+                          collectedUsageData.cache_read_input_tokens =
+                            data.message.usage.cache_read_input_tokens || 0
+                          collectedUsageData.model = data.message.model
 
-                        // 检查是否有详细的 cache_creation 对象
-                        if (
-                          data.message.usage.cache_creation &&
-                          typeof data.message.usage.cache_creation === 'object'
-                        ) {
-                          collectedUsageData.cache_creation = {
-                            ephemeral_5m_input_tokens:
-                              data.message.usage.cache_creation.ephemeral_5m_input_tokens || 0,
-                            ephemeral_1h_input_tokens:
-                              data.message.usage.cache_creation.ephemeral_1h_input_tokens || 0
+                          if (
+                            data.message.usage.cache_creation &&
+                            typeof data.message.usage.cache_creation === 'object'
+                          ) {
+                            collectedUsageData.cache_creation = {
+                              ephemeral_5m_input_tokens:
+                                data.message.usage.cache_creation.ephemeral_5m_input_tokens || 0,
+                              ephemeral_1h_input_tokens:
+                                data.message.usage.cache_creation.ephemeral_1h_input_tokens || 0
+                            }
+                            logger.info(
+                              '📊 Collected detailed cache creation data:',
+                              JSON.stringify(collectedUsageData.cache_creation)
+                            )
                           }
-                          logger.info(
-                            '📊 Collected detailed cache creation data:',
-                            JSON.stringify(collectedUsageData.cache_creation)
-                          )
                         }
-                      }
 
-                      if (
-                        data.type === 'message_delta' &&
-                        data.usage &&
-                        data.usage.output_tokens !== undefined
-                      ) {
-                        collectedUsageData.output_tokens = data.usage.output_tokens || 0
+                        if (
+                          data.type === 'message_delta' &&
+                          data.usage &&
+                          data.usage.output_tokens !== undefined
+                        ) {
+                          collectedUsageData.output_tokens = data.usage.output_tokens || 0
+                          if (data.usage.input_tokens !== undefined) {
+                            collectedUsageData.input_tokens = data.usage.input_tokens
+                          }
+                          if (data.usage.cache_creation_input_tokens !== undefined) {
+                            collectedUsageData.cache_creation_input_tokens =
+                              data.usage.cache_creation_input_tokens
+                          }
+                          if (data.usage.cache_read_input_tokens !== undefined) {
+                            collectedUsageData.cache_read_input_tokens =
+                              data.usage.cache_read_input_tokens
+                          }
+                          if (
+                            data.usage.cache_creation &&
+                            typeof data.usage.cache_creation === 'object'
+                          ) {
+                            collectedUsageData.cache_creation = {
+                              ephemeral_5m_input_tokens:
+                                data.usage.cache_creation.ephemeral_5m_input_tokens || 0,
+                              ephemeral_1h_input_tokens:
+                                data.usage.cache_creation.ephemeral_1h_input_tokens || 0
+                            }
+                          }
 
-                        if (collectedUsageData.input_tokens !== undefined && !finalUsageReported) {
-                          usageCallback({ ...collectedUsageData, accountId })
-                          finalUsageReported = true
+                          if (collectedUsageData.input_tokens !== undefined && !finalUsageReported) {
+                            usageCallback({ ...collectedUsageData, accountId })
+                            finalUsageReported = true
+                          }
                         }
+                      } catch (parseError) {
+                        // 忽略解析错误
                       }
-
-                      // 不再因为模型不支持而block账号
-                    } catch (e) {
-                      // 忽略解析错误
                     }
                   }
                 }
@@ -588,14 +609,86 @@ class ClaudeConsoleRelayService {
           response.data.on('end', () => {
             try {
               // 处理缓冲区中剩余的数据
-              if (buffer.trim() && !responseStream.destroyed) {
+              const remainingLines = buffer.length > 0 ? buffer.split('\n') : []
+              const transformed = this._transformOpenAIStream(remainingLines, openAIStreamState, true)
+              buffer = ''
+
+              if (transformed && !responseStream.destroyed) {
                 if (streamTransformer) {
-                  const transformed = streamTransformer(buffer)
-                  if (transformed) {
-                    responseStream.write(transformed)
+                  const externalTransformed = streamTransformer(transformed)
+                  if (externalTransformed) {
+                    responseStream.write(externalTransformed)
                   }
                 } else {
-                  responseStream.write(buffer)
+                  responseStream.write(transformed)
+                }
+
+                const finalTransformedLines = transformed.split('\n')
+                for (const line of finalTransformedLines) {
+                  if (line.startsWith('data: ') && line.length > 6) {
+                    try {
+                      const jsonStr = line.slice(6)
+                      const data = JSON.parse(jsonStr)
+
+                      if (data.type === 'message_start' && data.message && data.message.usage) {
+                        collectedUsageData.input_tokens = data.message.usage.input_tokens || 0
+                        collectedUsageData.cache_creation_input_tokens =
+                          data.message.usage.cache_creation_input_tokens || 0
+                        collectedUsageData.cache_read_input_tokens =
+                          data.message.usage.cache_read_input_tokens || 0
+                        collectedUsageData.model = data.message.model
+
+                        if (
+                          data.message.usage.cache_creation &&
+                          typeof data.message.usage.cache_creation === 'object'
+                        ) {
+                          collectedUsageData.cache_creation = {
+                            ephemeral_5m_input_tokens:
+                              data.message.usage.cache_creation.ephemeral_5m_input_tokens || 0,
+                            ephemeral_1h_input_tokens:
+                              data.message.usage.cache_creation.ephemeral_1h_input_tokens || 0
+                          }
+                        }
+                      }
+
+                      if (
+                        data.type === 'message_delta' &&
+                        data.usage &&
+                        data.usage.output_tokens !== undefined
+                      ) {
+                        collectedUsageData.output_tokens = data.usage.output_tokens || 0
+                        if (data.usage.input_tokens !== undefined) {
+                          collectedUsageData.input_tokens = data.usage.input_tokens
+                        }
+                        if (data.usage.cache_creation_input_tokens !== undefined) {
+                          collectedUsageData.cache_creation_input_tokens =
+                            data.usage.cache_creation_input_tokens
+                        }
+                        if (data.usage.cache_read_input_tokens !== undefined) {
+                          collectedUsageData.cache_read_input_tokens =
+                            data.usage.cache_read_input_tokens
+                        }
+                        if (
+                          data.usage.cache_creation &&
+                          typeof data.usage.cache_creation === 'object'
+                        ) {
+                          collectedUsageData.cache_creation = {
+                            ephemeral_5m_input_tokens:
+                              data.usage.cache_creation.ephemeral_5m_input_tokens || 0,
+                            ephemeral_1h_input_tokens:
+                              data.usage.cache_creation.ephemeral_1h_input_tokens || 0
+                          }
+                        }
+
+                        if (collectedUsageData.input_tokens !== undefined && !finalUsageReported) {
+                          usageCallback({ ...collectedUsageData, accountId })
+                          finalUsageReported = true
+                        }
+                      }
+                    } catch (parseError) {
+                      // ignore
+                    }
+                  }
                 }
               }
 
@@ -1048,6 +1141,234 @@ class ClaudeConsoleRelayService {
         usage.cache_creation_input_tokens || usage.prompt_tokens_details?.cached_tokens || 0,
       cache_read_input_tokens: usage.cache_read_input_tokens || 0
     }
+  }
+
+  _createOpenAIStreamState() {
+    return {
+      messageStarted: false,
+      messageId: null,
+      model: null,
+      nextIndex: 0,
+      textBlockIndex: null,
+      toolBlocks: {},
+      stopReason: null,
+      usage: null,
+      messageDeltaSent: false,
+      messageStopped: false
+    }
+  }
+
+  _transformOpenAIStream(lines, state, isFinalFlush = false) {
+    let output = ''
+
+    for (const rawLine of lines) {
+      if (!rawLine || rawLine.trim() === '') {
+        continue
+      }
+
+      const line = rawLine.trim()
+
+      if (!line.startsWith('data:')) {
+        continue
+      }
+
+      const payload = line.slice(6)
+
+      if (payload === '[DONE]') {
+        output += this._emitOpenAIStreamFinalEvents(state)
+        continue
+      }
+
+      let chunk
+      try {
+        chunk = JSON.parse(payload)
+      } catch (error) {
+        continue
+      }
+
+      const choice = Array.isArray(chunk.choices) ? chunk.choices[0] : null
+      if (!choice) {
+        continue
+      }
+
+      const delta = choice.delta || {}
+
+      if (!state.messageStarted) {
+        state.messageId = chunk.id || `msg_${Date.now()}`
+        state.model = chunk.model || (delta.parsed_model || 'unknown')
+
+        const messageStartPayload = {
+          type: 'message_start',
+          message: {
+            id: state.messageId,
+            type: 'message',
+            role: delta.role || 'assistant',
+            content: [],
+            model: state.model,
+            stop_reason: null,
+            stop_sequence: null,
+            usage: this._normalizeUsage(chunk.usage || state.usage || {})
+          }
+        }
+
+        output += this._formatSSEEvent('message_start', messageStartPayload)
+        state.messageStarted = true
+      }
+
+      if (typeof delta.content === 'string' && delta.content.length > 0) {
+        output += this._emitTextContentDelta(delta.content, state)
+      }
+
+      if (Array.isArray(delta.tool_calls) && delta.tool_calls.length > 0) {
+        output += this._emitToolCallDelta(delta.tool_calls, state)
+      }
+
+      if (choice.finish_reason) {
+        state.stopReason = this._mapOpenAIFinishReason(choice.finish_reason)
+      }
+
+      if (chunk.usage) {
+        state.usage = this._normalizeUsage(chunk.usage)
+      }
+    }
+
+    if (isFinalFlush) {
+      output += this._emitOpenAIStreamFinalEvents(state)
+    }
+
+    return output
+  }
+
+  _emitTextContentDelta(text, state) {
+    let output = ''
+
+    if (state.textBlockIndex === null) {
+      state.textBlockIndex = state.nextIndex++
+      const startPayload = {
+        type: 'content_block_start',
+        index: state.textBlockIndex,
+        content_block: {
+          type: 'text',
+          text: ''
+        }
+      }
+      output += this._formatSSEEvent('content_block_start', startPayload)
+    }
+
+    const deltaPayload = {
+      type: 'content_block_delta',
+      index: state.textBlockIndex,
+      delta: {
+        type: 'text_delta',
+        text
+      }
+    }
+
+    output += this._formatSSEEvent('content_block_delta', deltaPayload)
+    return output
+  }
+
+  _emitToolCallDelta(toolCalls, state) {
+    let output = ''
+
+    for (const toolCall of toolCalls) {
+      const id = toolCall.id || toolCall.function?.name || `tool_${Math.random().toString(36).slice(2, 10)}`
+      let block = state.toolBlocks[id]
+
+      if (!block) {
+        const index = state.nextIndex++
+        block = {
+          index,
+          name: toolCall.function?.name || 'unknown_tool'
+        }
+        state.toolBlocks[id] = block
+
+        const startPayload = {
+          type: 'content_block_start',
+          index,
+          content_block: {
+            type: 'tool_use',
+            id,
+            name: block.name,
+            input: {}
+          }
+        }
+
+        output += this._formatSSEEvent('content_block_start', startPayload)
+      }
+
+      const partialJson = toolCall.function?.arguments || ''
+
+      const deltaPayload = {
+        type: 'content_block_delta',
+        index: block.index,
+        delta: {
+          type: 'input_json_delta',
+          partial_json: partialJson
+        }
+      }
+
+      output += this._formatSSEEvent('content_block_delta', deltaPayload)
+    }
+
+    return output
+  }
+
+  _emitOpenAIStreamFinalEvents(state) {
+    if (state.messageStopped || !state.messageStarted) {
+      return ''
+    }
+
+    let output = ''
+
+    if (state.textBlockIndex !== null) {
+      const stopPayload = {
+        type: 'content_block_stop',
+        index: state.textBlockIndex
+      }
+      output += this._formatSSEEvent('content_block_stop', stopPayload)
+      state.textBlockIndex = null
+    }
+
+    const toolBlockEntries = Object.values(state.toolBlocks || {})
+    for (const block of toolBlockEntries) {
+      const stopPayload = {
+        type: 'content_block_stop',
+        index: block.index
+      }
+      output += this._formatSSEEvent('content_block_stop', stopPayload)
+    }
+    state.toolBlocks = {}
+
+    const messageDeltaPayload = {
+      type: 'message_delta',
+      delta: {
+        stop_reason: state.stopReason || 'end_turn',
+        stop_sequence: null
+      }
+    }
+
+    if (state.usage) {
+      messageDeltaPayload.usage = state.usage
+    }
+
+    if (!state.messageDeltaSent) {
+      output += this._formatSSEEvent('message_delta', messageDeltaPayload)
+      state.messageDeltaSent = true
+    }
+
+    const stopEvent = {
+      type: 'message_stop'
+    }
+
+    output += this._formatSSEEvent('message_stop', stopEvent)
+    state.messageStopped = true
+
+    return output
+  }
+
+  _formatSSEEvent(eventName, payload) {
+    return `event: ${eventName}\n` + `data: ${JSON.stringify(payload)}\n\n`
   }
 
   // 🔧 过滤客户端请求头
