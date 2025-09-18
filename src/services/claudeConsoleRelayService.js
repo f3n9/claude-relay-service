@@ -211,8 +211,15 @@ class ClaudeConsoleRelayService {
       // 更新最后使用时间
       await this._updateLastUsedTime(accountId)
 
+      const normalizedPayload =
+        response.status === 200 || response.status === 201
+          ? this._normalizeResponsePayload(response.data, modifiedRequestBody)
+          : response.data
+
       const responseBody =
-        typeof response.data === 'string' ? response.data : JSON.stringify(response.data)
+        typeof normalizedPayload === 'string'
+          ? normalizedPayload
+          : JSON.stringify(normalizedPayload)
       logger.debug(`[DEBUG] Final response body to return: ${responseBody}`)
 
       return {
@@ -775,6 +782,139 @@ class ClaudeConsoleRelayService {
       logger.debug(`${label}: ${serialized}`)
     } catch (error) {
       logger.debug(`${label} logging failed:`, error)
+    }
+  }
+
+  _normalizeResponsePayload(payload, requestBody) {
+    let data = payload
+    let isString = false
+
+    if (typeof data === 'string') {
+      isString = true
+      try {
+        data = JSON.parse(data)
+      } catch (error) {
+        return payload
+      }
+    }
+
+    if (!data || typeof data !== 'object') {
+      return payload
+    }
+
+    // 已经是Claude格式
+    if (data.type === 'message' || Array.isArray(data.content)) {
+      return payload
+    }
+
+    if (Array.isArray(data.choices) && data.choices.length > 0) {
+      const firstChoice = data.choices[0]
+      const message = firstChoice.message || {}
+      const contentBlocks = []
+
+      if (message.content) {
+        if (Array.isArray(message.content)) {
+          message.content.forEach((item) => {
+            if (item.type === 'text' && item.text) {
+              contentBlocks.push({ type: 'text', text: item.text })
+            } else if (item.type === 'image_url' && item.image_url?.url) {
+              contentBlocks.push({
+                type: 'image',
+                source: {
+                  type: 'url',
+                  url: item.image_url.url
+                }
+              })
+            }
+          })
+        } else if (typeof message.content === 'string') {
+          contentBlocks.push({ type: 'text', text: message.content })
+        }
+      }
+
+      if (Array.isArray(message.tool_calls)) {
+        message.tool_calls.forEach((toolCall) => {
+          if (toolCall.type === 'function' && toolCall.function) {
+            let parsedArgs = {}
+            try {
+              parsedArgs = JSON.parse(toolCall.function.arguments || '{}')
+            } catch (error) {
+              parsedArgs = { _raw: toolCall.function.arguments || '' }
+            }
+
+            contentBlocks.push({
+              type: 'tool_use',
+              id: toolCall.id,
+              name: toolCall.function.name,
+              input: parsedArgs
+            })
+          }
+        })
+      }
+
+      const usage = this._normalizeUsage(data.usage)
+      const normalized = {
+        id: data.id || `msg_${Date.now()}`,
+        type: 'message',
+        role: 'assistant',
+        content: contentBlocks.length > 0 ? contentBlocks : [{ type: 'text', text: '' }],
+        model: data.model || requestBody?.model || 'unknown',
+        stop_reason: this._mapOpenAIFinishReason(firstChoice.finish_reason),
+        stop_sequence: null,
+        usage
+      }
+
+      logger.debug('🛠️ Normalized OpenAI-style completion into Claude format')
+
+      return isString ? JSON.stringify(normalized) : normalized
+    }
+
+    return payload
+  }
+
+  _mapOpenAIFinishReason(reason) {
+    switch (reason) {
+      case 'stop':
+        return 'end_turn'
+      case 'length':
+        return 'max_tokens'
+      case 'content_filter':
+        return 'content_filter'
+      case 'tool_calls':
+        return 'tool_use'
+      default:
+        return reason || 'end_turn'
+    }
+  }
+
+  _normalizeUsage(usage) {
+    if (!usage || typeof usage !== 'object') {
+      return {
+        input_tokens: 0,
+        output_tokens: 0
+      }
+    }
+
+    const inputTokens =
+      usage.input_tokens !== undefined
+        ? usage.input_tokens
+        : usage.prompt_tokens !== undefined
+          ? usage.prompt_tokens
+          : 0
+
+    const outputTokens =
+      usage.output_tokens !== undefined
+        ? usage.output_tokens
+        : usage.completion_tokens !== undefined
+          ? usage.completion_tokens
+          : 0
+
+    return {
+      input_tokens: inputTokens,
+      output_tokens: outputTokens,
+      cache_creation_input_tokens:
+        usage.cache_creation_input_tokens || usage.prompt_tokens_details?.cached_tokens || 0,
+      cache_read_input_tokens: usage.cache_read_input_tokens || 0
     }
   }
 
