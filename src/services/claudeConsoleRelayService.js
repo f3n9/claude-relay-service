@@ -770,6 +770,10 @@ class ClaudeConsoleRelayService {
       })
     }
 
+    if (Array.isArray(preparedBody.messages)) {
+      preparedBody.messages = this._convertClaudeMessagesToOpenAI(preparedBody.messages)
+    }
+
     return preparedBody
   }
 
@@ -783,6 +787,121 @@ class ClaudeConsoleRelayService {
     } catch (error) {
       logger.debug(`${label} logging failed:`, error)
     }
+  }
+
+  _convertClaudeMessagesToOpenAI(messages) {
+    const converted = []
+
+    for (const originalMessage of messages) {
+      if (!originalMessage || typeof originalMessage !== 'object') {
+        converted.push(originalMessage)
+        continue
+      }
+
+      const message = { ...originalMessage }
+      const followUpMessages = []
+      const toolCalls = []
+
+      if (Array.isArray(message.content)) {
+        const contentItems = []
+
+        for (const block of message.content) {
+          if (!block || typeof block !== 'object') {
+            continue
+          }
+
+          switch (block.type) {
+            case 'text':
+              contentItems.push({ type: 'text', text: block.text || '' })
+              break
+            case 'image':
+              if (block.source?.type === 'base64') {
+                contentItems.push({
+                  type: 'image_url',
+                  image_url: {
+                    url: `data:${block.source.media_type || 'image/png'};base64,${block.source.data || ''}`
+                  }
+                })
+              } else if (block.source?.type === 'url' && block.source.url) {
+                contentItems.push({
+                  type: 'image_url',
+                  image_url: {
+                    url: block.source.url
+                  }
+                })
+              }
+              break
+            case 'tool_use': {
+              const toolCallId = block.id || `tool_${Math.random().toString(36).slice(2, 10)}`
+              let serializedArguments = '{}'
+              try {
+                serializedArguments = JSON.stringify(block.input ?? {})
+              } catch (error) {
+                serializedArguments = JSON.stringify({ _raw: block.input })
+              }
+
+              toolCalls.push({
+                id: toolCallId,
+                type: 'function',
+                function: {
+                  name: block.name || 'unknown_tool',
+                  arguments: serializedArguments
+                }
+              })
+              break
+            }
+            case 'tool_result': {
+              const resultContent =
+                typeof block.content === 'string'
+                  ? block.content
+                  : JSON.stringify(block.content ?? '')
+
+              followUpMessages.push({
+                role: 'tool',
+                content: resultContent,
+                tool_call_id: block.tool_use_id || block.id || ''
+              })
+              break
+            }
+            default:
+              break
+          }
+        }
+
+        if (toolCalls.length > 0) {
+          message.tool_calls = toolCalls
+        } else {
+          delete message.tool_calls
+        }
+
+        if (contentItems.length === 0) {
+          delete message.content
+        } else if (contentItems.length === 1 && contentItems[0].type === 'text') {
+          message.content = contentItems[0].text
+        } else {
+          message.content = contentItems
+        }
+      }
+
+      const hasContentField =
+        typeof message.content === 'string'
+          ? message.content.length > 0
+          : Array.isArray(message.content)
+            ? message.content.length > 0
+            : message.content !== undefined
+
+      const hasToolCalls = Array.isArray(message.tool_calls) && message.tool_calls.length > 0
+
+      if (hasContentField || hasToolCalls || message.role !== 'tool') {
+        converted.push(message)
+      }
+
+      if (followUpMessages.length > 0) {
+        converted.push(...followUpMessages)
+      }
+    }
+
+    return converted
   }
 
   _normalizeResponsePayload(payload, requestBody) {
