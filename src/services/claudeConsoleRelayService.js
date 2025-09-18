@@ -20,6 +20,7 @@ class ClaudeConsoleRelayService {
   ) {
     let abortController = null
     let account = null
+    let modifiedRequestBody = null
 
     try {
       // 获取账户信息
@@ -54,7 +55,7 @@ class ClaudeConsoleRelayService {
       }
 
       // 创建修改后的请求体
-      const modifiedRequestBody = this._prepareRequestBody({
+      modifiedRequestBody = this._prepareRequestBody({
         ...requestBody,
         model: mappedModel
       })
@@ -175,6 +176,11 @@ class ClaudeConsoleRelayService {
         `[DEBUG] Response data preview: ${typeof response.data === 'string' ? response.data.substring(0, 200) : JSON.stringify(response.data).substring(0, 200)}`
       )
 
+      if (response.status === 500) {
+        this._logDebugPayload('🧵 Claude Console API 500 response body', response.data)
+        this._logDebugPayload('📦 Claude Console API 500 request body', modifiedRequestBody)
+      }
+
       // 检查错误状态并相应处理
       if (response.status === 401) {
         logger.warn(`🚫 Unauthorized error detected for Claude Console account ${accountId}`)
@@ -226,6 +232,11 @@ class ClaudeConsoleRelayService {
         `❌ Claude Console relay request failed (Account: ${account?.name || accountId}):`,
         error.message
       )
+
+      if (error.response?.status === 500) {
+        this._logDebugPayload('🧵 Claude Console API 500 response body', error.response.data)
+        this._logDebugPayload('📦 Claude Console API 500 request body', modifiedRequestBody)
+      }
 
       // 不再因为模型不支持而block账号
 
@@ -387,6 +398,13 @@ class ClaudeConsoleRelayService {
               `❌ Claude Console API returned error status: ${response.status} | Account: ${account?.name || accountId}`
             )
 
+            const shouldLogErrorBody = response.status === 500
+            let errorBodyCollector = shouldLogErrorBody ? '' : null
+
+            if (shouldLogErrorBody) {
+              this._logDebugPayload('📦 Claude Console API 500 request body', body)
+            }
+
             if (response.status === 401) {
               claudeConsoleAccountService.markAccountUnauthorized(accountId)
             } else if (response.status === 429) {
@@ -414,12 +432,18 @@ class ClaudeConsoleRelayService {
 
             // 直接透传错误数据，不进行包装
             response.data.on('data', (chunk) => {
+              if (errorBodyCollector !== null) {
+                errorBodyCollector += chunk.toString()
+              }
               if (!responseStream.destroyed) {
                 responseStream.write(chunk)
               }
             })
 
             response.data.on('end', () => {
+              if (errorBodyCollector !== null) {
+                this._logDebugPayload('🧵 Claude Console API 500 response body', errorBodyCollector)
+              }
               if (!responseStream.destroyed) {
                 responseStream.end()
               }
@@ -622,6 +646,20 @@ class ClaudeConsoleRelayService {
               })
             } else if (error.response.status === 529) {
               claudeConsoleAccountService.markAccountOverloaded(accountId)
+            } else if (error.response.status === 500) {
+              const errorData = error.response.data
+              this._logDebugPayload('📦 Claude Console API 500 request body', body)
+              if (errorData && typeof errorData.on === 'function') {
+                let collected = ''
+                errorData.on('data', (chunk) => {
+                  collected += chunk.toString()
+                })
+                errorData.on('end', () => {
+                  this._logDebugPayload('🧵 Claude Console API 500 response body', collected)
+                })
+              } else {
+                this._logDebugPayload('🧵 Claude Console API 500 response body', errorData)
+              }
             }
           }
 
@@ -726,6 +764,18 @@ class ClaudeConsoleRelayService {
     }
 
     return preparedBody
+  }
+
+  _logDebugPayload(label, payload) {
+    try {
+      const serialized =
+        typeof payload === 'string' || payload instanceof Buffer
+          ? payload.toString()
+          : JSON.stringify(payload)
+      logger.debug(`${label}: ${serialized}`)
+    } catch (error) {
+      logger.debug(`${label} logging failed:`, error)
+    }
   }
 
   // 🔧 过滤客户端请求头
