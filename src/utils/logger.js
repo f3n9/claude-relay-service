@@ -93,11 +93,33 @@ const safeStringify = (obj, maxDepth = 3, fullDepth = false) => {
   }
 }
 
-// 📝 增强的日志格式
+const stripEmojis = (text) => {
+  if (typeof text !== 'string') return text
+  return text
+    .replace(/\p{Extended_Pictographic}|\uFE0F|\u200D/gu, '')
+    .replace(/[ \t]{2,}/g, ' ')
+    .trimStart()
+}
+
+const ensureLogPrefix = (prefix, message) => {
+  if (typeof message !== 'string') return message
+  const normalizedPrefix = String(prefix || '').trim().toLowerCase()
+  const prefixToken = normalizedPrefix ? `[${normalizedPrefix}] ` : ''
+  if (!prefixToken) return message
+  return message.startsWith(prefixToken) ? message : `${prefixToken}${message}`
+}
+
+// 增强的日志格式
 const createLogFormat = (colorize = false) => {
   const formats = [
-    winston.format.timestamp({ format: () => formatDateWithTimezone(new Date(), false) }),
-    winston.format.errors({ stack: true })
+    winston.format.timestamp({ format: () => formatDateWithTimezone(new Date(), true) }),
+    winston.format.errors({ stack: true }),
+    winston.format((info) => {
+      const message = stripEmojis(info.message)
+      const prefixSource = info.logMethod || info.level
+      info.message = ensureLogPrefix(prefixSource, message)
+      return info
+    })()
     // 移除 winston.format.metadata() 来避免自动包装
   ]
 
@@ -107,15 +129,7 @@ const createLogFormat = (colorize = false) => {
 
   formats.push(
     winston.format.printf(({ level, message, timestamp, stack, ...rest }) => {
-      const emoji = {
-        error: '❌',
-        warn: '⚠️ ',
-        info: 'ℹ️ ',
-        debug: '🐛',
-        verbose: '📝'
-      }
-
-      let logMessage = `${emoji[level] || '📝'} [${timestamp}] ${level.toUpperCase()}: ${message}`
+      let logMessage = `[${timestamp}] ${level.toUpperCase()}: ${message}`
 
       // 直接处理额外数据，不需要metadata包装
       const additionalData = { ...rest }
@@ -123,6 +137,7 @@ const createLogFormat = (colorize = false) => {
       delete additionalData.message
       delete additionalData.timestamp
       delete additionalData.stack
+      delete additionalData.logMethod
 
       if (Object.keys(additionalData).length > 0) {
         logMessage += ` | ${safeStringify(additionalData)}`
@@ -139,12 +154,12 @@ const logFormat = createLogFormat(false)
 const consoleFormat = createLogFormat(true)
 const isTestEnv = process.env.NODE_ENV === 'test' || process.env.JEST_WORKER_ID
 
-// 📁 确保日志目录存在并设置权限
+// 确保日志目录存在并设置权限
 if (!fs.existsSync(config.logging.dirname)) {
   fs.mkdirSync(config.logging.dirname, { recursive: true, mode: 0o755 })
 }
 
-// 🔄 增强的日志轮转配置
+// 增强的日志轮转配置
 const createRotateTransport = (filename, level = null) => {
   const transport = new DailyRotateFile({
     filename: path.join(config.logging.dirname, filename),
@@ -163,15 +178,21 @@ const createRotateTransport = (filename, level = null) => {
   // 监听轮转事件（测试环境关闭以避免 Jest 退出后输出）
   if (!isTestEnv) {
     transport.on('rotate', (oldFilename, newFilename) => {
-      console.log(`📦 Log rotated: ${oldFilename} -> ${newFilename}`)
+      console.log(
+        `[${formatDateWithTimezone(new Date(), true)}] [info] Log rotated: ${oldFilename} -> ${newFilename}`
+      )
     })
 
     transport.on('new', (newFilename) => {
-      console.log(`📄 New log file created: ${newFilename}`)
+      console.log(
+        `[${formatDateWithTimezone(new Date(), true)}] [info] New log file created: ${newFilename}`
+      )
     })
 
     transport.on('archive', (zipFilename) => {
-      console.log(`🗜️ Log archived: ${zipFilename}`)
+      console.log(
+        `[${formatDateWithTimezone(new Date(), true)}] [info] Log archived: ${zipFilename}`
+      )
     })
   }
 
@@ -181,7 +202,7 @@ const createRotateTransport = (filename, level = null) => {
 const dailyRotateFileTransport = createRotateTransport('claude-relay-%DATE%.log')
 const errorFileTransport = createRotateTransport('claude-relay-error-%DATE%.log', 'error')
 
-// 🔒 创建专门的安全日志记录器
+// 创建专门的安全日志记录器
 const securityLogger = winston.createLogger({
   level: 'warn',
   format: logFormat,
@@ -189,11 +210,17 @@ const securityLogger = winston.createLogger({
   silent: false
 })
 
-// 🔐 创建专门的认证详细日志记录器（记录完整的认证响应）
+// 创建专门的认证详细日志记录器（记录完整的认证响应）
 const authDetailLogger = winston.createLogger({
   level: 'info',
   format: winston.format.combine(
-    winston.format.timestamp({ format: () => formatDateWithTimezone(new Date(), false) }),
+    winston.format.timestamp({ format: () => formatDateWithTimezone(new Date(), true) }),
+    winston.format((info) => {
+      const message = stripEmojis(info.message)
+      const prefixSource = info.logMethod || info.level
+      info.message = ensureLogPrefix(prefixSource, message)
+      return info
+    })(),
     winston.format.printf(({ level, message, timestamp, data }) => {
       // 使用更深的深度和格式化的JSON输出
       const jsonData = data ? JSON.stringify(data, null, 2) : '{}'
@@ -204,16 +231,16 @@ const authDetailLogger = winston.createLogger({
   silent: false
 })
 
-// 🌟 增强的 Winston logger
+// 增强的 Winston logger
 const logger = winston.createLogger({
   level: process.env.LOG_LEVEL || config.logging.level,
   format: logFormat,
   transports: [
-    // 📄 文件输出
+    // 文件输出
     dailyRotateFileTransport,
     errorFileTransport,
 
-    // 🖥️ 控制台输出
+    // 控制台输出
     new winston.transports.Console({
       format: consoleFormat,
       handleExceptions: false,
@@ -221,7 +248,7 @@ const logger = winston.createLogger({
     })
   ],
 
-  // 🚨 异常处理
+  // 异常处理
   exceptionHandlers: [
     new winston.transports.File({
       filename: path.join(config.logging.dirname, 'exceptions.log'),
@@ -234,7 +261,7 @@ const logger = winston.createLogger({
     })
   ],
 
-  // 🔄 未捕获异常处理
+  // 未捕获异常处理
   rejectionHandlers: [
     new winston.transports.File({
       filename: path.join(config.logging.dirname, 'rejections.log'),
@@ -251,20 +278,20 @@ const logger = winston.createLogger({
   exitOnError: false
 })
 
-// 🎯 增强的自定义方法
+// 增强的自定义方法
 logger.success = (message, metadata = {}) => {
-  logger.info(`✅ ${message}`, { type: 'success', ...metadata })
+  logger.info(message, { logMethod: 'success', type: 'success', ...metadata })
 }
 
 logger.start = (message, metadata = {}) => {
-  logger.info(`🚀 ${message}`, { type: 'startup', ...metadata })
+  logger.info(message, { logMethod: 'start', type: 'startup', ...metadata })
 }
 
 logger.request = (method, url, status, duration, metadata = {}) => {
-  const emoji = status >= 400 ? '🔴' : status >= 300 ? '🟡' : '🟢'
   const level = status >= 400 ? 'error' : status >= 300 ? 'warn' : 'info'
 
-  logger[level](`${emoji} ${method} ${url} - ${status} (${duration}ms)`, {
+  logger[level](`${method} ${url} - ${status} (${duration}ms)`, {
+    logMethod: 'request',
     type: 'request',
     method,
     url,
@@ -275,11 +302,12 @@ logger.request = (method, url, status, duration, metadata = {}) => {
 }
 
 logger.api = (message, metadata = {}) => {
-  logger.info(`🔗 ${message}`, { type: 'api', ...metadata })
+  logger.info(message, { logMethod: 'api', type: 'api', ...metadata })
 }
 
 logger.security = (message, metadata = {}) => {
   const securityData = {
+    logMethod: 'security',
     type: 'security',
     timestamp: new Date().toISOString(),
     pid: process.pid,
@@ -288,11 +316,11 @@ logger.security = (message, metadata = {}) => {
   }
 
   // 记录到主日志
-  logger.warn(`🔒 ${message}`, securityData)
+  logger.warn(message, securityData)
 
   // 记录到专门的安全日志文件
   try {
-    securityLogger.warn(`🔒 ${message}`, securityData)
+    securityLogger.warn(message, securityData)
   } catch (error) {
     // 如果安全日志文件不可用，只记录到主日志
     console.warn('Security logger not available:', error.message)
@@ -300,15 +328,16 @@ logger.security = (message, metadata = {}) => {
 }
 
 logger.database = (message, metadata = {}) => {
-  logger.debug(`💾 ${message}`, { type: 'database', ...metadata })
+  logger.debug(message, { logMethod: 'database', type: 'database', ...metadata })
 }
 
 logger.performance = (message, metadata = {}) => {
-  logger.info(`⚡ ${message}`, { type: 'performance', ...metadata })
+  logger.info(message, { logMethod: 'performance', type: 'performance', ...metadata })
 }
 
 logger.audit = (message, metadata = {}) => {
-  logger.info(`📋 ${message}`, {
+  logger.info(message, {
+    logMethod: 'audit',
     type: 'audit',
     timestamp: new Date().toISOString(),
     pid: process.pid,
@@ -316,7 +345,7 @@ logger.audit = (message, metadata = {}) => {
   })
 }
 
-// 🔧 性能监控方法
+// 性能监控方法
 logger.timer = (label) => {
   const start = Date.now()
   return {
@@ -328,7 +357,7 @@ logger.timer = (label) => {
   }
 }
 
-// 📊 日志统计
+// 日志统计
 logger.stats = {
   requests: 0,
   errors: 0,
@@ -358,17 +387,17 @@ logger.info = function (message, ...args) {
   return originalInfo.call(this, message, ...args)
 }
 
-// 📈 获取日志统计
+// 获取日志统计
 logger.getStats = () => ({ ...logger.stats })
 
-// 🧹 清理统计
+// 清理统计
 logger.resetStats = () => {
   logger.stats.requests = 0
   logger.stats.errors = 0
   logger.stats.warnings = 0
 }
 
-// 📡 健康检查
+// 健康检查
 logger.healthCheck = () => {
   try {
     const testMessage = 'Logger health check'
@@ -379,11 +408,12 @@ logger.healthCheck = () => {
   }
 }
 
-// 🔐 记录认证详细信息的方法
+// 记录认证详细信息的方法
 logger.authDetail = (message, data = {}) => {
   try {
     // 记录到主日志（简化版）
-    logger.info(`🔐 ${message}`, {
+    logger.info(message, {
+      logMethod: 'authDetail',
       type: 'auth-detail',
       summary: {
         hasAccessToken: !!data.access_token,
@@ -395,13 +425,13 @@ logger.authDetail = (message, data = {}) => {
     })
 
     // 记录到专门的认证详细日志文件（完整数据）
-    authDetailLogger.info(message, { data })
+    authDetailLogger.info(message, { logMethod: 'authDetail', data })
   } catch (error) {
     logger.error('Failed to log auth detail:', error)
   }
 }
 
-// 🎬 启动日志记录系统
+// 启动日志记录系统
 logger.start('Logger initialized', {
   level: process.env.LOG_LEVEL || config.logging.level,
   directory: config.logging.dirname,
