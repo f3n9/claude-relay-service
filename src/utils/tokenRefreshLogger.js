@@ -43,7 +43,11 @@ const tokenRefreshLogger = winston.createLogger({
 if (process.env.NODE_ENV !== 'production') {
   tokenRefreshLogger.add(
     new winston.transports.Console({
-      format: winston.format.combine(winston.format.colorize(), winston.format.simple())
+      format: winston.format.combine(
+        winston.format.colorize(),
+        winston.format.timestamp({ format: 'YYYY-MM-DD HH:mm:ss.SSS' }),
+        winston.format.printf((info) => JSON.stringify(info, null, 2))
+      )
     })
   )
 }

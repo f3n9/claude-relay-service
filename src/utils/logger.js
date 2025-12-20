@@ -109,6 +109,18 @@ const ensureLogPrefix = (prefix, message) => {
   return message.startsWith(prefixToken) ? message : `${prefixToken}${message}`
 }
 
+const ensureTimestampInMessage = (timestamp, message) => {
+  if (typeof message !== 'string' || !timestamp) return message
+  const match = message.match(/^(\[[^\]]+\]\s+)(.*)$/)
+  const tsToken = `[${timestamp}] `
+  if (!match) {
+    return message.startsWith(tsToken) ? message : `${tsToken}${message}`
+  }
+  const prefixToken = match[1]
+  const rest = match[2]
+  return rest.startsWith(tsToken) ? message : `${prefixToken}${tsToken}${rest}`
+}
+
 // 增强的日志格式
 const createLogFormat = (colorize = false) => {
   const formats = [
@@ -117,7 +129,8 @@ const createLogFormat = (colorize = false) => {
     winston.format((info) => {
       const message = stripEmojis(info.message)
       const prefixSource = info.logMethod || info.level
-      info.message = ensureLogPrefix(prefixSource, message)
+      const prefixed = ensureLogPrefix(prefixSource, message)
+      info.message = ensureTimestampInMessage(info.timestamp, prefixed)
       return info
     })()
     // 移除 winston.format.metadata() 来避免自动包装
@@ -129,7 +142,7 @@ const createLogFormat = (colorize = false) => {
 
   formats.push(
     winston.format.printf(({ level, message, timestamp, stack, ...rest }) => {
-      let logMessage = `[${timestamp}] ${level.toUpperCase()}: ${message}`
+      let logMessage = `${level.toUpperCase()}: ${message}`
 
       // 直接处理额外数据，不需要metadata包装
       const additionalData = { ...rest }
@@ -218,13 +231,14 @@ const authDetailLogger = winston.createLogger({
     winston.format((info) => {
       const message = stripEmojis(info.message)
       const prefixSource = info.logMethod || info.level
-      info.message = ensureLogPrefix(prefixSource, message)
+      const prefixed = ensureLogPrefix(prefixSource, message)
+      info.message = ensureTimestampInMessage(info.timestamp, prefixed)
       return info
     })(),
     winston.format.printf(({ level, message, timestamp, data }) => {
       // 使用更深的深度和格式化的JSON输出
       const jsonData = data ? JSON.stringify(data, null, 2) : '{}'
-      return `[${timestamp}] ${level.toUpperCase()}: ${message}\n${jsonData}\n${'='.repeat(80)}`
+      return `${level.toUpperCase()}: ${message}\n${jsonData}\n${'='.repeat(80)}`
     })
   ),
   transports: [createRotateTransport('claude-relay-auth-detail-%DATE%.log', 'info')],
