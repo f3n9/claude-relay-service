@@ -1434,7 +1434,6 @@ const authenticateAdmin = async (req, res, next) => {
 
     // 设置管理员信息（只包含必要信息）
     req.admin = {
-      id: adminSession.adminId || 'admin',
       username: adminSession.username,
       sessionId: token,
       loginTime: adminSession.loginTime
@@ -1567,17 +1566,25 @@ const authenticateUserOrAdmin = async (req, res, next) => {
       try {
         const adminSession = await redis.getSession(adminToken)
         if (adminSession && Object.keys(adminSession).length > 0) {
-          req.admin = {
-            id: adminSession.adminId || 'admin',
-            username: adminSession.username,
-            sessionId: adminToken,
-            loginTime: adminSession.loginTime
-          }
-          req.userType = 'admin'
+          // 🔒 安全修复：验证会话必须字段（与 authenticateAdmin 保持一致）
+          if (!adminSession.username || !adminSession.loginTime) {
+            logger.security(
+              `🔒 Corrupted admin session in authenticateUserOrAdmin from ${req.ip || 'unknown'} - missing required fields (username: ${!!adminSession.username}, loginTime: ${!!adminSession.loginTime})`
+            )
+            await redis.deleteSession(adminToken) // 清理无效/伪造的会话
+            // 不返回 401，继续尝试用户认证
+          } else {
+            req.admin = {
+              username: adminSession.username,
+              sessionId: adminToken,
+              loginTime: adminSession.loginTime
+            }
+            req.userType = 'admin'
 
-          const authDuration = Date.now() - startTime
-          logger.security(`🔐 Admin authenticated: ${adminSession.username} in ${authDuration}ms`)
-          return next()
+            const authDuration = Date.now() - startTime
+            logger.security(`🔐 Admin authenticated: ${adminSession.username} in ${authDuration}ms`)
+            return next()
+          }
         }
       } catch (error) {
         logger.debug('Admin authentication failed, trying user authentication:', error.message)
@@ -2043,7 +2050,7 @@ const globalRateLimit = async (req, res, next) =>
 
 // 📊 请求大小限制中间件
 const requestSizeLimit = (req, res, next) => {
-  const MAX_SIZE_MB = parseInt(process.env.REQUEST_MAX_SIZE_MB || '60', 10)
+  const MAX_SIZE_MB = parseInt(process.env.REQUEST_MAX_SIZE_MB || '100', 10)
   const maxSize = MAX_SIZE_MB * 1024 * 1024
   const contentLength = parseInt(req.headers['content-length'] || '0')
 
@@ -2052,7 +2059,7 @@ const requestSizeLimit = (req, res, next) => {
     return res.status(413).json({
       error: 'Payload Too Large',
       message: 'Request body size exceeds limit',
-      limit: '10MB'
+      limit: `${MAX_SIZE_MB}MB`
     })
   }
 
