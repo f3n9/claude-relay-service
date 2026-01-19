@@ -94,7 +94,9 @@ const safeStringify = (obj, maxDepth = 3, fullDepth = false) => {
 }
 
 const stripEmojis = (text) => {
-  if (typeof text !== 'string') return text
+  if (typeof text !== 'string') {
+    return text
+  }
   return text
     .replace(/\p{Extended_Pictographic}|\uFE0F|\u200D/gu, '')
     .replace(/[ \t]{2,}/g, ' ')
@@ -102,15 +104,23 @@ const stripEmojis = (text) => {
 }
 
 const ensureLogPrefix = (prefix, message) => {
-  if (typeof message !== 'string') return message
-  const normalizedPrefix = String(prefix || '').trim().toLowerCase()
+  if (typeof message !== 'string') {
+    return message
+  }
+  const normalizedPrefix = String(prefix || '')
+    .trim()
+    .toLowerCase()
   const prefixToken = normalizedPrefix ? `[${normalizedPrefix}] ` : ''
-  if (!prefixToken) return message
+  if (!prefixToken) {
+    return message
+  }
   return message.startsWith(prefixToken) ? message : `${prefixToken}${message}`
 }
 
 const ensureTimestampInMessage = (timestamp, message) => {
-  if (typeof message !== 'string' || !timestamp) return message
+  if (typeof message !== 'string' || !timestamp) {
+    return message
+  }
   const match = message.match(/^(\[[^\]]+\]\s+)(.*)$/)
   const tsToken = `[${timestamp}] `
   if (!match) {
