@@ -14,12 +14,12 @@ const DEFAULT_CONFIG = {
   claudeCodeOnlyEnabled: false,
   globalSessionBindingEnabled: false,
   sessionBindingErrorMessage: '你的本地session已污染，请清理后使用。',
-  sessionBindingTtlDays: 30, // 会话绑定 TTL（天），默认30天
+  sessionBindingTtlDays: 1, // 会话绑定 TTL（天），默认1天（支持 /clear 场景，避免 Redis 累积）
   // 用户消息队列配置
   userMessageQueueEnabled: false, // 是否启用用户消息队列（默认关闭）
   userMessageQueueDelayMs: 200, // 请求间隔（毫秒）
-  userMessageQueueTimeoutMs: 5000, // 队列等待超时（毫秒），优化后锁持有时间短无需长等待
-  userMessageQueueLockTtlMs: 5000, // 锁TTL（毫秒），请求发送后立即释放无需长TTL
+  userMessageQueueTimeoutMs: 60000, // 队列等待超时（毫秒）
+  userMessageQueueLockTtlMs: 120000, // 锁TTL（毫秒）
   // 并发请求排队配置
   concurrentRequestQueueEnabled: false, // 是否启用并发请求排队（默认关闭）
   concurrentRequestQueueMaxSize: 3, // 固定最小排队数（默认3）

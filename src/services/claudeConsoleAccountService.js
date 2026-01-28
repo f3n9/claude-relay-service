@@ -129,6 +129,7 @@ class ClaudeConsoleAccountService {
     logger.debug(`[DEBUG] Account data to save: ${JSON.stringify(accountData, null, 2)}`)
 
     await client.hset(`${this.ACCOUNT_KEY_PREFIX}${accountId}`, accountData)
+    await redis.addToIndex('claude_console_account:index', accountId)
 
     // 如果是共享账户，添加到共享账户集合
     if (accountType === 'shared') {
@@ -167,11 +168,18 @@ class ClaudeConsoleAccountService {
   async getAllAccounts() {
     try {
       const client = redis.getClientSafe()
-      const keys = await client.keys(`${this.ACCOUNT_KEY_PREFIX}*`)
+      const accountIds = await redis.getAllIdsByIndex(
+        'claude_console_account:index',
+        `${this.ACCOUNT_KEY_PREFIX}*`,
+        /^claude_console_account:(.+)$/
+      )
+      const keys = accountIds.map((id) => `${this.ACCOUNT_KEY_PREFIX}${id}`)
       const accounts = []
+      const dataList = await redis.batchHgetallChunked(keys)
 
-      for (const key of keys) {
-        const accountData = await client.hgetall(key)
+      for (let i = 0; i < keys.length; i++) {
+        const key = keys[i]
+        const accountData = dataList[i]
         if (accountData && Object.keys(accountData).length > 0) {
           if (!accountData.id) {
             logger.warn(`⚠️ 检测到缺少ID的Claude Console账户数据，执行清理: ${key}`)
@@ -449,6 +457,7 @@ class ClaudeConsoleAccountService {
 
       // 从Redis删除
       await client.del(`${this.ACCOUNT_KEY_PREFIX}${accountId}`)
+      await redis.removeFromIndex('claude_console_account:index', accountId)
 
       // 从共享账户集合中移除
       if (account.accountType === 'shared') {
@@ -577,7 +586,7 @@ class ClaudeConsoleAccountService {
           }
 
           await client.hset(accountKey, updateData)
-          logger.success(`✅ Rate limit removed and account re-enabled: ${accountId}`)
+          logger.success(`Rate limit removed and account re-enabled: ${accountId}`)
         }
       } else {
         if (await client.hdel(accountKey, 'rateLimitAutoStopped')) {
@@ -585,7 +594,7 @@ class ClaudeConsoleAccountService {
             `ℹ️ Removed stale auto-stop flag for Claude Console account ${accountId} during rate limit recovery`
           )
         }
-        logger.success(`✅ Rate limit removed for Claude Console account: ${accountId}`)
+        logger.success(`Rate limit removed for Claude Console account: ${accountId}`)
       }
 
       return { success: true }
@@ -858,7 +867,7 @@ class ClaudeConsoleAccountService {
           }
 
           await client.hset(accountKey, updateData)
-          logger.success(`✅ Blocked status removed and account re-enabled: ${accountId}`)
+          logger.success(`Blocked status removed and account re-enabled: ${accountId}`)
         }
       } else {
         if (await client.hdel(accountKey, 'blockedAutoStopped')) {
@@ -866,7 +875,7 @@ class ClaudeConsoleAccountService {
             `ℹ️ Removed stale auto-stop flag for Claude Console account ${accountId} during blocked status recovery`
           )
         }
-        logger.success(`✅ Blocked status removed for Claude Console account: ${accountId}`)
+        logger.success(`Blocked status removed for Claude Console account: ${accountId}`)
       }
 
       return { success: true }
@@ -967,7 +976,7 @@ class ClaudeConsoleAccountService {
 
       await client.hdel(`${this.ACCOUNT_KEY_PREFIX}${accountId}`, 'overloadedAt', 'overloadStatus')
 
-      logger.success(`✅ Overload status removed for Claude Console account: ${accountId}`)
+      logger.success(`Overload status removed for Claude Console account: ${accountId}`)
       return { success: true }
     } catch (error) {
       logger.error(
@@ -1286,7 +1295,7 @@ class ClaudeConsoleAccountService {
       }
 
       // 检查是否已经因额度停用（避免重复操作）
-      if (!accountData.isActive && accountData.quotaStoppedAt) {
+      if (accountData.quotaStoppedAt) {
         return
       }
 
@@ -1302,21 +1311,14 @@ class ClaudeConsoleAccountService {
           return // 已经被其他进程处理
         }
 
-        // 超过额度，停用账户
+        // 超过额度，停止调度但保持账户状态正常
+        // 不修改 isActive 和 status，只用独立字段标记配额超限
         const updates = {
-          isActive: false,
           quotaStoppedAt: new Date().toISOString(),
           errorMessage: `Daily quota exceeded: $${currentDailyCost.toFixed(2)} / $${dailyQuota.toFixed(2)}`,
           schedulable: false, // 停止调度
           // 使用独立的额度超限自动停止标记
           quotaAutoStopped: 'true'
-        }
-
-        // 只有当前状态是active时才改为quota_exceeded
-        // 如果是rate_limited等其他状态，保持原状态不变
-        const currentStatus = await client.hget(accountKey, 'status')
-        if (currentStatus === 'active') {
-          updates.status = 'quota_exceeded'
         }
 
         await this.updateAccount(accountId, updates)
@@ -1362,15 +1364,10 @@ class ClaudeConsoleAccountService {
         lastResetDate: today
       }
 
-      // 如果账户是因为超额被停用的，恢复账户
-      // 注意：状态可能是 quota_exceeded 或 rate_limited（如果429错误时也超额了）
-      if (
-        accountData.quotaStoppedAt &&
-        accountData.isActive === false &&
-        (accountData.status === 'quota_exceeded' || accountData.status === 'rate_limited')
-      ) {
-        updates.isActive = true
-        updates.status = 'active'
+      // 如果账户因配额超限被停用，恢复账户
+      // 新逻辑：不再依赖 isActive === false 和 status 判断
+      // 只要有 quotaStoppedAt 就说明是因配额超限被停止的
+      if (accountData.quotaStoppedAt) {
         updates.errorMessage = ''
         updates.quotaStoppedAt = ''
 
@@ -1380,16 +1377,7 @@ class ClaudeConsoleAccountService {
           updates.quotaAutoStopped = ''
         }
 
-        // 如果是rate_limited状态，也清除限流相关字段
-        if (accountData.status === 'rate_limited') {
-          const client = redis.getClientSafe()
-          const accountKey = `${this.ACCOUNT_KEY_PREFIX}${accountId}`
-          await client.hdel(accountKey, 'rateLimitedAt', 'rateLimitStatus', 'rateLimitAutoStopped')
-        }
-
-        logger.info(
-          `✅ Restored account ${accountId} after daily reset (was ${accountData.status})`
-        )
+        logger.info(`✅ Restored account ${accountId} after daily quota reset`)
       }
 
       await this.updateAccount(accountId, updates)
@@ -1416,7 +1404,7 @@ class ClaudeConsoleAccountService {
         }
       }
 
-      logger.success(`✅ Reset daily usage for ${resetCount} Claude Console accounts`)
+      logger.success(`Reset daily usage for ${resetCount} Claude Console accounts`)
     } catch (error) {
       logger.error('Failed to reset all daily usage:', error)
     }
@@ -1489,7 +1477,7 @@ class ClaudeConsoleAccountService {
       await client.hset(accountKey, updates)
       await client.hdel(accountKey, ...fieldsToDelete)
 
-      logger.success(`✅ Reset all error status for Claude Console account ${accountId}`)
+      logger.success(`Reset all error status for Claude Console account ${accountId}`)
 
       // 发送 Webhook 通知
       try {
