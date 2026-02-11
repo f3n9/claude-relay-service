@@ -69,6 +69,14 @@ const config = {
     enablePromptCaching: process.env.DISABLE_PROMPT_CACHING !== '1'
   },
 
+  // ☁️ GCP Vertex Claude 配置
+  gcpVertex: {
+    enabled: process.env.CLAUDE_CODE_USE_GCP_VERTEX === '1',
+    defaultLocation: process.env.GCP_VERTEX_LOCATION || 'global',
+    defaultModel: process.env.GCP_VERTEX_CLAUDE_MODEL || 'claude-sonnet-4-20250514',
+    anthropicVersion: process.env.GCP_VERTEX_ANTHROPIC_VERSION || 'vertex-2023-10-16'
+  },
+
   // 🌐 代理配置
   proxy: {
     timeout: parseInt(process.env.DEFAULT_PROXY_TIMEOUT) || 600000, // 10分钟

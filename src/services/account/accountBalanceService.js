@@ -23,6 +23,7 @@ class AccountBalanceService {
     return [
       'claude',
       'claude-console',
+      'claude-vertex',
       'gemini',
       'gemini-api',
       'openai',

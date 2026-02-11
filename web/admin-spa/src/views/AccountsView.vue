@@ -584,6 +584,15 @@
                       <span class="text-xs font-medium text-orange-700">AWS</span>
                     </div>
                     <div
+                      v-else-if="account.platform === 'claude-vertex'"
+                      class="flex items-center gap-1.5 rounded-lg border border-emerald-200 bg-gradient-to-r from-emerald-100 to-teal-100 px-2.5 py-1"
+                    >
+                      <i class="fab fa-google text-xs text-emerald-700" />
+                      <span class="text-xs font-semibold text-emerald-800">Vertex</span>
+                      <span class="mx-1 h-4 w-px bg-emerald-300" />
+                      <span class="text-xs font-medium text-emerald-700">GCP</span>
+                    </div>
+                    <div
                       v-else-if="account.platform === 'openai'"
                       class="flex items-center gap-1.5 rounded-lg border border-gray-700 bg-gray-100 bg-gradient-to-r from-gray-100 to-gray-100 px-2.5 py-1"
                     >
@@ -2265,6 +2274,7 @@ const accountUsageGeneratedAt = ref('')
 const supportedUsagePlatforms = [
   'claude',
   'claude-console',
+  'claude-vertex',
   'openai',
   'openai-responses',
   'gemini',
@@ -2321,6 +2331,7 @@ const platformHierarchy = [
     children: [
       { value: 'claude', label: 'Claude 官方/OAuth', icon: 'fa-brain' },
       { value: 'claude-console', label: 'Claude Console', icon: 'fa-terminal' },
+      { value: 'claude-vertex', label: 'GCP Vertex Claude', icon: 'fab fa-google' },
       { value: 'bedrock', label: 'Bedrock', icon: 'fab fa-aws' },
       { value: 'ccr', label: 'CCR Relay', icon: 'fa-code-branch' }
     ]
@@ -2354,7 +2365,7 @@ const platformHierarchy = [
 
 // 平台分组映射
 const platformGroupMap = {
-  'group-claude': ['claude', 'claude-console', 'bedrock', 'ccr'],
+  'group-claude': ['claude', 'claude-console', 'claude-vertex', 'bedrock', 'ccr'],
   'group-openai': ['openai', 'openai-responses', 'azure_openai'],
   'group-gemini': ['gemini', 'gemini-api'],
   'group-droid': ['droid']
@@ -2365,6 +2376,7 @@ const platformRequestHandlers = {
   claude: () => httpApis.getClaudeAccountsApi(),
   'claude-console': () => httpApis.getClaudeConsoleAccountsApi(),
   bedrock: () => httpApis.getBedrockAccountsApi(),
+  'claude-vertex': () => httpApis.getGcpVertexAccountsApi(),
   gemini: () => httpApis.getGeminiAccountsApi(),
   openai: () => httpApis.getOpenAIAccountsApi(),
   azure_openai: () => httpApis.getAzureOpenAIAccountsApi(),
@@ -2616,6 +2628,7 @@ const closeAccountUsageModal = () => {
 const supportedTestPlatforms = [
   'claude',
   'claude-console',
+  'claude-vertex',
   'bedrock',
   'gemini',
   'gemini-api',
@@ -2803,6 +2816,7 @@ const accountStats = computed(() => {
   const platforms = [
     { value: 'claude', label: 'Claude' },
     { value: 'claude-console', label: 'Claude Console' },
+    { value: 'claude-vertex', label: 'GCP Vertex Claude' },
     { value: 'gemini', label: 'Gemini' },
     { value: 'gemini-api', label: 'Gemini API' },
     { value: 'openai', label: 'OpenAI' },
@@ -3231,6 +3245,14 @@ const loadAccounts = async (forceReload = false) => {
           allAccounts.push(...items)
           break
         }
+        case 'claude-vertex': {
+          const items = list.map((acc) => {
+            const boundApiKeysCount = counts.claudeVertexAccountId?.[acc.id] || 0
+            return { ...acc, platform: 'claude-vertex', boundApiKeysCount }
+          })
+          allAccounts.push(...items)
+          break
+        }
         case 'gemini': {
           const items = list.map((acc) => {
             const boundApiKeysCount = counts.geminiAccountId?.[acc.id] || 0
@@ -3339,6 +3361,7 @@ const loadAccounts = async (forceReload = false) => {
             claude: 'claude-official',
             'claude-console': 'claude-console',
             bedrock: 'bedrock',
+            'claude-vertex': 'claude-vertex',
             gemini: 'gemini',
             'gemini-api': 'gemini-api',
             openai: 'openai',
@@ -3731,6 +3754,7 @@ const getBoundApiKeysForAccount = (account) => {
     return (
       key.claudeAccountId === accountId ||
       key.claudeConsoleAccountId === accountId ||
+      key.claudeVertexAccountId === accountId ||
       key.geminiAccountId === accountId ||
       key.openaiAccountId === accountId ||
       key.azureOpenaiAccountId === accountId ||
@@ -3748,6 +3772,8 @@ const resolveAccountDeleteEndpoint = (account) => {
       return `/admin/claude-console-accounts/${account.id}`
     case 'bedrock':
       return `/admin/bedrock-accounts/${account.id}`
+    case 'claude-vertex':
+      return `/admin/gcp-vertex-accounts/${account.id}`
     case 'openai':
       return `/admin/openai-accounts/${account.id}`
     case 'azure_openai':
@@ -3936,6 +3962,8 @@ const resetAccountStatus = async (account) => {
       endpoint = `/admin/gemini-accounts/${account.id}/reset-status`
     } else if (account.platform === 'bedrock') {
       endpoint = `/admin/bedrock-accounts/${account.id}/reset-status`
+    } else if (account.platform === 'claude-vertex') {
+      endpoint = `/admin/gcp-vertex-accounts/${account.id}/reset-status`
     } else if (account.platform === 'azure-openai') {
       endpoint = `/admin/azure-openai-accounts/${account.id}/reset-status`
     } else {
@@ -3970,6 +3998,8 @@ const toggleSchedulable = async (account) => {
     endpoint = `/admin/claude-console-accounts/${account.id}/toggle-schedulable`
   } else if (account.platform === 'bedrock') {
     endpoint = `/admin/bedrock-accounts/${account.id}/toggle-schedulable`
+  } else if (account.platform === 'claude-vertex') {
+    endpoint = `/admin/gcp-vertex-accounts/${account.id}/toggle-schedulable`
   } else if (account.platform === 'gemini') {
     endpoint = `/admin/gemini-accounts/${account.id}/toggle-schedulable`
   } else if (account.platform === 'openai') {

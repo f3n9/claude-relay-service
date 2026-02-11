@@ -3,6 +3,7 @@ const apiKeyService = require('../../services/apiKeyService')
 const ccrAccountService = require('../../services/account/ccrAccountService')
 const claudeAccountService = require('../../services/account/claudeAccountService')
 const claudeConsoleAccountService = require('../../services/account/claudeConsoleAccountService')
+const gcpVertexAccountService = require('../../services/account/gcpVertexAccountService')
 const geminiAccountService = require('../../services/account/geminiAccountService')
 const geminiApiAccountService = require('../../services/account/geminiApiAccountService')
 const openaiAccountService = require('../../services/account/openaiAccountService')
@@ -1138,9 +1139,10 @@ router.get('/account-usage-trend', authenticateAdmin, async (req, res) => {
     // 拉取各平台账号列表
     let accounts = []
     if (group === 'claude') {
-      const [claudeAccounts, claudeConsoleAccounts] = await Promise.all([
+      const [claudeAccounts, claudeConsoleAccounts, vertexAccountsResult] = await Promise.all([
         claudeAccountService.getAllAccounts(),
-        claudeConsoleAccountService.getAllAccounts()
+        claudeConsoleAccountService.getAllAccounts(),
+        gcpVertexAccountService.getAllAccounts()
       ])
 
       accounts = [
@@ -1161,7 +1163,18 @@ router.get('/account-usage-trend', authenticateAdmin, async (req, res) => {
             name: account.name || `Console账号 ${shortId}`,
             platform: 'claude-console'
           }
-        })
+        }),
+        ...(vertexAccountsResult.success
+          ? vertexAccountsResult.data.map((account) => {
+              const id = String(account.id || '')
+              const shortId = id ? id.slice(0, 8) : '未知'
+              return {
+                id,
+                name: account.name || `GCP Vertex ${shortId}`,
+                platform: 'claude-vertex'
+              }
+            })
+          : [])
       ]
     } else if (group === 'openai') {
       const [openaiAccounts, openaiResponsesAccounts] = await Promise.all([

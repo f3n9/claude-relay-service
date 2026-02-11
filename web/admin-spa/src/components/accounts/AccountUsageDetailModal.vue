@@ -362,6 +362,7 @@ let chartInstance = null
 const platformLabelMap = {
   claude: 'Claude',
   'claude-console': 'Claude Console',
+  'claude-vertex': 'GCP Vertex Claude',
   openai: 'OpenAI',
   'openai-responses': 'OpenAI Responses',
   gemini: 'Gemini',

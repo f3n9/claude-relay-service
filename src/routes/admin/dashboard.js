@@ -3,6 +3,7 @@ const apiKeyService = require('../../services/apiKeyService')
 const claudeAccountService = require('../../services/account/claudeAccountService')
 const claudeConsoleAccountService = require('../../services/account/claudeConsoleAccountService')
 const bedrockAccountService = require('../../services/account/bedrockAccountService')
+const gcpVertexAccountService = require('../../services/account/gcpVertexAccountService')
 const ccrAccountService = require('../../services/account/ccrAccountService')
 const geminiAccountService = require('../../services/account/geminiAccountService')
 const droidAccountService = require('../../services/account/droidAccountService')
@@ -33,6 +34,7 @@ router.get('/dashboard', authenticateAdmin, async (req, res) => {
       claudeConsoleAccounts,
       geminiAccounts,
       bedrockAccountsResult,
+      gcpVertexAccountsResult,
       openaiAccounts,
       ccrAccounts,
       openaiResponsesAccounts,
@@ -45,6 +47,7 @@ router.get('/dashboard', authenticateAdmin, async (req, res) => {
       claudeConsoleAccountService.getAllAccounts(),
       geminiAccountService.getAllAccounts(),
       bedrockAccountService.getAllAccounts(),
+      gcpVertexAccountService.getAllAccounts(),
       redis.getAllOpenAIAccounts(),
       ccrAccountService.getAllAccounts(),
       openaiResponsesAccountService.getAllAccounts(true),
@@ -63,6 +66,7 @@ router.get('/dashboard', authenticateAdmin, async (req, res) => {
 
     // 处理Bedrock账户数据
     const bedrockAccounts = bedrockAccountsResult.success ? bedrockAccountsResult.data : []
+    const gcpVertexAccounts = gcpVertexAccountsResult.success ? gcpVertexAccountsResult.data : []
     const normalizeBoolean = (value) => value === true || value === 'true'
     const isRateLimitedFlag = (status) => {
       if (!status) {
@@ -182,6 +186,7 @@ router.get('/dashboard', authenticateAdmin, async (req, res) => {
     const claudeConsoleStats = countAccountStats(claudeConsoleAccounts)
     const geminiStats = countAccountStats(geminiAccounts, { checkGeminiRateLimit: true })
     const bedrockStats = countAccountStats(bedrockAccounts)
+    const gcpVertexStats = countAccountStats(gcpVertexAccounts)
     const openaiStats = countAccountStats(openaiAccounts, { isStringType: true })
     const ccrStats = countAccountStats(ccrAccounts)
     const openaiResponsesStats = countAccountStats(openaiResponsesAccounts, { isStringType: true })
@@ -196,6 +201,7 @@ router.get('/dashboard', authenticateAdmin, async (req, res) => {
           claudeConsoleAccounts.length +
           geminiAccounts.length +
           bedrockAccounts.length +
+          gcpVertexAccounts.length +
           openaiAccounts.length +
           openaiResponsesAccounts.length +
           ccrAccounts.length,
@@ -204,6 +210,7 @@ router.get('/dashboard', authenticateAdmin, async (req, res) => {
           claudeConsoleStats.normal +
           geminiStats.normal +
           bedrockStats.normal +
+          gcpVertexStats.normal +
           openaiStats.normal +
           openaiResponsesStats.normal +
           ccrStats.normal,
@@ -212,6 +219,7 @@ router.get('/dashboard', authenticateAdmin, async (req, res) => {
           claudeConsoleStats.abnormal +
           geminiStats.abnormal +
           bedrockStats.abnormal +
+          gcpVertexStats.abnormal +
           openaiStats.abnormal +
           openaiResponsesStats.abnormal +
           ccrStats.abnormal +
@@ -221,6 +229,7 @@ router.get('/dashboard', authenticateAdmin, async (req, res) => {
           claudeConsoleStats.paused +
           geminiStats.paused +
           bedrockStats.paused +
+          gcpVertexStats.paused +
           openaiStats.paused +
           openaiResponsesStats.paused +
           ccrStats.paused +
@@ -230,6 +239,7 @@ router.get('/dashboard', authenticateAdmin, async (req, res) => {
           claudeConsoleStats.rateLimited +
           geminiStats.rateLimited +
           bedrockStats.rateLimited +
+          gcpVertexStats.rateLimited +
           openaiStats.rateLimited +
           openaiResponsesStats.rateLimited +
           ccrStats.rateLimited +
@@ -257,13 +267,20 @@ router.get('/dashboard', authenticateAdmin, async (req, res) => {
             paused: geminiStats.paused,
             rateLimited: geminiStats.rateLimited
           },
-          bedrock: {
-            total: bedrockAccounts.length,
-            normal: bedrockStats.normal,
-            abnormal: bedrockStats.abnormal,
-            paused: bedrockStats.paused,
-            rateLimited: bedrockStats.rateLimited
-          },
+        bedrock: {
+          total: bedrockAccounts.length,
+          normal: bedrockStats.normal,
+          abnormal: bedrockStats.abnormal,
+          paused: bedrockStats.paused,
+          rateLimited: bedrockStats.rateLimited
+        },
+        'claude-vertex': {
+          total: gcpVertexAccounts.length,
+          normal: gcpVertexStats.normal,
+          abnormal: gcpVertexStats.abnormal,
+          paused: gcpVertexStats.paused,
+          rateLimited: gcpVertexStats.rateLimited
+        },
           openai: {
             total: openaiAccounts.length,
             normal: openaiStats.normal,
@@ -299,6 +316,7 @@ router.get('/dashboard', authenticateAdmin, async (req, res) => {
           claudeConsoleStats.normal +
           geminiStats.normal +
           bedrockStats.normal +
+          gcpVertexStats.normal +
           openaiStats.normal +
           openaiResponsesStats.normal +
           ccrStats.normal +

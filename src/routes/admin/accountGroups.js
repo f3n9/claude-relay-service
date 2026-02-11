@@ -2,6 +2,7 @@ const express = require('express')
 const accountGroupService = require('../../services/accountGroupService')
 const claudeAccountService = require('../../services/account/claudeAccountService')
 const claudeConsoleAccountService = require('../../services/account/claudeConsoleAccountService')
+const gcpVertexAccountService = require('../../services/account/gcpVertexAccountService')
 const geminiAccountService = require('../../services/account/geminiAccountService')
 const openaiAccountService = require('../../services/account/openaiAccountService')
 const droidAccountService = require('../../services/account/droidAccountService')
@@ -118,6 +119,9 @@ router.get('/:groupId/members', authenticateAdmin, async (req, res) => {
           if (!account) {
             account = await claudeConsoleAccountService.getAccount(memberId)
           }
+          if (!account) {
+            account = await gcpVertexAccountService.getAccount(memberId)
+          }
           break
       }
 
@@ -127,6 +131,9 @@ router.get('/:groupId/members', authenticateAdmin, async (req, res) => {
       }
       if (!account) {
         account = await claudeConsoleAccountService.getAccount(memberId)
+      }
+      if (!account) {
+        account = await gcpVertexAccountService.getAccount(memberId)
       }
       if (!account) {
         account = await geminiAccountService.getAccount(memberId)

@@ -511,6 +511,21 @@
                                 {{ getClaudeBindingInfo(key) }}
                               </span>
                             </div>
+                            <!-- Claude Vertex 绑定 -->
+                            <div
+                              v-if="key.claudeVertexAccountId"
+                              class="flex items-center gap-1 text-xs"
+                            >
+                              <span
+                                class="inline-flex items-center rounded bg-blue-100 px-1.5 py-0.5 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300"
+                              >
+                                <i class="fab fa-google mr-1 text-[10px]" />
+                                Vertex
+                              </span>
+                              <span class="truncate text-gray-600 dark:text-gray-400">
+                                {{ getVertexBindingInfo(key) }}
+                              </span>
+                            </div>
                             <!-- Gemini 绑定 -->
                             <div v-if="key.geminiAccountId" class="flex items-center gap-1 text-xs">
                               <span
@@ -567,6 +582,7 @@
                               v-if="
                                 !key.claudeAccountId &&
                                 !key.claudeConsoleAccountId &&
+                                !key.claudeVertexAccountId &&
                                 !key.geminiAccountId &&
                                 !key.openaiAccountId &&
                                 !key.bedrockAccountId &&
@@ -1322,6 +1338,21 @@
                     {{ getClaudeBindingInfo(key) }}
                   </span>
                 </div>
+                <!-- Claude Vertex 绑定 -->
+                <div
+                  v-if="key.claudeVertexAccountId"
+                  class="flex flex-wrap items-center gap-1 text-xs"
+                >
+                  <span
+                    class="inline-flex items-center rounded bg-blue-100 px-2 py-0.5 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300"
+                  >
+                    <i class="fab fa-google mr-1" />
+                    Vertex
+                  </span>
+                  <span class="text-gray-600 dark:text-gray-400">
+                    {{ getVertexBindingInfo(key) }}
+                  </span>
+                </div>
                 <!-- Gemini 绑定 -->
                 <div v-if="key.geminiAccountId" class="flex flex-wrap items-center gap-1 text-xs">
                   <span
@@ -1375,6 +1406,7 @@
                   v-if="
                     !key.claudeAccountId &&
                     !key.claudeConsoleAccountId &&
+                    !key.claudeVertexAccountId &&
                     !key.geminiAccountId &&
                     !key.openaiAccountId &&
                     !key.bedrockAccountId &&
@@ -1901,6 +1933,18 @@
                               Claude Console
                             </span>
                           </div>
+                          <!-- Claude Vertex 绑定 -->
+                          <div
+                            v-else-if="key.claudeVertexAccountId"
+                            class="flex items-center gap-1 text-xs"
+                          >
+                            <span
+                              class="inline-flex items-center rounded bg-blue-100 px-1.5 py-0.5 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300"
+                            >
+                              <i class="fab fa-google mr-1 text-[10px]" />
+                              GCP Vertex
+                            </span>
+                          </div>
                           <!-- Gemini 绑定 -->
                           <div
                             v-else-if="key.geminiAccountId"
@@ -2253,6 +2297,7 @@ const apiKeyDateFilters = ref({})
 const defaultTime = ref([new Date(2000, 1, 1, 0, 0, 0), new Date(2000, 2, 1, 23, 59, 59)])
 const accounts = ref({
   claude: [],
+  gcpVertex: [],
   gemini: [],
   geminiApi: [], // 添加 Gemini-API 账号列表（用于传递给子组件初始化）
   openai: [],
@@ -2457,6 +2502,7 @@ const loadAccounts = async (forceRefresh = false) => {
     const [
       claudeData,
       claudeConsoleData,
+      gcpVertexData,
       geminiData,
       geminiApiData,
       openaiData,
@@ -2467,6 +2513,7 @@ const loadAccounts = async (forceRefresh = false) => {
     ] = await Promise.all([
       httpApis.getClaudeAccountsApi(),
       httpApis.getClaudeConsoleAccountsApi(),
+      httpApis.getGcpVertexAccountsApi(),
       httpApis.getGeminiAccountsApi(),
       httpApis.getGeminiApiAccountsApi(),
       httpApis.getOpenAIAccountsApi(),
@@ -2500,6 +2547,16 @@ const loadAccounts = async (forceRefresh = false) => {
     }
 
     accounts.value.claude = claudeAccounts
+
+    if (gcpVertexData.success) {
+      accounts.value.gcpVertex = (gcpVertexData.data || []).map((account) => ({
+        ...account,
+        platform: 'claude-vertex',
+        isDedicated: account.accountType === 'dedicated'
+      }))
+    } else {
+      accounts.value.gcpVertex = []
+    }
 
     // 合并 Gemini OAuth 和 Gemini API 账户
     const geminiAccounts = []
@@ -2997,6 +3054,11 @@ const getBoundAccountName = (accountId) => {
     return `${claudeAccount.name}`
   }
 
+  const vertexAccount = accounts.value.gcpVertex.find((acc) => acc.id === accountId)
+  if (vertexAccount) {
+    return `${vertexAccount.name}`
+  }
+
   // 处理 api: 前缀的 Gemini-API 账户
   if (accountId.startsWith('api:')) {
     const realAccountId = accountId.replace('api:', '')
@@ -3061,6 +3123,7 @@ const hasAnyBinding = (key) => {
   return !!(
     key.claudeAccountId ||
     key.claudeConsoleAccountId ||
+    key.claudeVertexAccountId ||
     key.geminiAccountId ||
     key.openaiAccountId ||
     key.bedrockAccountId ||
@@ -3095,6 +3158,20 @@ const getClaudeBindingInfo = (key) => {
     return `Console-${account.name}`
   }
   return ''
+}
+
+// 获取GCP Vertex绑定信息
+const getVertexBindingInfo = (key) => {
+  if (!key.claudeVertexAccountId) return ''
+  const info = getBoundAccountName(key.claudeVertexAccountId)
+  const account = accounts.value.gcpVertex.find((acc) => acc.id === key.claudeVertexAccountId)
+  if (!account) {
+    return `⚠️ ${info} (账户不存在)`
+  }
+  if (account.accountType === 'dedicated') {
+    return `🔒 专属-${info}`
+  }
+  return info
 }
 
 // 获取Gemini绑定信息
@@ -4327,6 +4404,7 @@ const formatLastUsed = (dateString) => {
 
 const ACCOUNT_TYPE_LABELS = {
   claude: 'Claude',
+  'claude-vertex': 'GCP Vertex Claude',
   openai: 'OpenAI',
   gemini: 'Gemini',
   droid: 'Droid',
@@ -4341,7 +4419,13 @@ const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{
 const normalizeFrontendAccountCategory = (type) => {
   if (!type) return 'other'
   const lower = String(type).toLowerCase()
-  if (lower === 'claude-console' || lower === 'claude_console' || lower === 'claude') {
+  if (
+    lower === 'claude-console' ||
+    lower === 'claude_console' ||
+    lower === 'claude-vertex' ||
+    lower === 'claude_vertex' ||
+    lower === 'claude'
+  ) {
     return 'claude'
   }
   if (
@@ -4503,6 +4587,7 @@ const exportToExcel = () => {
         // 账户绑定
         Claude专属账户: key.claudeAccountId || '',
         Claude控制台账户: key.claudeConsoleAccountId || '',
+        GCPVertex专属账户: key.claudeVertexAccountId || '',
         Gemini专属账户: key.geminiAccountId || '',
         OpenAI专属账户: key.openaiAccountId || '',
         'Azure OpenAI专属账户': key.azureOpenaiAccountId || '',

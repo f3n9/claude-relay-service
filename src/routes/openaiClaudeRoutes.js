@@ -9,6 +9,7 @@ const logger = require('../utils/logger')
 const { authenticateApiKey } = require('../middleware/auth')
 const claudeRelayService = require('../services/relay/claudeRelayService')
 const claudeConsoleRelayService = require('../services/relay/claudeConsoleRelayService')
+const gcpVertexRelayService = require('../services/relay/gcpVertexRelayService')
 const openaiToClaude = require('../services/openaiToClaude')
 const apiKeyService = require('../services/apiKeyService')
 const unifiedClaudeScheduler = require('../services/scheduler/unifiedClaudeScheduler')
@@ -332,6 +333,16 @@ async function handleChatCompletion(req, res, apiKeyData) {
           accountId,
           streamTransformer
         )
+      } else if (accountType === 'claude-vertex') {
+        await gcpVertexRelayService.relayStreamRequestWithUsageCapture(
+          claudeRequest,
+          apiKeyData,
+          res,
+          claudeCodeHeaders,
+          usageCallback,
+          accountId,
+          streamTransformer
+        )
       } else {
         // Claude Official 账户使用标准转发服务
         await claudeRelayService.relayStreamRequestWithUsageCapture(
@@ -356,6 +367,15 @@ async function handleChatCompletion(req, res, apiKeyData) {
       if (accountType === 'claude-console') {
         // Claude Console 账户使用 Console 转发服务
         claudeResponse = await claudeConsoleRelayService.relayRequest(
+          claudeRequest,
+          apiKeyData,
+          req,
+          res,
+          claudeCodeHeaders,
+          accountId
+        )
+      } else if (accountType === 'claude-vertex') {
+        claudeResponse = await gcpVertexRelayService.relayRequest(
           claudeRequest,
           apiKeyData,
           req,

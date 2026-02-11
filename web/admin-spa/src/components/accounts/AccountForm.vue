@@ -284,6 +284,37 @@
                       <label
                         class="group relative flex cursor-pointer items-center rounded-md border p-2 transition-all"
                         :class="[
+                          form.platform === 'claude-vertex'
+                            ? 'border-blue-500 bg-blue-50 dark:border-blue-400 dark:bg-blue-900/30'
+                            : 'border-gray-300 bg-white hover:border-blue-400 hover:bg-blue-50/50 dark:border-gray-600 dark:bg-gray-700 dark:hover:border-blue-500 dark:hover:bg-blue-900/20'
+                        ]"
+                      >
+                        <input
+                          v-model="form.platform"
+                          class="sr-only"
+                          type="radio"
+                          value="claude-vertex"
+                        />
+                        <div class="flex items-center gap-2">
+                          <i class="fab fa-google text-sm text-blue-600 dark:text-blue-400"></i>
+                          <div>
+                            <span class="block text-xs font-medium text-gray-900 dark:text-gray-100"
+                              >GCP Vertex Claude</span
+                            >
+                            <span class="text-xs text-gray-500 dark:text-gray-400">Vertex AI</span>
+                          </div>
+                        </div>
+                        <div
+                          v-if="form.platform === 'claude-vertex'"
+                          class="absolute right-1 top-1 flex h-4 w-4 items-center justify-center rounded-full bg-blue-500"
+                        >
+                          <i class="fas fa-check text-xs text-white"></i>
+                        </div>
+                      </label>
+
+                      <label
+                        class="group relative flex cursor-pointer items-center rounded-md border p-2 transition-all"
+                        :class="[
                           form.platform === 'bedrock'
                             ? 'border-orange-500 bg-orange-50 dark:border-orange-400 dark:bg-orange-900/30'
                             : 'border-gray-300 bg-white hover:border-orange-400 hover:bg-orange-50/50 dark:border-gray-600 dark:bg-gray-700 dark:hover:border-orange-500 dark:hover:bg-orange-900/20'
@@ -577,6 +608,7 @@
               v-if="
                 !isEdit &&
                 form.platform !== 'claude-console' &&
+                form.platform !== 'claude-vertex' &&
                 form.platform !== 'ccr' &&
                 form.platform !== 'bedrock' &&
                 form.platform !== 'azure_openai' &&
@@ -847,6 +879,118 @@
                       Cloud），请留空此字段。
                     </p>
                   </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- GCP Vertex Claude 特定字段 -->
+            <div v-if="form.platform === 'claude-vertex' && !isEdit" class="space-y-4">
+              <div>
+                <label class="mb-3 block text-sm font-semibold text-gray-700 dark:text-gray-300"
+                  >服务账号 JSON *</label
+                >
+                <textarea
+                  v-model="form.serviceAccountJson"
+                  class="form-input w-full resize-none border-gray-300 font-mono text-xs dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200 dark:placeholder-gray-400"
+                  :class="{ 'border-red-500': errors.serviceAccountJson }"
+                  placeholder="粘贴 GCP 服务账号 JSON (包含 project_id, private_key, client_email)"
+                  required
+                  rows="8"
+                />
+                <p v-if="errors.serviceAccountJson" class="mt-1 text-xs text-red-500">
+                  {{ errors.serviceAccountJson }}
+                </p>
+                <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                  需要具备 Vertex AI 权限，JSON 会被安全加密存储
+                </p>
+              </div>
+
+              <div>
+                <label class="mb-3 block text-sm font-semibold text-gray-700 dark:text-gray-300"
+                  >Project ID (可选)</label
+                >
+                <input
+                  v-model="form.projectId"
+                  class="form-input w-full border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200 dark:placeholder-gray-400"
+                  placeholder="留空将使用 JSON 中的 project_id"
+                  type="text"
+                />
+              </div>
+
+              <div>
+                <label class="mb-3 block text-sm font-semibold text-gray-700 dark:text-gray-300"
+                  >区域 Location</label
+                >
+                <input
+                  v-model="form.location"
+                  class="form-input w-full border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200 dark:placeholder-gray-400"
+                  placeholder="global"
+                  type="text"
+                />
+                <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                  默认 global，如需使用特定区域可填写
+                </p>
+              </div>
+
+              <div>
+                <label class="mb-3 block text-sm font-semibold text-gray-700 dark:text-gray-300"
+                  >默认模型 ID (可选)</label
+                >
+                <input
+                  v-model="form.defaultModel"
+                  class="form-input w-full border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200 dark:placeholder-gray-400"
+                  placeholder="例如：claude-sonnet-4-5-20250929"
+                  type="text"
+                />
+                <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                  留空将使用客户端请求中的 model
+                </p>
+              </div>
+
+              <div>
+                <label class="mb-3 block text-sm font-semibold text-gray-700 dark:text-gray-300"
+                  >Anthropic Version</label
+                >
+                <input
+                  v-model="form.anthropicVersion"
+                  class="form-input w-full border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200 dark:placeholder-gray-400"
+                  placeholder="vertex-2023-10-16"
+                  type="text"
+                />
+                <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                  请求体会自动补齐 anthropic_version
+                </p>
+              </div>
+
+              <div>
+                <label class="mb-3 block text-sm font-semibold text-gray-700 dark:text-gray-300"
+                  >限流机制</label
+                >
+                <div class="mb-3">
+                  <label class="inline-flex cursor-pointer items-center">
+                    <input
+                      v-model="form.enableRateLimit"
+                      class="mr-2 rounded border-gray-300 text-blue-600 focus:border-blue-500 focus:ring focus:ring-blue-200 dark:border-gray-600 dark:bg-gray-700"
+                      type="checkbox"
+                    />
+                    <span class="text-sm text-gray-700 dark:text-gray-300">启用限流机制</span>
+                  </label>
+                  <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                    启用后，当账号返回429错误时将暂停调度一段时间
+                  </p>
+                </div>
+
+                <div v-if="form.enableRateLimit">
+                  <label class="mb-3 block text-sm font-semibold text-gray-700 dark:text-gray-300"
+                    >限流时间 (分钟)</label
+                  >
+                  <input
+                    v-model.number="form.rateLimitDuration"
+                    class="form-input w-full border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200 dark:placeholder-gray-400"
+                    min="1"
+                    placeholder="默认60分钟"
+                    type="number"
+                  />
                 </div>
               </div>
             </div>
@@ -1981,6 +2125,7 @@
                 form.addType === 'manual' &&
                 form.platform !== 'claude-console' &&
                 form.platform !== 'ccr' &&
+                form.platform !== 'claude-vertex' &&
                 form.platform !== 'bedrock' &&
                 form.platform !== 'azure_openai' &&
                 form.platform !== 'openai-responses'
@@ -2258,6 +2403,7 @@
                   (form.addType === 'oauth' || form.addType === 'setup-token') &&
                   form.platform !== 'claude-console' &&
                   form.platform !== 'ccr' &&
+                  form.platform !== 'claude-vertex' &&
                   form.platform !== 'bedrock' &&
                   form.platform !== 'azure_openai' &&
                   form.platform !== 'openai-responses' &&
@@ -3488,6 +3634,102 @@
             </div>
           </div>
 
+          <!-- GCP Vertex Claude 特定字段（编辑模式）-->
+          <div v-if="form.platform === 'claude-vertex'" class="space-y-4">
+            <div>
+              <label class="mb-3 block text-sm font-semibold text-gray-700 dark:text-gray-300"
+                >服务账号 JSON</label
+              >
+              <textarea
+                v-model="form.serviceAccountJson"
+                class="form-input w-full resize-none border-gray-300 font-mono text-xs dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200 dark:placeholder-gray-400"
+                :class="{ 'border-red-500': errors.serviceAccountJson }"
+                placeholder="留空表示不更新服务账号 JSON"
+                rows="8"
+              />
+              <p v-if="errors.serviceAccountJson" class="mt-1 text-xs text-red-500">
+                {{ errors.serviceAccountJson }}
+              </p>
+              <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">留空表示保持原有凭证不变</p>
+            </div>
+
+            <div>
+              <label class="mb-3 block text-sm font-semibold text-gray-700 dark:text-gray-300"
+                >Project ID</label
+              >
+              <input
+                v-model="form.projectId"
+                class="form-input w-full border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200 dark:placeholder-gray-400"
+                placeholder="留空将使用现有配置"
+                type="text"
+              />
+            </div>
+
+            <div>
+              <label class="mb-3 block text-sm font-semibold text-gray-700 dark:text-gray-300"
+                >区域 Location</label
+              >
+              <input
+                v-model="form.location"
+                class="form-input w-full border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200 dark:placeholder-gray-400"
+                placeholder="global"
+                type="text"
+              />
+            </div>
+
+            <div>
+              <label class="mb-3 block text-sm font-semibold text-gray-700 dark:text-gray-300"
+                >默认模型 ID (可选)</label
+              >
+              <input
+                v-model="form.defaultModel"
+                class="form-input w-full border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200 dark:placeholder-gray-400"
+                placeholder="留空将使用现有配置"
+                type="text"
+              />
+            </div>
+
+            <div>
+              <label class="mb-3 block text-sm font-semibold text-gray-700 dark:text-gray-300"
+                >Anthropic Version</label
+              >
+              <input
+                v-model="form.anthropicVersion"
+                class="form-input w-full border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200 dark:placeholder-gray-400"
+                placeholder="vertex-2023-10-16"
+                type="text"
+              />
+            </div>
+
+            <div>
+              <label class="mb-3 block text-sm font-semibold text-gray-700 dark:text-gray-300"
+                >限流机制</label
+              >
+              <div class="mb-3">
+                <label class="inline-flex cursor-pointer items-center">
+                  <input
+                    v-model="form.enableRateLimit"
+                    class="mr-2 rounded border-gray-300 text-blue-600 focus:border-blue-500 focus:ring focus:ring-blue-200 dark:border-gray-600 dark:bg-gray-700"
+                    type="checkbox"
+                  />
+                  <span class="text-sm text-gray-700 dark:text-gray-300">启用限流机制</span>
+                </label>
+              </div>
+
+              <div v-if="form.enableRateLimit">
+                <label class="mb-3 block text-sm font-semibold text-gray-700 dark:text-gray-300"
+                  >限流时间 (分钟)</label
+                >
+                <input
+                  v-model.number="form.rateLimitDuration"
+                  class="form-input w-full border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200 dark:placeholder-gray-400"
+                  min="1"
+                  type="number"
+                />
+              </div>
+            </div>
+          </div>
+
           <!-- Gemini API 特定字段（编辑模式）-->
           <div v-if="form.platform === 'gemini-api'" class="space-y-4">
             <div>
@@ -3874,6 +4116,7 @@
               !(isEdit && isEditingDroidApiKey) &&
               form.platform !== 'claude-console' &&
               form.platform !== 'ccr' &&
+              form.platform !== 'claude-vertex' &&
               form.platform !== 'bedrock' &&
               form.platform !== 'azure_openai' &&
               form.platform !== 'openai-responses'
@@ -4101,7 +4344,7 @@ const showApiKeyManagement = ref(false)
 
 // 根据现有平台确定分组
 const determinePlatformGroup = (platform) => {
-  if (['claude', 'claude-console', 'ccr', 'bedrock'].includes(platform)) {
+  if (['claude', 'claude-console', 'claude-vertex', 'ccr', 'bedrock'].includes(platform)) {
     return 'claude'
   } else if (['openai', 'openai-responses', 'azure_openai'].includes(platform)) {
     return 'openai'
@@ -4260,6 +4503,7 @@ const form = ref({
   groupId: '',
   groupIds: [],
   projectId: props.account?.projectId || '',
+  serviceAccountJson: '',
   accessToken: '',
   refreshToken: '',
   apiKeysInput: '',
@@ -4308,6 +4552,8 @@ const form = ref({
   bearerToken: props.account?.bearerToken || '', // Bearer Token 字段
   defaultModel: props.account?.defaultModel || '',
   smallFastModel: props.account?.smallFastModel || '',
+  location: props.account?.location || 'global',
+  anthropicVersion: props.account?.anthropicVersion || 'vertex-2023-10-16',
   // Azure OpenAI 特定字段
   azureEndpoint: props.account?.azureEndpoint || '',
   apiVersion: props.account?.apiVersion || '',
@@ -4469,6 +4715,7 @@ const errors = ref({
   secretAccessKey: '',
   region: '',
   bearerToken: '',
+  serviceAccountJson: '',
   azureEndpoint: '',
   deploymentName: ''
 })
@@ -5138,6 +5385,7 @@ const createAccount = async () => {
   errors.value.apiUrl = ''
   errors.value.apiKey = ''
   errors.value.apiKeys = ''
+  errors.value.serviceAccountJson = ''
 
   let hasError = false
 
@@ -5154,6 +5402,14 @@ const createAccount = async () => {
     }
     if (!form.value.apiKey || form.value.apiKey.trim() === '') {
       errors.value.apiKey = '请填写 API Key'
+      hasError = true
+    }
+  }
+
+  // GCP Vertex Claude 验证
+  if (form.value.platform === 'claude-vertex') {
+    if (!form.value.serviceAccountJson || form.value.serviceAccountJson.trim() === '') {
+      errors.value.serviceAccountJson = '请填写服务账号 JSON'
       hasError = true
     }
   }
@@ -5429,6 +5685,17 @@ const createAccount = async () => {
       data.quotaResetTime = form.value.quotaResetTime || '00:00'
       // 并发控制字段
       data.maxConcurrentTasks = form.value.maxConcurrentTasks || 0
+    } else if (form.value.platform === 'claude-vertex') {
+      // GCP Vertex Claude 账户特定数据
+      data.serviceAccountJson = form.value.serviceAccountJson?.trim()
+      if (form.value.projectId && form.value.projectId.trim()) {
+        data.projectId = form.value.projectId.trim()
+      }
+      data.location = form.value.location || 'global'
+      data.defaultModel = form.value.defaultModel || ''
+      data.anthropicVersion = form.value.anthropicVersion || 'vertex-2023-10-16'
+      data.priority = form.value.priority || 50
+      data.rateLimitDuration = form.value.enableRateLimit ? form.value.rateLimitDuration || 60 : 0
     } else if (form.value.platform === 'openai-responses') {
       // OpenAI-Responses 账户特定数据
       data.baseApi = form.value.baseApi
@@ -5497,6 +5764,8 @@ const createAccount = async () => {
     } else if (form.value.platform === 'claude-console' || form.value.platform === 'ccr') {
       // CCR 使用 Claude Console 的后端 API
       result = await accountsStore.createClaudeConsoleAccount(data)
+    } else if (form.value.platform === 'claude-vertex') {
+      result = await accountsStore.createGcpVertexAccount(data)
     } else if (form.value.platform === 'droid') {
       result = await accountsStore.createDroidAccount(data)
     } else if (form.value.platform === 'openai-responses') {
@@ -5550,6 +5819,7 @@ const updateAccount = async () => {
   errors.value.name = ''
   errors.value.apiKeys = ''
   errors.value.baseUrl = ''
+  errors.value.serviceAccountJson = ''
 
   // 验证账户名称
   if (!form.value.name || form.value.name.trim() === '') {
@@ -5777,6 +6047,23 @@ const updateAccount = async () => {
       data.maxConcurrentTasks = form.value.maxConcurrentTasks || 0
     }
 
+    // GCP Vertex Claude 特定更新
+    if (props.account.platform === 'claude-vertex') {
+      if (form.value.serviceAccountJson && form.value.serviceAccountJson.trim()) {
+        data.serviceAccountJson = form.value.serviceAccountJson.trim()
+      }
+      if (form.value.projectId && form.value.projectId.trim()) {
+        data.projectId = form.value.projectId.trim()
+      }
+      if (form.value.location && form.value.location.trim()) {
+        data.location = form.value.location.trim()
+      }
+      data.defaultModel = form.value.defaultModel || ''
+      data.anthropicVersion = form.value.anthropicVersion || 'vertex-2023-10-16'
+      data.priority = form.value.priority || 50
+      data.rateLimitDuration = form.value.enableRateLimit ? form.value.rateLimitDuration || 60 : 0
+    }
+
     // OpenAI-Responses 特定更新
     if (props.account.platform === 'openai-responses') {
       data.baseApi = form.value.baseApi
@@ -5867,6 +6154,8 @@ const updateAccount = async () => {
       await accountsStore.updateClaudeAccount(props.account.id, data)
     } else if (props.account.platform === 'claude-console') {
       await accountsStore.updateClaudeConsoleAccount(props.account.id, data)
+    } else if (props.account.platform === 'claude-vertex') {
+      await accountsStore.updateGcpVertexAccount(props.account.id, data)
     } else if (props.account.platform === 'openai-responses') {
       await accountsStore.updateOpenAIResponsesAccount(props.account.id, data)
     } else if (props.account.platform === 'bedrock') {
@@ -5993,7 +6282,11 @@ const showGroupManagement = ref(false)
 const filteredGroups = computed(() => {
   let platformFilter = form.value.platform
   // Claude Console 和 CCR 使用 Claude 分组
-  if (form.value.platform === 'claude-console' || form.value.platform === 'ccr') {
+  if (
+    form.value.platform === 'claude-console' ||
+    form.value.platform === 'claude-vertex' ||
+    form.value.platform === 'ccr'
+  ) {
     platformFilter = 'claude'
   }
   // OpenAI-Responses 使用 OpenAI 分组
@@ -6068,6 +6361,7 @@ watch(
     // 处理添加方式的自动切换
     if (
       newPlatform === 'claude-console' ||
+      newPlatform === 'claude-vertex' ||
       newPlatform === 'ccr' ||
       newPlatform === 'bedrock' ||
       newPlatform === 'openai-responses'
@@ -6366,6 +6660,7 @@ watch(
         groupId: groupId,
         groupIds: [],
         projectId: newAccount.projectId || '',
+        serviceAccountJson: '',
         accessToken: '',
         refreshToken: '',
         authenticationMethod: newAccount.authenticationMethod || '',
@@ -6400,6 +6695,8 @@ watch(
         sessionToken: '', // 编辑模式不显示现有的会话令牌
         defaultModel: newAccount.defaultModel || '',
         smallFastModel: newAccount.smallFastModel || '',
+        location: newAccount.location || 'global',
+        anthropicVersion: newAccount.anthropicVersion || 'vertex-2023-10-16',
         // Azure OpenAI 特定字段
         azureEndpoint: newAccount.azureEndpoint || '',
         apiVersion: newAccount.apiVersion || '',

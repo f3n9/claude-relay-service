@@ -359,6 +359,21 @@
               </div>
               <div>
                 <label class="mb-1 block text-sm font-medium text-gray-600 dark:text-gray-400"
+                  >GCP Vertex Claude 专属账号</label
+                >
+                <AccountSelector
+                  v-model="vertexAccountSelectorValue"
+                  :accounts="localAccounts.gcpVertex"
+                  default-option-text="请选择Vertex账号"
+                  :disabled="!isServiceSelectable('claude')"
+                  :groups="localAccounts.claudeGroups"
+                  placeholder="请选择Vertex账号"
+                  platform="claude-vertex"
+                  :special-options="accountSpecialOptions"
+                />
+              </div>
+              <div>
+                <label class="mb-1 block text-sm font-medium text-gray-600 dark:text-gray-400"
                   >Gemini 专属账号</label
                 >
                 <AccountSelector
@@ -480,6 +495,7 @@ const loading = ref(false)
 const accountsLoading = ref(false)
 const localAccounts = ref({
   claude: [],
+  gcpVertex: [],
   gemini: [],
   openai: [],
   bedrock: [],
@@ -513,6 +529,7 @@ const form = reactive({
   weeklyOpusCostLimit: '', // 新增Claude周费用限制
   permissions: '', // 空字符串表示不修改
   claudeAccountId: '',
+  claudeVertexAccountId: '',
   geminiAccountId: '',
   openaiAccountId: '',
   bedrockAccountId: '',
@@ -541,6 +558,7 @@ const createAccountSelectorModel = (field) =>
   })
 
 const claudeAccountSelectorValue = createAccountSelectorModel('claudeAccountId')
+const vertexAccountSelectorValue = createAccountSelectorModel('claudeVertexAccountId')
 const geminiAccountSelectorValue = createAccountSelectorModel('geminiAccountId')
 const openaiAccountSelectorValue = createAccountSelectorModel('openaiAccountId')
 const bedrockAccountSelectorValue = createAccountSelectorModel('bedrockAccountId')
@@ -582,6 +600,7 @@ const refreshAccounts = async () => {
     const [
       claudeData,
       claudeConsoleData,
+      gcpVertexData,
       geminiData,
       geminiApiData,
       openaiData,
@@ -592,6 +611,7 @@ const refreshAccounts = async () => {
     ] = await Promise.all([
       httpApis.getClaudeAccountsApi(),
       httpApis.getClaudeConsoleAccountsApi(),
+      httpApis.getGcpVertexAccountsApi(),
       httpApis.getGeminiAccountsApi(),
       httpApis.getGeminiApiAccountsApi(), // 获取 Gemini-API 账号
       httpApis.getOpenAIAccountsApi(),
@@ -625,6 +645,16 @@ const refreshAccounts = async () => {
     }
 
     localAccounts.value.claude = claudeAccounts
+
+    if (gcpVertexData.success) {
+      localAccounts.value.gcpVertex = (gcpVertexData.data || []).map((account) => ({
+        ...account,
+        platform: 'claude-vertex',
+        isDedicated: account.accountType === 'dedicated'
+      }))
+    } else {
+      localAccounts.value.gcpVertex = []
+    }
 
     // 合并 Gemini OAuth 和 Gemini API 账号
     const geminiAccounts = []
@@ -760,6 +790,14 @@ const batchUpdateApiKeys = async () => {
       }
     }
 
+    if (form.claudeVertexAccountId !== '') {
+      if (form.claudeVertexAccountId === 'SHARED_POOL') {
+        updates.claudeVertexAccountId = null
+      } else {
+        updates.claudeVertexAccountId = form.claudeVertexAccountId
+      }
+    }
+
     if (form.geminiAccountId !== '') {
       if (form.geminiAccountId === 'SHARED_POOL') {
         updates.geminiAccountId = null
@@ -869,6 +907,10 @@ onMounted(async () => {
 
     localAccounts.value = {
       claude: props.accounts.claude || [],
+      gcpVertex: (props.accounts.gcpVertex || []).map((account) => ({
+        ...account,
+        platform: account.platform || 'claude-vertex'
+      })),
       gemini: geminiAccounts,
       openai: openaiAccounts,
       bedrock: props.accounts.bedrock || [],

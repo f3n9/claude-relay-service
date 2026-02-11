@@ -350,6 +350,7 @@ const platformDisplayName = computed(() => {
   const map = {
     claude: 'Claude官方',
     'claude-console': 'Claude Console',
+    'claude-vertex': 'GCP Vertex Claude',
     ccr: 'Claude Console Relay',
     openai: 'OpenAI',
     'openai-responses': 'OpenAI Responses',

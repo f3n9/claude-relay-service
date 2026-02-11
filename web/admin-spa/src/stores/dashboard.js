@@ -19,6 +19,7 @@ export const useDashboardStore = defineStore('dashboard', () => {
     accountsByPlatform: {
       claude: { total: 0, normal: 0, abnormal: 0, paused: 0, rateLimited: 0 },
       'claude-console': { total: 0, normal: 0, abnormal: 0, paused: 0, rateLimited: 0 },
+      'claude-vertex': { total: 0, normal: 0, abnormal: 0, paused: 0, rateLimited: 0 },
       gemini: { total: 0, normal: 0, abnormal: 0, paused: 0, rateLimited: 0 },
       openai: { total: 0, normal: 0, abnormal: 0, paused: 0, rateLimited: 0 },
       azure_openai: { total: 0, normal: 0, abnormal: 0, paused: 0, rateLimited: 0 },

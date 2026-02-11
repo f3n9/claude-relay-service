@@ -871,6 +871,7 @@ router.get('/accounts/binding-counts', authenticateAdmin, async (req, res) => {
     const bindingCounts = {
       claudeAccountId: {},
       claudeConsoleAccountId: {},
+      claudeVertexAccountId: {},
       geminiAccountId: {},
       openaiAccountId: {},
       azureOpenaiAccountId: {},
@@ -892,6 +893,12 @@ router.get('/accounts/binding-counts', authenticateAdmin, async (req, res) => {
         const id = key.claudeConsoleAccountId
         bindingCounts.claudeConsoleAccountId[id] =
           (bindingCounts.claudeConsoleAccountId[id] || 0) + 1
+      }
+
+      if (key.claudeVertexAccountId) {
+        const id = key.claudeVertexAccountId
+        bindingCounts.claudeVertexAccountId[id] =
+          (bindingCounts.claudeVertexAccountId[id] || 0) + 1
       }
 
       // Gemini 账户（包括 api: 前缀的 Gemini-API 账户）
@@ -1458,6 +1465,7 @@ router.post('/api-keys', authenticateAdmin, async (req, res) => {
       expiresAt,
       claudeAccountId,
       claudeConsoleAccountId,
+      claudeVertexAccountId,
       geminiAccountId,
       openaiAccountId,
       bedrockAccountId,
@@ -1619,6 +1627,7 @@ router.post('/api-keys', authenticateAdmin, async (req, res) => {
       expiresAt,
       claudeAccountId,
       claudeConsoleAccountId,
+      claudeVertexAccountId,
       geminiAccountId,
       openaiAccountId,
       bedrockAccountId,
@@ -1662,6 +1671,7 @@ router.post('/api-keys/batch', authenticateAdmin, async (req, res) => {
       expiresAt,
       claudeAccountId,
       claudeConsoleAccountId,
+      claudeVertexAccountId,
       geminiAccountId,
       openaiAccountId,
       bedrockAccountId,
@@ -1727,6 +1737,7 @@ router.post('/api-keys/batch', authenticateAdmin, async (req, res) => {
           expiresAt,
           claudeAccountId,
           claudeConsoleAccountId,
+          claudeVertexAccountId,
           geminiAccountId,
           openaiAccountId,
           bedrockAccountId,
@@ -1909,6 +1920,9 @@ router.put('/api-keys/batch', authenticateAdmin, async (req, res) => {
         if (updates.claudeConsoleAccountId !== undefined) {
           finalUpdates.claudeConsoleAccountId = updates.claudeConsoleAccountId
         }
+        if (updates.claudeVertexAccountId !== undefined) {
+          finalUpdates.claudeVertexAccountId = updates.claudeVertexAccountId
+        }
         if (updates.geminiAccountId !== undefined) {
           finalUpdates.geminiAccountId = updates.geminiAccountId
         }
@@ -2004,6 +2018,7 @@ router.put('/api-keys/:keyId', authenticateAdmin, async (req, res) => {
       isActive,
       claudeAccountId,
       claudeConsoleAccountId,
+      claudeVertexAccountId,
       geminiAccountId,
       openaiAccountId,
       bedrockAccountId,
@@ -2083,6 +2098,10 @@ router.put('/api-keys/:keyId', authenticateAdmin, async (req, res) => {
     if (claudeConsoleAccountId !== undefined) {
       // 空字符串表示解绑，null或空字符串都设置为空字符串
       updates.claudeConsoleAccountId = claudeConsoleAccountId || ''
+    }
+
+    if (claudeVertexAccountId !== undefined) {
+      updates.claudeVertexAccountId = claudeVertexAccountId || ''
     }
 
     if (geminiAccountId !== undefined) {

@@ -54,6 +54,7 @@ const OTHER_MODELS = [
 const PLATFORM_TEST_MODELS = {
   claude: CLAUDE_MODELS,
   'claude-console': CLAUDE_MODELS,
+  'claude-vertex': CLAUDE_MODELS,
   bedrock: BEDROCK_MODELS,
   gemini: GEMINI_MODELS,
   'gemini-api': GEMINI_MODELS,

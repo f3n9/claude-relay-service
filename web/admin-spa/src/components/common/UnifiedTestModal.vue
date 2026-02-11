@@ -332,6 +332,7 @@ const availableModels = computed(() => {
 const platformFallbackModels = {
   claude: 'claude-sonnet-4-5-20250929',
   'claude-console': 'claude-sonnet-4-5-20250929',
+  'claude-vertex': 'claude-sonnet-4-5-20250929',
   gemini: 'gemini-2.5-pro',
   'gemini-api': 'gemini-2.5-flash',
   'openai-responses': 'gpt-5',
@@ -417,6 +418,11 @@ const platformConfigs = {
     label: 'Claude Console',
     icon: 'fas fa-brain',
     badge: 'bg-purple-100 text-purple-700 dark:bg-purple-500/20 dark:text-purple-300'
+  },
+  'claude-vertex': {
+    label: 'GCP Vertex Claude',
+    icon: 'fab fa-google',
+    badge: 'bg-blue-100 text-blue-700 dark:bg-blue-500/20 dark:text-blue-300'
   },
   bedrock: {
     label: 'AWS Bedrock',
@@ -524,6 +530,7 @@ const getAccountEndpoint = () => {
   const endpoints = {
     claude: `${APP_CONFIG.apiPrefix}/admin/claude-accounts/${props.account.id}/test`,
     'claude-console': `${APP_CONFIG.apiPrefix}/admin/claude-console-accounts/${props.account.id}/test`,
+    'claude-vertex': `${APP_CONFIG.apiPrefix}/admin/gcp-vertex-accounts/${props.account.id}/test`,
     bedrock: `${APP_CONFIG.apiPrefix}/admin/bedrock-accounts/${props.account.id}/test`,
     gemini: `${APP_CONFIG.apiPrefix}/admin/gemini-accounts/${props.account.id}/test`,
     'gemini-api': `${APP_CONFIG.apiPrefix}/admin/gemini-api-accounts/${props.account.id}/test`,

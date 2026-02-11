@@ -2,6 +2,7 @@ const express = require('express')
 const claudeRelayService = require('../services/relay/claudeRelayService')
 const claudeConsoleRelayService = require('../services/relay/claudeConsoleRelayService')
 const bedrockRelayService = require('../services/relay/bedrockRelayService')
+const gcpVertexRelayService = require('../services/relay/gcpVertexRelayService')
 const ccrRelayService = require('../services/relay/ccrRelayService')
 const bedrockAccountService = require('../services/account/bedrockAccountService')
 const unifiedClaudeScheduler = require('../services/scheduler/unifiedClaudeScheduler')
@@ -610,6 +611,98 @@ async function handleMessagesRequest(req, res) {
           },
           accountId
         )
+      } else if (accountType === 'claude-vertex') {
+        const _apiKeyIdVertex = req.apiKey.id
+        const _rateLimitInfoVertex = req.rateLimitInfo
+        const _requestBodyVertex = req.body
+        const _apiKeyVertex = req.apiKey
+        const _headersVertex = req.headers
+
+        await gcpVertexRelayService.relayStreamRequestWithUsageCapture(
+          _requestBodyVertex,
+          _apiKeyVertex,
+          res,
+          _headersVertex,
+          (usageData) => {
+            logger.info(
+              '🎯 Usage callback triggered with complete data:',
+              JSON.stringify(usageData, null, 2)
+            )
+
+            if (
+              usageData &&
+              usageData.input_tokens !== undefined &&
+              usageData.output_tokens !== undefined
+            ) {
+              const inputTokens = usageData.input_tokens || 0
+              const outputTokens = usageData.output_tokens || 0
+              let cacheCreateTokens = usageData.cache_creation_input_tokens || 0
+              let ephemeral5mTokens = 0
+              let ephemeral1hTokens = 0
+
+              if (usageData.cache_creation && typeof usageData.cache_creation === 'object') {
+                ephemeral5mTokens = usageData.cache_creation.ephemeral_5m_input_tokens || 0
+                ephemeral1hTokens = usageData.cache_creation.ephemeral_1h_input_tokens || 0
+                cacheCreateTokens = ephemeral5mTokens + ephemeral1hTokens
+              }
+
+              const cacheReadTokens = usageData.cache_read_input_tokens || 0
+              const model = usageData.model || 'unknown'
+              const usageAccountId = usageData.accountId
+
+              const usageObject = {
+                input_tokens: inputTokens,
+                output_tokens: outputTokens,
+                cache_creation_input_tokens: cacheCreateTokens,
+                cache_read_input_tokens: cacheReadTokens
+              }
+
+              if (ephemeral5mTokens > 0 || ephemeral1hTokens > 0) {
+                usageObject.cache_creation = {
+                  ephemeral_5m_input_tokens: ephemeral5mTokens,
+                  ephemeral_1h_input_tokens: ephemeral1hTokens
+                }
+              }
+
+              apiKeyService
+                .recordUsageWithDetails(
+                  _apiKeyIdVertex,
+                  usageObject,
+                  model,
+                  usageAccountId,
+                  accountType
+                )
+                .catch((error) => {
+                  logger.error('❌ Failed to record stream usage:', error)
+                })
+
+              queueRateLimitUpdate(
+                _rateLimitInfoVertex,
+                {
+                  inputTokens,
+                  outputTokens,
+                  cacheCreateTokens,
+                  cacheReadTokens
+                },
+                model,
+                'claude-vertex-stream',
+                _apiKeyIdVertex,
+                accountType
+              )
+
+              usageDataCaptured = true
+              logger.api(
+                `📊 Stream usage recorded (real) - Model: ${model}, Input: ${inputTokens}, Output: ${outputTokens}, Cache Create: ${cacheCreateTokens}, Cache Read: ${cacheReadTokens}, Total: ${inputTokens + outputTokens + cacheCreateTokens + cacheReadTokens} tokens`
+              )
+            } else {
+              logger.warn(
+                '⚠️ Usage callback triggered but data is incomplete:',
+                JSON.stringify(usageData)
+              )
+            }
+          },
+          accountId
+        )
       } else if (accountType === 'bedrock') {
         // Bedrock账号使用Bedrock转发服务
         // 🧹 内存优化：提取需要的值
@@ -997,6 +1090,15 @@ async function handleMessagesRequest(req, res) {
           _requestBodyNonStream,
           _apiKeyNonStream,
           req, // clientRequest 保留用于断开检测
+          res,
+          _headersNonStream,
+          accountId
+        )
+      } else if (accountType === 'claude-vertex') {
+        response = await gcpVertexRelayService.relayRequest(
+          _requestBodyNonStream,
+          _apiKeyNonStream,
+          req,
           res,
           _headersNonStream,
           accountId
@@ -1560,6 +1662,18 @@ router.post('/v1/messages/count_tokens', authenticateApiKey, async (req, res) =>
           error: {
             type: 'not_supported',
             message: 'Token counting is not supported for Bedrock accounts'
+          }
+        }
+      })
+    }
+
+    if (accountType === 'claude-vertex') {
+      throw Object.assign(new Error('Token counting is not supported for GCP Vertex accounts'), {
+        httpStatus: 501,
+        errorPayload: {
+          error: {
+            type: 'not_supported',
+            message: 'Token counting is not supported for GCP Vertex accounts'
           }
         }
       })

@@ -124,13 +124,15 @@
                 {{
                   platform === 'claude'
                     ? 'Claude OAuth 专属账号'
-                    : platform === 'openai'
-                      ? 'OpenAI 专属账号'
-                      : platform === 'droid'
-                        ? 'Droid 专属账号'
-                        : platform === 'gemini'
-                          ? 'Gemini OAuth 专属账号'
-                          : 'OAuth 专属账号'
+                    : platform === 'claude-vertex'
+                      ? 'GCP Vertex Claude 专属账号'
+                      : platform === 'openai'
+                        ? 'OpenAI 专属账号'
+                        : platform === 'droid'
+                          ? 'Droid 专属账号'
+                          : platform === 'gemini'
+                            ? 'Gemini OAuth 专属账号'
+                            : 'OAuth 专属账号'
                 }}
               </div>
               <div
@@ -307,7 +309,8 @@ const props = defineProps({
   platform: {
     type: String,
     required: true,
-    validator: (value) => ['claude', 'gemini', 'openai', 'bedrock', 'droid'].includes(value)
+    validator: (value) =>
+      ['claude', 'claude-vertex', 'gemini', 'openai', 'bedrock', 'droid'].includes(value)
   },
   accounts: {
     type: Array,
@@ -445,6 +448,9 @@ const filteredGroups = computed(() => {
     // 如果分组有platform属性，则必须匹配当前平台
     // 如果没有platform属性，则认为是旧数据，根据平台判断
     if (group.platform) {
+      if (props.platform === 'claude-vertex') {
+        return group.platform === 'claude'
+      }
       return group.platform === props.platform
     }
     // 向后兼容：如果没有platform字段，通过其他方式判断
@@ -465,6 +471,8 @@ const filteredOAuthAccounts = computed(() => {
 
   if (props.platform === 'claude') {
     accounts = sortedAccounts.value.filter((a) => a.platform === 'claude-oauth')
+  } else if (props.platform === 'claude-vertex') {
+    accounts = sortedAccounts.value.filter((a) => a.platform === 'claude-vertex')
   } else if (props.platform === 'openai') {
     // 对于 OpenAI，只显示 openai 类型的账号
     accounts = sortedAccounts.value.filter((a) => a.platform === 'openai')

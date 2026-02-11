@@ -63,6 +63,20 @@
                     dashboardData.accountsByPlatform['claude-console'].total
                   }}</span>
                 </div>
+                <!-- Claude Vertex账户 -->
+                <div
+                  v-if="
+                    dashboardData.accountsByPlatform['claude-vertex'] &&
+                    dashboardData.accountsByPlatform['claude-vertex'].total > 0
+                  "
+                  class="inline-flex items-center gap-0.5"
+                  :title="`Vertex: ${dashboardData.accountsByPlatform['claude-vertex'].total} 个 (正常: ${dashboardData.accountsByPlatform['claude-vertex'].normal})`"
+                >
+                  <i class="fab fa-google text-xs text-blue-600" />
+                  <span class="text-xs font-medium text-gray-700 dark:text-gray-300">{{
+                    dashboardData.accountsByPlatform['claude-vertex'].total
+                  }}</span>
+                </div>
                 <!-- Gemini账户 -->
                 <div
                   v-if="
@@ -851,6 +865,7 @@ const getBalancePlatformLabel = (platform) => {
   const map = {
     claude: 'Claude',
     'claude-console': 'Claude Console',
+    'claude-vertex': 'GCP Vertex Claude',
     gemini: 'Gemini',
     'gemini-api': 'Gemini API',
     openai: 'OpenAI',
