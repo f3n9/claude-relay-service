@@ -6,7 +6,7 @@ const ccrAccountService = require('../account/ccrAccountService')
 const accountGroupService = require('../accountGroupService')
 const redis = require('../../models/redis')
 const logger = require('../../utils/logger')
-const { parseVendorPrefixedModel, isOpus45OrNewer } = require('../../utils/modelHelper')
+const { parseVendorPrefixedModel, isOpus45OrNewer, isClaudeFamilyModel } = require('../../utils/modelHelper')
 const { isSchedulable, sortAccountsByPriority } = require('../../utils/commonHelper')
 const upstreamErrorHelper = require('../../utils/upstreamErrorHelper')
 
@@ -138,6 +138,16 @@ class UnifiedClaudeScheduler {
           )
           return false
         }
+      }
+    }
+
+    // GCP Vertex 账户仅支持 Claude 家族模型
+    if (accountType === 'claude-vertex') {
+      if (!isClaudeFamilyModel(requestedModel)) {
+        logger.info(
+          `🚫 GCP Vertex account ${account.name} does not support non-Claude model ${requestedModel}${context ? ` ${context}` : ''}`
+        )
+        return false
       }
     }
 
@@ -987,6 +997,11 @@ class UnifiedClaudeScheduler {
           account.accountType === 'shared' &&
           isSchedulable(account.schedulable)
         ) {
+          // 检查模型支持
+          if (!this._isModelSupportedByAccount(account, 'claude-vertex', requestedModel)) {
+            continue
+          }
+
           const isTempUnavailable = await this.isAccountTemporarilyUnavailable(
             account.id,
             'claude-vertex'
@@ -1255,6 +1270,11 @@ class UnifiedClaudeScheduler {
         }
         if (!isSchedulable(account.schedulable)) {
           logger.info(`🚫 GCP Vertex account ${accountId} is not schedulable`)
+          return false
+        }
+        if (
+          !this._isModelSupportedByAccount(account, 'claude-vertex', requestedModel, 'in session check')
+        ) {
           return false
         }
         const isTempUnavailable = await this.isAccountTemporarilyUnavailable(
