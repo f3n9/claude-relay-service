@@ -212,6 +212,7 @@ class AccountBalanceService {
     const serviceMap = {
       claude: require('./claudeAccountService'),
       'claude-console': require('./claudeConsoleAccountService'),
+      'claude-vertex': require('./gcpVertexAccountService'),
       gemini: require('./geminiAccountService'),
       'gemini-api': require('./geminiApiAccountService'),
       openai: require('./openaiAccountService'),
@@ -246,6 +247,7 @@ class AccountBalanceService {
     const serviceMap = {
       claude: require('./claudeAccountService'),
       'claude-console': require('./claudeConsoleAccountService'),
+      'claude-vertex': require('./gcpVertexAccountService'),
       gemini: require('./geminiAccountService'),
       'gemini-api': require('./geminiApiAccountService'),
       openai: require('./openaiAccountService'),
@@ -261,12 +263,6 @@ class AccountBalanceService {
       return []
     }
 
-    // Bedrock 特殊：返回 { success, data }
-    if (platform === 'bedrock' && typeof service.getAllAccounts === 'function') {
-      const result = await service.getAllAccounts()
-      return result?.success ? result.data || [] : []
-    }
-
     if (platform === 'openai-responses') {
       return await service.getAllAccounts(true)
     }
@@ -275,7 +271,11 @@ class AccountBalanceService {
       return []
     }
 
-    return await service.getAllAccounts()
+    const result = await service.getAllAccounts()
+    if (result && typeof result === 'object' && 'success' in result && 'data' in result) {
+      return result.success ? result.data || [] : []
+    }
+    return result
   }
 
   async _getAccountBalanceForAccount(account, platform, options = {}) {

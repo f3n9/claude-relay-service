@@ -280,34 +280,36 @@ class GcpVertexAccountService {
   }
 
   async resetAccountStatus(accountId) {
-    const account = await this.getAccount(accountId)
-    if (!account) {
+    const client = redis.getClientSafe()
+    const key = `${this.ACCOUNT_KEY_PREFIX}${accountId}`
+    const existingRaw = await client.get(key)
+    if (!existingRaw) {
       return { success: false, error: 'Account not found' }
     }
+    const account = JSON.parse(existingRaw)
     const updates = {
       status: 'active',
       rateLimitedAt: '',
       rateLimitStatus: '',
       rateLimitAutoStopped: ''
     }
-    const client = redis.getClientSafe()
-    const key = `${this.ACCOUNT_KEY_PREFIX}${accountId}`
     const next = { ...account, ...updates, updatedAt: new Date().toISOString() }
     await client.set(key, JSON.stringify(next))
     return { success: true, data: this._toSafeAccountSummary(next) }
   }
 
   async markAccountRateLimited(accountId) {
-    const account = await this.getAccount(accountId)
-    if (!account) {
+    const client = redis.getClientSafe()
+    const key = `${this.ACCOUNT_KEY_PREFIX}${accountId}`
+    const existingRaw = await client.get(key)
+    if (!existingRaw) {
       return { success: false, error: 'Account not found' }
     }
+    const account = JSON.parse(existingRaw)
     if (account.rateLimitDuration === 0) {
       return { success: true, skipped: true }
     }
 
-    const client = redis.getClientSafe()
-    const key = `${this.ACCOUNT_KEY_PREFIX}${accountId}`
     const now = new Date().toISOString()
     const next = {
       ...account,
@@ -321,12 +323,13 @@ class GcpVertexAccountService {
   }
 
   async removeAccountRateLimit(accountId) {
-    const account = await this.getAccount(accountId)
-    if (!account) {
-      return { success: false, error: 'Account not found' }
-    }
     const client = redis.getClientSafe()
     const key = `${this.ACCOUNT_KEY_PREFIX}${accountId}`
+    const existingRaw = await client.get(key)
+    if (!existingRaw) {
+      return { success: false, error: 'Account not found' }
+    }
+    const account = JSON.parse(existingRaw)
     const next = {
       ...account,
       rateLimitedAt: '',

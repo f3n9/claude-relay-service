@@ -263,7 +263,11 @@ class GcpVertexRelayService {
           currentUsage.input_tokens !== undefined &&
           currentUsage.output_tokens !== undefined
         ) {
-          const usagePayload = { ...currentUsage, model: currentUsage.model || modelId }
+          const usagePayload = {
+            ...currentUsage,
+            model: currentUsage.model || modelId,
+            accountId
+          }
           usageEvents.push(usagePayload)
           if (typeof usageCallback === 'function') {
             usageCallback(usagePayload)
