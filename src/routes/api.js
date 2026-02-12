@@ -26,6 +26,7 @@ const {
   handleAnthropicMessagesToGemini,
   handleAnthropicCountTokensToGemini
 } = require('../services/anthropicGeminiBridgeService')
+const { sortAccountsByPriority } = require('../utils/commonHelper')
 const router = express.Router()
 
 function queueRateLimitUpdate(
@@ -1637,11 +1638,41 @@ router.post('/v1/messages/count_tokens', authenticateApiKey, async (req, res) =>
   let attempt = 0
 
   const processRequest = async () => {
-    const { accountId, accountType } = await unifiedClaudeScheduler.selectAccountForApiKey(
+    let { accountId, accountType } = await unifiedClaudeScheduler.selectAccountForApiKey(
       req.apiKey,
       sessionHash,
       requestedModel
     )
+
+    const hasExplicitClaudeBinding = !!(
+      req.apiKey?.claudeAccountId ||
+      req.apiKey?.claudeConsoleAccountId ||
+      req.apiKey?.bedrockAccountId ||
+      req.apiKey?.claudeVertexAccountId
+    )
+
+    // shared 池中若选中不支持 count_tokens 的 Vertex 账号，尝试重选支持的账号类型
+    if (accountType === 'claude-vertex' && !hasExplicitClaudeBinding) {
+      const availableAccounts = await unifiedClaudeScheduler._getAllAvailableAccounts(
+        req.apiKey,
+        requestedModel,
+        false
+      )
+      const supportedAccount = sortAccountsByPriority(availableAccounts).find(
+        (account) =>
+          account.accountType === 'claude-official' || account.accountType === 'claude-console'
+      )
+
+      if (supportedAccount) {
+        const { accountId: supportedAccountId, accountType: supportedAccountType } =
+          supportedAccount
+        accountId = supportedAccountId
+        accountType = supportedAccountType
+        logger.info(
+          `🔄 Re-selected supported account for count_tokens: ${accountId} (${accountType})`
+        )
+      }
+    }
 
     if (accountType === 'ccr') {
       throw Object.assign(new Error('Token counting is not supported for CCR accounts'), {

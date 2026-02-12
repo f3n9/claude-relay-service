@@ -19,7 +19,7 @@ class GcpVertexRelayService {
   }
 
   _buildEndpoint(account, modelId, isStream) {
-    const projectId = account.projectId
+    const { projectId } = account
     const location = account.location || config.gcpVertex?.defaultLocation || 'global'
     const encodedModel = encodeURIComponent(modelId)
     const action = isStream ? 'streamRawPredict' : 'rawPredict'
@@ -63,7 +63,7 @@ class GcpVertexRelayService {
     clientResponse,
     clientHeaders,
     accountId,
-    options = {}
+    _options = {}
   ) {
     let queueLockAcquired = false
     let queueRequestId = null
@@ -164,6 +164,32 @@ class GcpVertexRelayService {
     let queueLockAcquired = false
     let queueRequestId = null
     const requestId = uuidv4()
+    const abortController = new AbortController()
+    let upstreamStream = null
+    let streamFinished = false
+
+    const cleanupClientListeners = () => {
+      clientResponse.removeListener('close', handleClientDisconnect)
+      clientResponse.removeListener('aborted', handleClientDisconnect)
+    }
+
+    const handleClientDisconnect = () => {
+      if (streamFinished) {
+        return
+      }
+      streamFinished = true
+      logger.info('🔌 Client disconnected, aborting GCP Vertex stream request')
+      if (!abortController.signal.aborted) {
+        abortController.abort()
+      }
+      if (upstreamStream && typeof upstreamStream.destroy === 'function') {
+        upstreamStream.destroy()
+      }
+      cleanupClientListeners()
+    }
+
+    clientResponse.on('close', handleClientDisconnect)
+    clientResponse.on('aborted', handleClientDisconnect)
 
     try {
       if (userMessageQueueService.isUserMessageRequest(requestBody)) {
@@ -224,8 +250,10 @@ class GcpVertexRelayService {
         timeout: config.requestTimeout || 600000,
         httpsAgent: proxyAgent || undefined,
         proxy: false,
-        validateStatus: () => true
+        validateStatus: () => true,
+        signal: abortController.signal
       })
+      upstreamStream = response.data
 
       if (response.status === 429) {
         await gcpVertexAccountService.markAccountRateLimited(accountId)
@@ -241,6 +269,8 @@ class GcpVertexRelayService {
           errorBody += chunk.toString()
         })
         response.data.on('end', () => {
+          streamFinished = true
+          cleanupClientListeners()
           clientResponse.status(response.status)
           clientResponse.setHeader('Content-Type', 'application/json')
           clientResponse.end(errorBody)
@@ -333,6 +363,9 @@ class GcpVertexRelayService {
       })
 
       response.data.on('end', () => {
+        streamFinished = true
+        cleanupClientListeners()
+
         if (buffer) {
           parseUsageFromSSELine(buffer)
           if (isStreamWritable(clientResponse)) {
@@ -355,12 +388,16 @@ class GcpVertexRelayService {
       })
 
       response.data.on('error', (error) => {
+        streamFinished = true
+        cleanupClientListeners()
+
         logger.error('❌ GCP Vertex stream error:', error)
         if (isStreamWritable(clientResponse)) {
           clientResponse.end()
         }
       })
     } finally {
+      cleanupClientListeners()
       if (queueLockAcquired && queueRequestId) {
         await userMessageQueueService.releaseQueueLock(accountId, queueRequestId)
       }

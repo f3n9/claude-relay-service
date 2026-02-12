@@ -11,6 +11,35 @@ const logger = require('../../utils/logger')
 
 const router = express.Router()
 
+function toSafeVertexGroupMember(account) {
+  return {
+    id: account.id,
+    name: account.name,
+    description: account.description,
+    projectId: account.projectId,
+    location: account.location,
+    defaultModel: account.defaultModel,
+    anthropicVersion: account.anthropicVersion,
+    isActive: account.isActive === true,
+    accountType: account.accountType,
+    priority: account.priority,
+    schedulable: account.schedulable !== false,
+    rateLimitDuration:
+      account.rateLimitDuration !== undefined && account.rateLimitDuration !== null
+        ? account.rateLimitDuration
+        : 60,
+    rateLimitStatus: account.rateLimitStatus || '',
+    rateLimitedAt: account.rateLimitedAt || '',
+    rateLimitAutoStopped: account.rateLimitAutoStopped || '',
+    createdAt: account.createdAt,
+    updatedAt: account.updatedAt,
+    proxy: account.proxy || null,
+    status: account.status || 'active',
+    platform: 'claude-vertex',
+    hasCredentials: !!account.serviceAccountJson
+  }
+}
+
 // 👥 账户分组管理
 
 // 创建账户分组
@@ -103,24 +132,43 @@ router.get('/:groupId/members', authenticateAdmin, async (req, res) => {
     for (const memberId of memberIds) {
       // 根据分组平台优先查找对应账户
       let account = null
+      let accountSource = null
       switch (group.platform) {
         case 'droid':
           account = await droidAccountService.getAccount(memberId)
+          if (account) {
+            accountSource = 'droid'
+          }
           break
         case 'gemini':
           account = await geminiAccountService.getAccount(memberId)
+          if (account) {
+            accountSource = 'gemini'
+          }
           break
         case 'openai':
           account = await openaiAccountService.getAccount(memberId)
+          if (account) {
+            accountSource = 'openai'
+          }
           break
         case 'claude':
         default:
           account = await claudeAccountService.getAccount(memberId)
+          if (account) {
+            accountSource = 'claude-official'
+          }
           if (!account) {
             account = await claudeConsoleAccountService.getAccount(memberId)
+            if (account) {
+              accountSource = 'claude-console'
+            }
           }
           if (!account) {
             account = await gcpVertexAccountService.getAccount(memberId)
+            if (account) {
+              accountSource = 'claude-vertex'
+            }
           }
           break
       }
@@ -128,24 +176,45 @@ router.get('/:groupId/members', authenticateAdmin, async (req, res) => {
       // 兼容旧数据：若按平台未找到，则继续尝试其他平台
       if (!account) {
         account = await claudeAccountService.getAccount(memberId)
+        if (account) {
+          accountSource = 'claude-official'
+        }
       }
       if (!account) {
         account = await claudeConsoleAccountService.getAccount(memberId)
+        if (account) {
+          accountSource = 'claude-console'
+        }
       }
       if (!account) {
         account = await gcpVertexAccountService.getAccount(memberId)
+        if (account) {
+          accountSource = 'claude-vertex'
+        }
       }
       if (!account) {
         account = await geminiAccountService.getAccount(memberId)
+        if (account) {
+          accountSource = 'gemini'
+        }
       }
       if (!account) {
         account = await openaiAccountService.getAccount(memberId)
+        if (account) {
+          accountSource = 'openai'
+        }
       }
       if (!account && group.platform !== 'droid') {
         account = await droidAccountService.getAccount(memberId)
+        if (account) {
+          accountSource = 'droid'
+        }
       }
 
       if (account) {
+        if (accountSource === 'claude-vertex') {
+          account = toSafeVertexGroupMember(account)
+        }
         members.push(account)
       }
     }
