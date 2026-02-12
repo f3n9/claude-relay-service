@@ -1637,13 +1637,13 @@ class UnifiedClaudeScheduler {
               if (account) {
                 accountType = 'claude-vertex'
               } else {
-              // 尝试CCR账户（仅允许在 allowCcr 为 true 时）
-              if (allowCcr) {
-                account = await ccrAccountService.getAccount(memberId)
-                if (account) {
-                  accountType = 'ccr'
+                // 尝试CCR账户（仅允许在 allowCcr 为 true 时）
+                if (allowCcr) {
+                  account = await ccrAccountService.getAccount(memberId)
+                  if (account) {
+                    accountType = 'ccr'
+                  }
                 }
-              }
               }
             }
           }

@@ -267,20 +267,20 @@ router.get('/dashboard', authenticateAdmin, async (req, res) => {
             paused: geminiStats.paused,
             rateLimited: geminiStats.rateLimited
           },
-        bedrock: {
-          total: bedrockAccounts.length,
-          normal: bedrockStats.normal,
-          abnormal: bedrockStats.abnormal,
-          paused: bedrockStats.paused,
-          rateLimited: bedrockStats.rateLimited
-        },
-        'claude-vertex': {
-          total: gcpVertexAccounts.length,
-          normal: gcpVertexStats.normal,
-          abnormal: gcpVertexStats.abnormal,
-          paused: gcpVertexStats.paused,
-          rateLimited: gcpVertexStats.rateLimited
-        },
+          bedrock: {
+            total: bedrockAccounts.length,
+            normal: bedrockStats.normal,
+            abnormal: bedrockStats.abnormal,
+            paused: bedrockStats.paused,
+            rateLimited: bedrockStats.rateLimited
+          },
+          'claude-vertex': {
+            total: gcpVertexAccounts.length,
+            normal: gcpVertexStats.normal,
+            abnormal: gcpVertexStats.abnormal,
+            paused: gcpVertexStats.paused,
+            rateLimited: gcpVertexStats.rateLimited
+          },
           openai: {
             total: openaiAccounts.length,
             normal: openaiStats.normal,

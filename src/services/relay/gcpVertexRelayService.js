@@ -137,8 +137,7 @@ class GcpVertexRelayService {
         await upstreamErrorHelper.markTempUnavailable(accountId, 'claude-vertex', response.status)
       }
 
-      const body =
-        typeof response.data === 'string' ? response.data : JSON.stringify(response.data)
+      const body = typeof response.data === 'string' ? response.data : JSON.stringify(response.data)
 
       return {
         statusCode: response.status,

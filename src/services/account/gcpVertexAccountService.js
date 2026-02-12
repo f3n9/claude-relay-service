@@ -47,7 +47,19 @@ class GcpVertexAccountService {
   }
 
   _getAuthCacheKey(account) {
-    const basis = `${account.id}:${account.serviceAccountJson || ''}:${account.proxy || ''}`
+    let proxyKey = ''
+    if (account.proxy) {
+      if (typeof account.proxy === 'string') {
+        proxyKey = account.proxy
+      } else {
+        try {
+          proxyKey = JSON.stringify(account.proxy)
+        } catch {
+          proxyKey = String(account.proxy)
+        }
+      }
+    }
+    const basis = `${account.id}:${account.serviceAccountJson || ''}:${proxyKey}`
     return crypto.createHash('sha256').update(basis).digest('hex')
   }
 
@@ -236,8 +248,7 @@ class GcpVertexAccountService {
     if (updates.projectId !== undefined) next.projectId = updates.projectId
     if (updates.location !== undefined) next.location = updates.location
     if (updates.defaultModel !== undefined) next.defaultModel = updates.defaultModel
-    if (updates.anthropicVersion !== undefined)
-      next.anthropicVersion = updates.anthropicVersion
+    if (updates.anthropicVersion !== undefined) next.anthropicVersion = updates.anthropicVersion
     if (updates.isActive !== undefined) next.isActive = updates.isActive === true
     if (updates.accountType !== undefined) next.accountType = updates.accountType
     if (updates.priority !== undefined) next.priority = updates.priority

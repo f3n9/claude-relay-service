@@ -1149,6 +1149,7 @@ class ApiKeyService {
           'claudeAccountId',
           'geminiAccountId',
           'openaiAccountId',
+          'claudeVertexAccountId',
           'droidAccountId',
           'isDeleted'
         )
@@ -2224,9 +2225,9 @@ class ApiKeyService {
         claudeConsoleAccountId: keyData.claudeConsoleAccountId,
         geminiAccountId: keyData.geminiAccountId,
         openaiAccountId: keyData.openaiAccountId,
-          bedrockAccountId: keyData.bedrockAccountId,
-          claudeVertexAccountId: keyData.claudeVertexAccountId,
-          droidAccountId: keyData.droidAccountId,
+        bedrockAccountId: keyData.bedrockAccountId,
+        claudeVertexAccountId: keyData.claudeVertexAccountId,
+        droidAccountId: keyData.droidAccountId,
         azureOpenaiAccountId: keyData.azureOpenaiAccountId,
         ccrAccountId: keyData.ccrAccountId
       }

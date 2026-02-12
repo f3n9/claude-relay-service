@@ -897,8 +897,7 @@ router.get('/accounts/binding-counts', authenticateAdmin, async (req, res) => {
 
       if (key.claudeVertexAccountId) {
         const id = key.claudeVertexAccountId
-        bindingCounts.claudeVertexAccountId[id] =
-          (bindingCounts.claudeVertexAccountId[id] || 0) + 1
+        bindingCounts.claudeVertexAccountId[id] = (bindingCounts.claudeVertexAccountId[id] || 0) + 1
       }
 
       // Gemini 账户（包括 api: 前缀的 Gemini-API 账户）
