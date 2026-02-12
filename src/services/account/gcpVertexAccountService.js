@@ -249,17 +249,39 @@ class GcpVertexAccountService {
     const existing = JSON.parse(existingRaw)
     const next = { ...existing }
 
-    if (updates.name !== undefined) next.name = updates.name
-    if (updates.description !== undefined) next.description = updates.description
-    if (updates.projectId !== undefined) next.projectId = updates.projectId
-    if (updates.location !== undefined) next.location = updates.location
-    if (updates.defaultModel !== undefined) next.defaultModel = updates.defaultModel
-    if (updates.anthropicVersion !== undefined) next.anthropicVersion = updates.anthropicVersion
-    if (updates.isActive !== undefined) next.isActive = updates.isActive === true
-    if (updates.accountType !== undefined) next.accountType = updates.accountType
-    if (updates.priority !== undefined) next.priority = updates.priority
-    if (updates.schedulable !== undefined) next.schedulable = updates.schedulable === true
-    if (updates.rateLimitDuration !== undefined) next.rateLimitDuration = updates.rateLimitDuration
+    if (updates.name !== undefined) {
+      next.name = updates.name
+    }
+    if (updates.description !== undefined) {
+      next.description = updates.description
+    }
+    if (updates.projectId !== undefined) {
+      next.projectId = updates.projectId
+    }
+    if (updates.location !== undefined) {
+      next.location = updates.location
+    }
+    if (updates.defaultModel !== undefined) {
+      next.defaultModel = updates.defaultModel
+    }
+    if (updates.anthropicVersion !== undefined) {
+      next.anthropicVersion = updates.anthropicVersion
+    }
+    if (updates.isActive !== undefined) {
+      next.isActive = updates.isActive === true
+    }
+    if (updates.accountType !== undefined) {
+      next.accountType = updates.accountType
+    }
+    if (updates.priority !== undefined) {
+      next.priority = updates.priority
+    }
+    if (updates.schedulable !== undefined) {
+      next.schedulable = updates.schedulable === true
+    }
+    if (updates.rateLimitDuration !== undefined) {
+      next.rateLimitDuration = updates.rateLimitDuration
+    }
     if (updates.proxy !== undefined) {
       next.proxy = updates.proxy ? JSON.stringify(updates.proxy) : ''
     }

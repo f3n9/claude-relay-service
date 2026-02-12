@@ -252,7 +252,8 @@ class UnifiedClaudeScheduler {
             groupId,
             sessionHash,
             effectiveModel,
-            vendor === 'ccr'
+            vendor === 'ccr',
+            ['claude-vertex']
           )
         }
 
@@ -1602,9 +1603,13 @@ class UnifiedClaudeScheduler {
     groupId,
     sessionHash = null,
     requestedModel = null,
-    allowCcr = false
+    allowCcr = false,
+    allowedAccountTypes = null
   ) {
     try {
+      const isAllowedAccountType = (accountType) =>
+        !Array.isArray(allowedAccountTypes) || allowedAccountTypes.includes(accountType)
+
       // 获取分组信息
       const group = await accountGroupService.getGroup(groupId)
       if (!group) {
@@ -1621,7 +1626,11 @@ class UnifiedClaudeScheduler {
           const memberIds = await accountGroupService.getGroupMembers(groupId)
           if (memberIds.includes(mappedAccount.accountId)) {
             // 非 CCR 请求时不允许 CCR 粘性映射
-            if (!allowCcr && mappedAccount.accountType === 'ccr') {
+            if (!isAllowedAccountType(mappedAccount.accountType)) {
+              logger.info(
+                `ℹ️ Sticky account ${mappedAccount.accountId} (${mappedAccount.accountType}) not allowed by group binding filter, clearing mapping`
+              )
+            } else if (!allowCcr && mappedAccount.accountType === 'ccr') {
               await this._deleteSessionMapping(sessionHash)
             } else {
               const isAvailable = await this._isAccountAvailable(
@@ -1696,6 +1705,13 @@ class UnifiedClaudeScheduler {
 
         if (!account) {
           logger.warn(`⚠️ Account ${memberId} not found in group ${group.name}`)
+          continue
+        }
+
+        if (!isAllowedAccountType(accountType)) {
+          logger.debug(
+            `⏭️ Skipping group member ${memberId} with disallowed account type ${accountType}`
+          )
           continue
         }
 
