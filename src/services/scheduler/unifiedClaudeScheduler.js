@@ -252,8 +252,7 @@ class UnifiedClaudeScheduler {
             groupId,
             sessionHash,
             effectiveModel,
-            vendor === 'ccr',
-            ['claude-vertex']
+            vendor === 'ccr'
           )
         }
 
@@ -386,7 +385,8 @@ class UnifiedClaudeScheduler {
             groupId,
             sessionHash,
             effectiveModel,
-            vendor === 'ccr'
+            vendor === 'ccr',
+            ['claude-vertex']
           )
         }
 
