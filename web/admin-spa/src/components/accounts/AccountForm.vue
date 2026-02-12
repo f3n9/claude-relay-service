@@ -6058,8 +6058,14 @@ const updateAccount = async () => {
       if (form.value.location && form.value.location.trim()) {
         data.location = form.value.location.trim()
       }
-      data.defaultModel = form.value.defaultModel || ''
-      data.anthropicVersion = form.value.anthropicVersion || 'vertex-2023-10-16'
+      const defaultModel = form.value.defaultModel?.trim()
+      if (defaultModel) {
+        data.defaultModel = defaultModel
+      }
+      const anthropicVersion = form.value.anthropicVersion?.trim()
+      if (anthropicVersion) {
+        data.anthropicVersion = anthropicVersion
+      }
       data.priority = form.value.priority || 50
       data.rateLimitDuration = form.value.enableRateLimit ? form.value.rateLimitDuration || 60 : 0
     }

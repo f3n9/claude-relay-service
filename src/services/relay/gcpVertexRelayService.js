@@ -265,15 +265,48 @@ class GcpVertexRelayService {
 
       if (response.status >= 400) {
         let errorBody = ''
-        response.data.on('data', (chunk) => {
-          errorBody += chunk.toString()
-        })
-        response.data.on('end', () => {
-          streamFinished = true
-          cleanupClientListeners()
-          clientResponse.status(response.status)
-          clientResponse.setHeader('Content-Type', 'application/json')
-          clientResponse.end(errorBody)
+        await new Promise((resolve) => {
+          let settled = false
+          const settle = () => {
+            if (settled) {
+              return
+            }
+            settled = true
+            resolve()
+          }
+
+          response.data.on('data', (chunk) => {
+            errorBody += chunk.toString()
+          })
+
+          response.data.on('end', () => {
+            streamFinished = true
+            cleanupClientListeners()
+            if (isStreamWritable(clientResponse)) {
+              clientResponse.status(response.status)
+              clientResponse.setHeader('Content-Type', 'application/json')
+              clientResponse.end(errorBody)
+            }
+            settle()
+          })
+
+          response.data.on('error', (error) => {
+            streamFinished = true
+            cleanupClientListeners()
+            logger.error('❌ GCP Vertex error stream interrupted:', error)
+            if (isStreamWritable(clientResponse)) {
+              clientResponse.status(response.status)
+              clientResponse.setHeader('Content-Type', 'application/json')
+              clientResponse.end(
+                errorBody ||
+                  JSON.stringify({
+                    error: 'Upstream error stream interrupted',
+                    message: error.message
+                  })
+              )
+            }
+            settle()
+          })
         })
         return
       }
