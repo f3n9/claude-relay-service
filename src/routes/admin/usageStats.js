@@ -114,6 +114,7 @@ const accountTypeNames = {
   gemini: 'Gemini',
   'gemini-api': 'Gemini API',
   droid: 'Droid',
+  'claude-vertex': 'GCP Vertex Claude',
   bedrock: 'AWS Bedrock',
   unknown: '未知渠道'
 }
@@ -122,6 +123,7 @@ const resolveAccountByPlatform = async (accountId, platform) => {
   const serviceMap = {
     claude: claudeAccountService,
     'claude-console': claudeConsoleAccountService,
+    'claude-vertex': gcpVertexAccountService,
     gemini: geminiAccountService,
     'gemini-api': geminiApiAccountService,
     openai: openaiAccountService,

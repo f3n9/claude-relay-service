@@ -9,6 +9,7 @@ const { isOpusModel } = require('../utils/modelHelper')
 const ACCOUNT_TYPE_CONFIG = {
   claude: { prefix: 'claude:account:' },
   'claude-console': { prefix: 'claude_console_account:' },
+  'claude-vertex': { prefix: 'claude_vertex_account:', storage: 'json' },
   openai: { prefix: 'openai:account:' },
   'openai-responses': { prefix: 'openai_responses_account:' },
   'azure-openai': { prefix: 'azure_openai:account:' },
@@ -23,6 +24,7 @@ const ACCOUNT_TYPE_PRIORITY = [
   'azure-openai',
   'claude',
   'claude-console',
+  'claude-vertex',
   'gemini',
   'gemini-api',
   'droid'
@@ -31,6 +33,7 @@ const ACCOUNT_TYPE_PRIORITY = [
 const ACCOUNT_CATEGORY_MAP = {
   claude: 'claude',
   'claude-console': 'claude',
+  'claude-vertex': 'claude',
   openai: 'openai',
   'openai-responses': 'openai',
   'azure-openai': 'openai',
@@ -107,6 +110,9 @@ function normalizeAccountTypeKey(type) {
   }
   if (lower === 'gemini_api' || lower === 'gemini-api') {
     return 'gemini-api'
+  }
+  if (lower === 'claude_vertex' || lower === 'claude-vertex') {
+    return 'claude-vertex'
   }
   return lower
 }
@@ -1959,7 +1965,12 @@ class ApiKeyService {
     const redisKey = `${accountConfig.prefix}${accountId}`
     let accountData = null
     try {
-      accountData = await client.hgetall(redisKey)
+      if (accountConfig.storage === 'json') {
+        const raw = await client.get(redisKey)
+        accountData = raw ? JSON.parse(raw) : null
+      } else {
+        accountData = await client.hgetall(redisKey)
+      }
     } catch (error) {
       logger.debug(`加载账号信息失败 ${redisKey}:`, error)
     }
@@ -2032,6 +2043,7 @@ class ApiKeyService {
       } else if (lowerModel.includes('claude') || lowerModel.includes('anthropic')) {
         pushType('claude')
         pushType('claude-console')
+        pushType('claude-vertex')
       } else if (lowerModel.includes('droid')) {
         pushType('droid')
       }
