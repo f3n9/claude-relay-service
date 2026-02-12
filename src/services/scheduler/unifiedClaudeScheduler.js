@@ -406,12 +406,21 @@ class UnifiedClaudeScheduler {
               `⏱️ Bound GCP Vertex account ${apiKeyData.claudeVertexAccountId} is temporarily unavailable, falling back to pool`
             )
           } else {
-            logger.info(
-              `🎯 Using bound dedicated GCP Vertex account: ${boundVertexAccount.name} (${apiKeyData.claudeVertexAccountId}) for API key ${apiKeyData.name}`
+            const isRateLimited = await gcpVertexAccountService.isAccountRateLimited(
+              apiKeyData.claudeVertexAccountId
             )
-            return {
-              accountId: apiKeyData.claudeVertexAccountId,
-              accountType: 'claude-vertex'
+            if (isRateLimited) {
+              logger.warn(
+                `⏱️ Bound GCP Vertex account ${apiKeyData.claudeVertexAccountId} is rate limited, falling back to pool`
+              )
+            } else {
+              logger.info(
+                `🎯 Using bound dedicated GCP Vertex account: ${boundVertexAccount.name} (${apiKeyData.claudeVertexAccountId}) for API key ${apiKeyData.name}`
+              )
+              return {
+                accountId: apiKeyData.claudeVertexAccountId,
+                accountType: 'claude-vertex'
+              }
             }
           }
         } else {
@@ -650,18 +659,37 @@ class UnifiedClaudeScheduler {
         boundVertexAccount.isActive === true &&
         isSchedulable(boundVertexAccount.schedulable)
       ) {
-        logger.info(
-          `🎯 Using bound dedicated GCP Vertex account: ${boundVertexAccount.name} (${apiKeyData.claudeVertexAccountId})`
+        const isTempUnavailable = await this.isAccountTemporarilyUnavailable(
+          apiKeyData.claudeVertexAccountId,
+          'claude-vertex'
         )
-        return [
-          {
-            ...boundVertexAccount,
-            accountId: boundVertexAccount.id,
-            accountType: 'claude-vertex',
-            priority: parseInt(boundVertexAccount.priority) || 50,
-            lastUsedAt: boundVertexAccount.lastUsedAt || '0'
+        if (isTempUnavailable) {
+          logger.warn(
+            `⏱️ Bound GCP Vertex account ${apiKeyData.claudeVertexAccountId} is temporarily unavailable`
+          )
+        } else {
+          const isRateLimited = await gcpVertexAccountService.isAccountRateLimited(
+            apiKeyData.claudeVertexAccountId
+          )
+          if (isRateLimited) {
+            logger.warn(
+              `⏱️ Bound GCP Vertex account ${apiKeyData.claudeVertexAccountId} is rate limited`
+            )
+          } else {
+            logger.info(
+              `🎯 Using bound dedicated GCP Vertex account: ${boundVertexAccount.name} (${apiKeyData.claudeVertexAccountId})`
+            )
+            return [
+              {
+                ...boundVertexAccount,
+                accountId: boundVertexAccount.id,
+                accountType: 'claude-vertex',
+                priority: parseInt(boundVertexAccount.priority) || 50,
+                lastUsedAt: boundVertexAccount.lastUsedAt || '0'
+              }
+            ]
           }
-        ]
+        }
       } else {
         logger.warn(
           `⚠️ Bound GCP Vertex account ${apiKeyData.claudeVertexAccountId} is not available (isActive: ${boundVertexAccount?.isActive}, schedulable: ${boundVertexAccount?.schedulable})`

@@ -83,7 +83,7 @@ router.get('/dashboard', authenticateAdmin, async (req, res) => {
 
     // 通用账户统计函数 - 单次遍历完成所有统计
     const countAccountStats = (accounts, opts = {}) => {
-      const { isStringType = false, checkGeminiRateLimit = false } = opts
+      const { isStringType = false } = opts
       let normal = 0,
         abnormal = 0,
         paused = 0,
@@ -99,10 +99,7 @@ router.get('/dashboard', authenticateAdmin, async (req, res) => {
         const isSchedulable = isStringType
           ? acc.schedulable !== 'false' && acc.schedulable !== false
           : acc.schedulable !== false
-        const isRateLimited = checkGeminiRateLimit
-          ? acc.rateLimitStatus === 'limited' ||
-            (acc.rateLimitStatus && acc.rateLimitStatus.isRateLimited)
-          : acc.rateLimitStatus && acc.rateLimitStatus.isRateLimited
+        const isRateLimited = isRateLimitedFlag(acc.rateLimitStatus)
 
         if (!isActive || isBlocked) {
           abnormal++
@@ -184,7 +181,7 @@ router.get('/dashboard', authenticateAdmin, async (req, res) => {
     // 各平台账户统计（单次遍历）
     const claudeStats = countAccountStats(claudeAccounts)
     const claudeConsoleStats = countAccountStats(claudeConsoleAccounts)
-    const geminiStats = countAccountStats(geminiAccounts, { checkGeminiRateLimit: true })
+    const geminiStats = countAccountStats(geminiAccounts)
     const bedrockStats = countAccountStats(bedrockAccounts)
     const gcpVertexStats = countAccountStats(gcpVertexAccounts)
     const openaiStats = countAccountStats(openaiAccounts, { isStringType: true })
