@@ -407,32 +407,48 @@ class ClaudeRelayService {
 
       // 生成会话哈希用于sticky会话
       const sessionHash = sessionHelper.generateSessionHash(requestBody)
+      const forcedAccountSelection = options.accountSelection
 
       // 选择可用的Claude账户（支持专属绑定和sticky会话）
-      let accountSelection
-      try {
-        accountSelection = await unifiedClaudeScheduler.selectAccountForApiKey(
-          apiKeyData,
-          sessionHash,
-          requestBody.model
-        )
-      } catch (error) {
-        if (error.code === 'CLAUDE_DEDICATED_RATE_LIMITED') {
-          const limitMessage = this._buildStandardRateLimitMessage(error.rateLimitEndAt)
-          logger.warn(
-            `🚫 Dedicated account ${error.accountId} is rate limited for API key ${apiKeyData.name}, returning 403`
-          )
-          return {
-            statusCode: 403,
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              error: 'upstream_rate_limited',
-              message: limitMessage
-            }),
-            accountId: error.accountId
-          }
+      let accountSelection = null
+      if (
+        forcedAccountSelection &&
+        typeof forcedAccountSelection === 'object' &&
+        forcedAccountSelection.accountId &&
+        forcedAccountSelection.accountType
+      ) {
+        accountSelection = {
+          accountId: forcedAccountSelection.accountId,
+          accountType: forcedAccountSelection.accountType
         }
-        throw error
+        logger.info(
+          `🎯 Using pre-selected account for request: ${accountSelection.accountId} (${accountSelection.accountType})`
+        )
+      } else {
+        try {
+          accountSelection = await unifiedClaudeScheduler.selectAccountForApiKey(
+            apiKeyData,
+            sessionHash,
+            requestBody.model
+          )
+        } catch (error) {
+          if (error.code === 'CLAUDE_DEDICATED_RATE_LIMITED') {
+            const limitMessage = this._buildStandardRateLimitMessage(error.rateLimitEndAt)
+            logger.warn(
+              `🚫 Dedicated account ${error.accountId} is rate limited for API key ${apiKeyData.name}, returning 403`
+            )
+            return {
+              statusCode: 403,
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                error: 'upstream_rate_limited',
+                message: limitMessage
+              }),
+              accountId: error.accountId
+            }
+          }
+          throw error
+        }
       }
       const { accountId } = accountSelection
       const { accountType } = accountSelection

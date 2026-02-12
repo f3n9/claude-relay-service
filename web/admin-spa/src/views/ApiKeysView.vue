@@ -3164,6 +3164,9 @@ const getClaudeBindingInfo = (key) => {
 const getVertexBindingInfo = (key) => {
   if (!key.claudeVertexAccountId) return ''
   const info = getBoundAccountName(key.claudeVertexAccountId)
+  if (key.claudeVertexAccountId.startsWith('group:')) {
+    return info
+  }
   const account = accounts.value.gcpVertex.find((acc) => acc.id === key.claudeVertexAccountId)
   if (!account) {
     return `⚠️ ${info} (账户不存在)`

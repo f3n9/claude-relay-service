@@ -1728,14 +1728,13 @@ router.post('/v1/messages/count_tokens', authenticateApiKey, async (req, res) =>
 
     const response =
       accountType === 'claude-official'
-        ? await claudeRelayService.relayRequest(
-            req.body,
-            req.apiKey,
-            req,
-            res,
-            req.headers,
-            relayOptions
-          )
+        ? await claudeRelayService.relayRequest(req.body, req.apiKey, req, res, req.headers, {
+            ...relayOptions,
+            accountSelection: {
+              accountId,
+              accountType
+            }
+          })
         : await claudeConsoleRelayService.relayRequest(
             req.body,
             req.apiKey,
