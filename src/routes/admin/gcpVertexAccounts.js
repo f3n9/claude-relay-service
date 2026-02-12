@@ -255,7 +255,11 @@ router.put('/:accountId/toggle-schedulable', authenticateAdmin, async (req, res)
     logger.success(
       `🔄 Admin toggled GCP Vertex account schedulable status: ${accountId} -> ${!account.schedulable}`
     )
-    return res.json({ success: true, data: updateResult.data })
+    return res.json({
+      success: true,
+      schedulable: !account.schedulable,
+      data: updateResult.data
+    })
   } catch (error) {
     logger.error('❌ Failed to toggle GCP Vertex account schedulable status:', error)
     return res

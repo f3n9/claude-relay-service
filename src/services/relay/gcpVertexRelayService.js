@@ -338,63 +338,80 @@ class GcpVertexRelayService {
         }
       }
 
-      response.data.on('data', (chunk) => {
-        const chunkStr = chunk.toString('utf8')
-        buffer += chunkStr
-
-        const lines = buffer.split('\n')
-        buffer = lines.pop() || ''
-
-        if (lines.length > 0 && isStreamWritable(clientResponse)) {
-          const linesToForward = `${lines.join('\n')}\n`
-          if (streamTransformer) {
-            const transformed = streamTransformer(linesToForward)
-            if (transformed) {
-              clientResponse.write(transformed)
-            }
-          } else {
-            clientResponse.write(linesToForward)
+      await new Promise((resolve) => {
+        let settled = false
+        const settle = () => {
+          if (settled) {
+            return
           }
+          settled = true
+          resolve()
         }
 
-        for (const line of lines) {
-          parseUsageFromSSELine(line)
-        }
-      })
+        response.data.on('data', (chunk) => {
+          const chunkStr = chunk.toString('utf8')
+          buffer += chunkStr
 
-      response.data.on('end', () => {
-        streamFinished = true
-        cleanupClientListeners()
+          const lines = buffer.split('\n')
+          buffer = lines.pop() || ''
 
-        if (buffer) {
-          parseUsageFromSSELine(buffer)
-          if (isStreamWritable(clientResponse)) {
+          if (lines.length > 0 && isStreamWritable(clientResponse)) {
+            const linesToForward = `${lines.join('\n')}\n`
             if (streamTransformer) {
-              const transformed = streamTransformer(buffer)
+              const transformed = streamTransformer(linesToForward)
               if (transformed) {
                 clientResponse.write(transformed)
               }
             } else {
-              clientResponse.write(buffer)
+              clientResponse.write(linesToForward)
             }
           }
-        }
 
-        flushUsage()
-        if (isStreamWritable(clientResponse)) {
-          clientResponse.end()
-        }
-        logger.debug('🌊 GCP Vertex stream completed')
-      })
+          for (const line of lines) {
+            parseUsageFromSSELine(line)
+          }
+        })
 
-      response.data.on('error', (error) => {
-        streamFinished = true
-        cleanupClientListeners()
+        response.data.on('end', () => {
+          streamFinished = true
+          cleanupClientListeners()
 
-        logger.error('❌ GCP Vertex stream error:', error)
-        if (isStreamWritable(clientResponse)) {
-          clientResponse.end()
-        }
+          if (buffer) {
+            parseUsageFromSSELine(buffer)
+            if (isStreamWritable(clientResponse)) {
+              if (streamTransformer) {
+                const transformed = streamTransformer(buffer)
+                if (transformed) {
+                  clientResponse.write(transformed)
+                }
+              } else {
+                clientResponse.write(buffer)
+              }
+            }
+          }
+
+          flushUsage()
+          if (isStreamWritable(clientResponse)) {
+            clientResponse.end()
+          }
+          logger.debug('🌊 GCP Vertex stream completed')
+          settle()
+        })
+
+        response.data.on('error', (error) => {
+          streamFinished = true
+          cleanupClientListeners()
+
+          if (abortController.signal.aborted || error.code === 'ERR_CANCELED') {
+            logger.info('🔌 GCP Vertex stream aborted due to client disconnect')
+          } else {
+            logger.error('❌ GCP Vertex stream error:', error)
+          }
+          if (isStreamWritable(clientResponse)) {
+            clientResponse.end()
+          }
+          settle()
+        })
       })
     } finally {
       cleanupClientListeners()
