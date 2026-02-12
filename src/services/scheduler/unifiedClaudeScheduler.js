@@ -376,6 +376,19 @@ class UnifiedClaudeScheduler {
 
       // 4. 检查GCP Vertex账户绑定
       if (apiKeyData.claudeVertexAccountId) {
+        if (apiKeyData.claudeVertexAccountId.startsWith('group:')) {
+          const groupId = apiKeyData.claudeVertexAccountId.replace('group:', '')
+          logger.info(
+            `🎯 API key ${apiKeyData.name} is bound to Vertex group ${groupId}, selecting from group`
+          )
+          return await this.selectAccountFromGroup(
+            groupId,
+            sessionHash,
+            effectiveModel,
+            vendor === 'ccr'
+          )
+        }
+
         const boundVertexAccount = await gcpVertexAccountService.getAccount(
           apiKeyData.claudeVertexAccountId
         )

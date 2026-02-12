@@ -165,7 +165,10 @@ class GcpVertexAccountService {
       accountType: accountData.accountType,
       priority: accountData.priority,
       schedulable: accountData.schedulable !== false,
-      rateLimitDuration: accountData.rateLimitDuration || 60,
+      rateLimitDuration:
+        accountData.rateLimitDuration !== undefined && accountData.rateLimitDuration !== null
+          ? accountData.rateLimitDuration
+          : 60,
       rateLimitStatus: accountData.rateLimitStatus || '',
       rateLimitedAt: accountData.rateLimitedAt || '',
       rateLimitAutoStopped: accountData.rateLimitAutoStopped || '',

@@ -318,6 +318,11 @@ router.post('/:accountId/reset-status', authenticateAdmin, async (req, res) => {
   try {
     const { accountId } = req.params
     const result = await gcpVertexAccountService.resetAccountStatus(accountId)
+
+    if (!result.success) {
+      return res.status(404).json({ success: false, message: result.error || 'Account not found' })
+    }
+
     logger.success(`Admin reset status for GCP Vertex account: ${accountId}`)
     return res.json({ success: true, data: result.data })
   } catch (error) {

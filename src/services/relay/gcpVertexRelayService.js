@@ -275,56 +275,78 @@ class GcpVertexRelayService {
         }
       }
 
+      const parseUsageFromSSELine = (rawLine) => {
+        const line = rawLine.trim()
+        if (!line || !line.startsWith('data:')) {
+          return
+        }
+        const dataStr = line.slice(5).trim()
+        if (!dataStr || dataStr === '[DONE]') {
+          return
+        }
+
+        try {
+          const data = JSON.parse(dataStr)
+          if (data.type === 'message_start' && data.message?.usage) {
+            currentUsage.input_tokens = data.message.usage.input_tokens || 0
+            currentUsage.cache_creation_input_tokens =
+              data.message.usage.cache_creation_input_tokens || 0
+            currentUsage.cache_read_input_tokens = data.message.usage.cache_read_input_tokens || 0
+            if (data.message?.usage?.cache_creation) {
+              currentUsage.cache_creation = data.message.usage.cache_creation
+            }
+            if (data.message?.model) {
+              currentUsage.model = data.message.model
+            }
+          }
+          if (data.type === 'message_delta' && data.usage) {
+            currentUsage.output_tokens = data.usage.output_tokens || 0
+            flushUsage()
+          }
+        } catch {
+          // ignore parse errors
+        }
+      }
+
       response.data.on('data', (chunk) => {
         const chunkStr = chunk.toString('utf8')
-        if (isStreamWritable(clientResponse)) {
+        buffer += chunkStr
+
+        const lines = buffer.split('\n')
+        buffer = lines.pop() || ''
+
+        if (lines.length > 0 && isStreamWritable(clientResponse)) {
+          const linesToForward = `${lines.join('\n')}\n`
           if (streamTransformer) {
-            const transformed = streamTransformer(chunkStr)
+            const transformed = streamTransformer(linesToForward)
             if (transformed) {
               clientResponse.write(transformed)
             }
           } else {
-            clientResponse.write(chunkStr)
+            clientResponse.write(linesToForward)
           }
         }
-        buffer += chunkStr
 
-        let index
-        while ((index = buffer.indexOf('\n')) !== -1) {
-          const line = buffer.slice(0, index).trim()
-          buffer = buffer.slice(index + 1)
-          if (!line || !line.startsWith('data:')) {
-            continue
-          }
-          const dataStr = line.slice(5).trim()
-          if (!dataStr || dataStr === '[DONE]') {
-            continue
-          }
-          try {
-            const data = JSON.parse(dataStr)
-            if (data.type === 'message_start' && data.message?.usage) {
-              currentUsage.input_tokens = data.message.usage.input_tokens || 0
-              currentUsage.cache_creation_input_tokens =
-                data.message.usage.cache_creation_input_tokens || 0
-              currentUsage.cache_read_input_tokens = data.message.usage.cache_read_input_tokens || 0
-              if (data.message?.usage?.cache_creation) {
-                currentUsage.cache_creation = data.message.usage.cache_creation
-              }
-              if (data.message?.model) {
-                currentUsage.model = data.message.model
-              }
-            }
-            if (data.type === 'message_delta' && data.usage) {
-              currentUsage.output_tokens = data.usage.output_tokens || 0
-              flushUsage()
-            }
-          } catch {
-            // ignore parse errors
-          }
+        for (const line of lines) {
+          parseUsageFromSSELine(line)
         }
       })
 
       response.data.on('end', () => {
+        if (buffer) {
+          parseUsageFromSSELine(buffer)
+          if (isStreamWritable(clientResponse)) {
+            if (streamTransformer) {
+              const transformed = streamTransformer(buffer)
+              if (transformed) {
+                clientResponse.write(transformed)
+              }
+            } else {
+              clientResponse.write(buffer)
+            }
+          }
+        }
+
         flushUsage()
         if (isStreamWritable(clientResponse)) {
           clientResponse.end()
