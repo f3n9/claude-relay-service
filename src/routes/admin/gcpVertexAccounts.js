@@ -229,6 +229,8 @@ router.put('/:accountId', authenticateAdmin, async (req, res) => {
     const hasGroupIdsField = Object.prototype.hasOwnProperty.call(mappedUpdates, 'groupIds')
     const hasGroupIdField = Object.prototype.hasOwnProperty.call(mappedUpdates, 'groupId')
     const targetAccountType = rawAccountType || currentAccount.accountType || 'shared'
+    const previousGroups = await accountGroupService.getAccountGroups(accountId)
+    const previousGroupIds = previousGroups.map((group) => group.id)
 
     delete mappedUpdates.groupId
     delete mappedUpdates.groupIds
@@ -237,17 +239,11 @@ router.put('/:accountId', authenticateAdmin, async (req, res) => {
       mappedUpdates.accountType = targetAccountType
     }
 
-    const result = await gcpVertexAccountService.updateAccount(accountId, mappedUpdates)
-
-    if (!result.success) {
-      return res
-        .status(500)
-        .json({ error: 'Failed to update GCP Vertex account', message: result.error })
-    }
-
+    let groupBindingsUpdated = false
     try {
       if (currentAccount.accountType === 'group' && targetAccountType !== 'group') {
         await accountGroupService.removeAccountFromAllGroups(accountId)
+        groupBindingsUpdated = true
       } else if (targetAccountType === 'group') {
         if (hasGroupIdsField) {
           if (normalizedGroupIds.length > 0) {
@@ -255,8 +251,10 @@ router.put('/:accountId', authenticateAdmin, async (req, res) => {
           } else {
             await accountGroupService.removeAccountFromAllGroups(accountId)
           }
+          groupBindingsUpdated = true
         } else if (hasGroupIdField && typeof groupId === 'string' && groupId.trim()) {
           await accountGroupService.setAccountGroups(accountId, [groupId.trim()], 'claude')
+          groupBindingsUpdated = true
         }
       }
     } catch (groupError) {
@@ -264,6 +262,29 @@ router.put('/:accountId', authenticateAdmin, async (req, res) => {
       return res
         .status(500)
         .json({ error: 'Failed to update GCP Vertex account groups', message: groupError.message })
+    }
+
+    const result = await gcpVertexAccountService.updateAccount(accountId, mappedUpdates)
+
+    if (!result.success) {
+      if (groupBindingsUpdated) {
+        try {
+          if (previousGroupIds.length > 0) {
+            await accountGroupService.setAccountGroups(accountId, previousGroupIds, 'claude')
+          } else {
+            await accountGroupService.removeAccountFromAllGroups(accountId)
+          }
+        } catch (rollbackError) {
+          logger.error(
+            `❌ Failed to rollback GCP Vertex account ${accountId} group bindings after update failure:`,
+            rollbackError
+          )
+        }
+      }
+
+      return res
+        .status(500)
+        .json({ error: 'Failed to update GCP Vertex account', message: result.error })
     }
 
     const formattedAccount = formatAccountExpiry(result.data)
