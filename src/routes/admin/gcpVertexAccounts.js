@@ -95,6 +95,7 @@ router.get('/', authenticateAdmin, async (req, res) => {
 // 创建新的 GCP Vertex 账户
 router.post('/', authenticateAdmin, async (req, res) => {
   try {
+    const mappedBody = mapExpiryField(req.body || {}, 'GCP Vertex', 'create')
     const {
       name,
       description,
@@ -106,8 +107,9 @@ router.post('/', authenticateAdmin, async (req, res) => {
       priority,
       accountType,
       rateLimitDuration,
+      subscriptionExpiresAt,
       proxy
-    } = req.body
+    } = mappedBody
 
     if (!name) {
       return res.status(400).json({ error: 'Name is required' })
@@ -134,6 +136,7 @@ router.post('/', authenticateAdmin, async (req, res) => {
       priority: priority || 50,
       accountType: accountType || 'shared',
       rateLimitDuration: rateLimitDuration ?? 60,
+      subscriptionExpiresAt,
       proxy
     })
 

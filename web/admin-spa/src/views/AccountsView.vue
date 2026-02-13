@@ -2514,6 +2514,7 @@ const showResetButton = (account) => {
   const supportedPlatforms = [
     'claude',
     'claude-console',
+    'claude-vertex',
     'openai',
     'openai-responses',
     'gemini',

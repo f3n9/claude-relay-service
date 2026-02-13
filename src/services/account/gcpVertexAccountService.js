@@ -46,6 +46,20 @@ class GcpVertexAccountService {
     return { raw, parsed }
   }
 
+  _normalizeSubscriptionExpiresAt(value) {
+    if (value === undefined) {
+      return undefined
+    }
+    if (value === null) {
+      return null
+    }
+    if (typeof value === 'string') {
+      const trimmed = value.trim()
+      return trimmed === '' ? null : trimmed
+    }
+    return value
+  }
+
   _getAuthCacheKey(account) {
     let proxyKey = ''
     if (account.proxy) {
@@ -108,6 +122,7 @@ class GcpVertexAccountService {
       priority = 50,
       schedulable = true,
       rateLimitDuration = 60,
+      subscriptionExpiresAt = null,
       proxy = null
     } = options
 
@@ -131,6 +146,7 @@ class GcpVertexAccountService {
       priority,
       schedulable: schedulable === true,
       rateLimitDuration,
+      subscriptionExpiresAt: this._normalizeSubscriptionExpiresAt(subscriptionExpiresAt),
       rateLimitedAt: '',
       rateLimitStatus: '',
       rateLimitAutoStopped: '',
@@ -172,6 +188,7 @@ class GcpVertexAccountService {
       rateLimitStatus: accountData.rateLimitStatus || '',
       rateLimitedAt: accountData.rateLimitedAt || '',
       rateLimitAutoStopped: accountData.rateLimitAutoStopped || '',
+      subscriptionExpiresAt: accountData.subscriptionExpiresAt || null,
       createdAt: accountData.createdAt,
       updatedAt: accountData.updatedAt,
       proxy: accountData.proxy ? JSON.parse(accountData.proxy) : null,
@@ -284,6 +301,12 @@ class GcpVertexAccountService {
     }
     if (updates.proxy !== undefined) {
       next.proxy = updates.proxy ? JSON.stringify(updates.proxy) : ''
+    }
+    const normalizedSubscriptionExpiresAt = this._normalizeSubscriptionExpiresAt(
+      updates.subscriptionExpiresAt !== undefined ? updates.subscriptionExpiresAt : updates.expiresAt
+    )
+    if (normalizedSubscriptionExpiresAt !== undefined) {
+      next.subscriptionExpiresAt = normalizedSubscriptionExpiresAt
     }
 
     if (updates.serviceAccountJson !== undefined && updates.serviceAccountJson !== null) {
