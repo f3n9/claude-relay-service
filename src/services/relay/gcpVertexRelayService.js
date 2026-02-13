@@ -147,7 +147,14 @@ class GcpVertexRelayService {
       }
     } finally {
       if (queueLockAcquired && queueRequestId) {
-        await userMessageQueueService.releaseQueueLock(accountId, queueRequestId)
+        try {
+          await userMessageQueueService.releaseQueueLock(accountId, queueRequestId)
+        } catch (releaseError) {
+          logger.error(
+            `❌ Failed to release user message queue lock for GCP Vertex account ${accountId}:`,
+            releaseError.message
+          )
+        }
       }
     }
   }
@@ -449,7 +456,14 @@ class GcpVertexRelayService {
     } finally {
       cleanupClientListeners()
       if (queueLockAcquired && queueRequestId) {
-        await userMessageQueueService.releaseQueueLock(accountId, queueRequestId)
+        try {
+          await userMessageQueueService.releaseQueueLock(accountId, queueRequestId)
+        } catch (releaseError) {
+          logger.error(
+            `❌ Failed to release user message queue lock for GCP Vertex stream account ${accountId}:`,
+            releaseError.message
+          )
+        }
       }
     }
   }
