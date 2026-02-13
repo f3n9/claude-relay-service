@@ -175,6 +175,26 @@ class GcpVertexRelayService {
     let upstreamStream = null
     let streamFinished = false
 
+    const releaseQueueLockSafe = async (context = 'finally') => {
+      if (!queueLockAcquired || !queueRequestId) {
+        return
+      }
+      try {
+        await userMessageQueueService.releaseQueueLock(accountId, queueRequestId)
+        logger.debug(
+          `📬 Released GCP Vertex stream queue lock (${context}) for account ${accountId}, requestId: ${queueRequestId}`
+        )
+      } catch (releaseError) {
+        logger.error(
+          `❌ Failed to release user message queue lock for GCP Vertex stream account ${accountId} (${context}):`,
+          releaseError.message
+        )
+      } finally {
+        queueLockAcquired = false
+        queueRequestId = null
+      }
+    }
+
     const cleanupClientListeners = () => {
       clientResponse.removeListener('close', handleClientDisconnect)
       clientResponse.removeListener('aborted', handleClientDisconnect)
@@ -261,6 +281,9 @@ class GcpVertexRelayService {
         signal: abortController.signal
       })
       upstreamStream = response.data
+
+      // 📬 上游已开始响应（已收到响应头），立即释放队列锁，避免长流式阻塞后续请求
+      await releaseQueueLockSafe('after upstream stream start')
 
       if (response.status === 429) {
         await gcpVertexAccountService.markAccountRateLimited(accountId)
@@ -455,16 +478,7 @@ class GcpVertexRelayService {
       })
     } finally {
       cleanupClientListeners()
-      if (queueLockAcquired && queueRequestId) {
-        try {
-          await userMessageQueueService.releaseQueueLock(accountId, queueRequestId)
-        } catch (releaseError) {
-          logger.error(
-            `❌ Failed to release user message queue lock for GCP Vertex stream account ${accountId}:`,
-            releaseError.message
-          )
-        }
-      }
+      await releaseQueueLockSafe('finally')
     }
   }
 }

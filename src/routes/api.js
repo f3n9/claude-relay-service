@@ -1644,24 +1644,49 @@ router.post('/v1/messages/count_tokens', authenticateApiKey, async (req, res) =>
       requestedModel
     )
 
-    const hasExplicitClaudeBinding = !!(
-      req.apiKey?.claudeAccountId ||
+    const isClaudeGroupBinding =
+      typeof req.apiKey?.claudeAccountId === 'string' &&
+      req.apiKey.claudeAccountId.startsWith('group:')
+    const hasExplicitDedicatedClaudeBinding = !!(
+      (req.apiKey?.claudeAccountId && !isClaudeGroupBinding) ||
       req.apiKey?.claudeConsoleAccountId ||
       req.apiKey?.bedrockAccountId ||
       req.apiKey?.claudeVertexAccountId
     )
 
-    // shared 池中若选中不支持 count_tokens 的 Vertex 账号，尝试重选支持的账号类型
-    if (accountType === 'claude-vertex' && !hasExplicitClaudeBinding) {
-      const availableAccounts = await unifiedClaudeScheduler._getAllAvailableAccounts(
-        req.apiKey,
-        requestedModel,
-        false
-      )
-      const supportedAccount = sortAccountsByPriority(availableAccounts).find(
-        (account) =>
-          account.accountType === 'claude-official' || account.accountType === 'claude-console'
-      )
+    // 选中不支持 count_tokens 的 Vertex 账号时，尝试重选支持账号（官方/Console）
+    if (accountType === 'claude-vertex') {
+      let supportedAccount = null
+
+      if (isClaudeGroupBinding) {
+        const groupId = req.apiKey.claudeAccountId.replace('group:', '')
+        try {
+          const selection = await unifiedClaudeScheduler.selectAccountFromGroup(
+            groupId,
+            sessionHash,
+            requestedModel,
+            false,
+            ['claude-official', 'claude-console']
+          )
+          if (selection) {
+            supportedAccount = selection
+          }
+        } catch (groupFallbackError) {
+          logger.info(
+            `ℹ️ No supported count_tokens account available in Claude group ${groupId}: ${groupFallbackError.message}`
+          )
+        }
+      } else if (!hasExplicitDedicatedClaudeBinding) {
+        const availableAccounts = await unifiedClaudeScheduler._getAllAvailableAccounts(
+          req.apiKey,
+          requestedModel,
+          false
+        )
+        supportedAccount = sortAccountsByPriority(availableAccounts).find(
+          (account) =>
+            account.accountType === 'claude-official' || account.accountType === 'claude-console'
+        )
+      }
 
       if (supportedAccount) {
         const { accountId: supportedAccountId, accountType: supportedAccountType } =
