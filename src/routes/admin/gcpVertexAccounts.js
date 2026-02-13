@@ -106,10 +106,17 @@ router.post('/', authenticateAdmin, async (req, res) => {
       anthropicVersion,
       priority,
       accountType,
+      groupId,
+      groupIds,
       rateLimitDuration,
       subscriptionExpiresAt,
       proxy
     } = mappedBody
+
+    const normalizedAccountType = accountType || 'shared'
+    const normalizedGroupIds = Array.isArray(groupIds)
+      ? groupIds.filter((id) => typeof id === 'string' && id.trim())
+      : []
 
     if (!name) {
       return res.status(400).json({ error: 'Name is required' })
@@ -119,10 +126,18 @@ router.post('/', authenticateAdmin, async (req, res) => {
       return res.status(400).json({ error: 'Priority must be between 1 and 100' })
     }
 
-    if (accountType && !['shared', 'dedicated'].includes(accountType)) {
+    if (!['shared', 'dedicated', 'group'].includes(normalizedAccountType)) {
       return res
         .status(400)
-        .json({ error: 'Invalid account type. Must be "shared" or "dedicated"' })
+        .json({ error: 'Invalid account type. Must be "shared", "dedicated" or "group"' })
+    }
+
+    if (
+      normalizedAccountType === 'group' &&
+      normalizedGroupIds.length === 0 &&
+      (!groupId || typeof groupId !== 'string' || !groupId.trim())
+    ) {
+      return res.status(400).json({ error: 'Group ID is required for group type accounts' })
     }
 
     const result = await gcpVertexAccountService.createAccount({
@@ -134,7 +149,7 @@ router.post('/', authenticateAdmin, async (req, res) => {
       defaultModel,
       anthropicVersion,
       priority: priority || 50,
-      accountType: accountType || 'shared',
+      accountType: normalizedAccountType,
       rateLimitDuration: rateLimitDuration ?? 60,
       subscriptionExpiresAt,
       proxy
@@ -144,6 +159,21 @@ router.post('/', authenticateAdmin, async (req, res) => {
       return res
         .status(500)
         .json({ error: 'Failed to create GCP Vertex account', message: result.error })
+    }
+
+    if (normalizedAccountType === 'group') {
+      try {
+        if (normalizedGroupIds.length > 0) {
+          await accountGroupService.setAccountGroups(result.data.id, normalizedGroupIds, 'claude')
+        } else if (typeof groupId === 'string' && groupId.trim()) {
+          await accountGroupService.addAccountToGroup(result.data.id, groupId.trim(), 'claude')
+        }
+      } catch (groupError) {
+        logger.error(`❌ Failed to bind GCP Vertex account ${result.data.id} to groups:`, groupError)
+        return res
+          .status(500)
+          .json({ error: 'Failed to bind GCP Vertex account to groups', message: groupError.message })
+      }
     }
 
     logger.success(`☁️ Admin created GCP Vertex account: ${name}`)
@@ -164,6 +194,7 @@ router.put('/:accountId', authenticateAdmin, async (req, res) => {
     const updates = req.body
 
     const mappedUpdates = mapExpiryField(updates, 'GCP Vertex', accountId)
+    const { accountType: rawAccountType, groupId, groupIds } = mappedUpdates
 
     if (
       mappedUpdates.priority !== undefined &&
@@ -172,10 +203,37 @@ router.put('/:accountId', authenticateAdmin, async (req, res) => {
       return res.status(400).json({ error: 'Priority must be between 1 and 100' })
     }
 
-    if (mappedUpdates.accountType && !['shared', 'dedicated'].includes(mappedUpdates.accountType)) {
+    if (rawAccountType && !['shared', 'dedicated', 'group'].includes(rawAccountType)) {
       return res
         .status(400)
-        .json({ error: 'Invalid account type. Must be "shared" or "dedicated"' })
+        .json({ error: 'Invalid account type. Must be "shared", "dedicated" or "group"' })
+    }
+
+    if (
+      rawAccountType === 'group' &&
+      (!groupId || typeof groupId !== 'string' || !groupId.trim()) &&
+      (!Array.isArray(groupIds) || groupIds.length === 0)
+    ) {
+      return res.status(400).json({ error: 'Group ID is required for group type accounts' })
+    }
+
+    const currentAccount = await gcpVertexAccountService.getAccount(accountId)
+    if (!currentAccount) {
+      return res.status(404).json({ error: 'Account not found' })
+    }
+
+    const normalizedGroupIds = Array.isArray(groupIds)
+      ? groupIds.filter((gid) => typeof gid === 'string' && gid.trim())
+      : []
+    const hasGroupIdsField = Object.prototype.hasOwnProperty.call(mappedUpdates, 'groupIds')
+    const hasGroupIdField = Object.prototype.hasOwnProperty.call(mappedUpdates, 'groupId')
+    const targetAccountType = rawAccountType || currentAccount.accountType || 'shared'
+
+    delete mappedUpdates.groupId
+    delete mappedUpdates.groupIds
+
+    if (rawAccountType) {
+      mappedUpdates.accountType = targetAccountType
     }
 
     const result = await gcpVertexAccountService.updateAccount(accountId, mappedUpdates)
@@ -184,6 +242,27 @@ router.put('/:accountId', authenticateAdmin, async (req, res) => {
       return res
         .status(500)
         .json({ error: 'Failed to update GCP Vertex account', message: result.error })
+    }
+
+    try {
+      if (currentAccount.accountType === 'group' && targetAccountType !== 'group') {
+        await accountGroupService.removeAccountFromAllGroups(accountId)
+      } else if (targetAccountType === 'group') {
+        if (hasGroupIdsField) {
+          if (normalizedGroupIds.length > 0) {
+            await accountGroupService.setAccountGroups(accountId, normalizedGroupIds, 'claude')
+          } else {
+            await accountGroupService.removeAccountFromAllGroups(accountId)
+          }
+        } else if (hasGroupIdField && typeof groupId === 'string' && groupId.trim()) {
+          await accountGroupService.setAccountGroups(accountId, [groupId.trim()], 'claude')
+        }
+      }
+    } catch (groupError) {
+      logger.error(`❌ Failed to update GCP Vertex account ${accountId} groups:`, groupError)
+      return res
+        .status(500)
+        .json({ error: 'Failed to update GCP Vertex account groups', message: groupError.message })
     }
 
     const formattedAccount = formatAccountExpiry(result.data)
@@ -200,7 +279,11 @@ router.put('/:accountId', authenticateAdmin, async (req, res) => {
 router.delete('/:accountId', authenticateAdmin, async (req, res) => {
   try {
     const { accountId } = req.params
+    const account = await gcpVertexAccountService.getAccount(accountId)
     await apiKeyService.unbindAccountFromAllKeys(accountId, 'claude-vertex')
+    if (account && account.accountType === 'group') {
+      await accountGroupService.removeAccountFromAllGroups(accountId)
+    }
     await gcpVertexAccountService.deleteAccount(accountId)
     return res.json({ success: true, message: 'Account deleted successfully' })
   } catch (error) {
