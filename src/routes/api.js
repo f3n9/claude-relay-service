@@ -27,6 +27,7 @@ const {
   handleAnthropicCountTokensToGemini
 } = require('../services/anthropicGeminiBridgeService')
 const { sortAccountsByPriority } = require('../utils/commonHelper')
+const { hasExplicitDedicatedClaudeBinding } = require('./countTokensBindingHelper')
 const router = express.Router()
 
 function queueRateLimitUpdate(
@@ -1647,12 +1648,7 @@ router.post('/v1/messages/count_tokens', authenticateApiKey, async (req, res) =>
     const isClaudeGroupBinding =
       typeof req.apiKey?.claudeAccountId === 'string' &&
       req.apiKey.claudeAccountId.startsWith('group:')
-    const hasExplicitDedicatedClaudeBinding = !!(
-      (req.apiKey?.claudeAccountId && !isClaudeGroupBinding) ||
-      req.apiKey?.claudeConsoleAccountId ||
-      req.apiKey?.bedrockAccountId ||
-      req.apiKey?.claudeVertexAccountId
-    )
+    const hasDedicatedClaudeBinding = hasExplicitDedicatedClaudeBinding(req.apiKey)
 
     // 选中不支持 count_tokens 的 Vertex 账号时，尝试重选支持账号（官方/Console）
     if (accountType === 'claude-vertex') {
@@ -1676,7 +1672,7 @@ router.post('/v1/messages/count_tokens', authenticateApiKey, async (req, res) =>
             `ℹ️ No supported count_tokens account available in Claude group ${groupId}: ${groupFallbackError.message}`
           )
         }
-      } else if (!hasExplicitDedicatedClaudeBinding) {
+      } else if (!hasDedicatedClaudeBinding) {
         const availableAccounts = await unifiedClaudeScheduler._getAllAvailableAccounts(
           req.apiKey,
           requestedModel,
