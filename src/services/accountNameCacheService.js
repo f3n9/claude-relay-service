@@ -51,6 +51,7 @@ class AccountNameCacheService {
       // 延迟加载服务，避免循环依赖
       const claudeAccountService = require('./account/claudeAccountService')
       const claudeConsoleAccountService = require('./account/claudeConsoleAccountService')
+      const gcpVertexAccountService = require('./account/gcpVertexAccountService')
       const geminiAccountService = require('./account/geminiAccountService')
       const openaiAccountService = require('./account/openaiAccountService')
       const azureOpenaiAccountService = require('./account/azureOpenaiAccountService')
@@ -77,6 +78,7 @@ class AccountNameCacheService {
       const results = await Promise.allSettled([
         claudeAccountService.getAllAccounts(),
         claudeConsoleAccountService.getAllAccounts(),
+        gcpVertexAccountService.getAllAccounts(),
         geminiAccountService.getAllAccounts(),
         geminiApiAccountService?.getAllAccounts() || Promise.resolve([]),
         openaiAccountService.getAllAccounts(),
@@ -91,20 +93,25 @@ class AccountNameCacheService {
       // 提取结果
       const claudeAccounts = results[0].status === 'fulfilled' ? results[0].value : []
       const claudeConsoleAccounts = results[1].status === 'fulfilled' ? results[1].value : []
-      const geminiAccounts = results[2].status === 'fulfilled' ? results[2].value : []
-      const geminiApiAccounts = results[3].status === 'fulfilled' ? results[3].value : []
-      const openaiAccounts = results[4].status === 'fulfilled' ? results[4].value : []
-      const openaiResponsesAccounts = results[5].status === 'fulfilled' ? results[5].value : []
-      const azureOpenaiAccounts = results[6].status === 'fulfilled' ? results[6].value : []
-      const bedrockResult = results[7].status === 'fulfilled' ? results[7].value : { accounts: [] }
-      const droidAccounts = results[8].status === 'fulfilled' ? results[8].value : []
-      const ccrAccounts = results[9].status === 'fulfilled' ? results[9].value : []
-      const groups = results[10].status === 'fulfilled' ? results[10].value : []
+      const gcpVertexResult = results[2].status === 'fulfilled' ? results[2].value : []
+      const geminiAccounts = results[3].status === 'fulfilled' ? results[3].value : []
+      const geminiApiAccounts = results[4].status === 'fulfilled' ? results[4].value : []
+      const openaiAccounts = results[5].status === 'fulfilled' ? results[5].value : []
+      const openaiResponsesAccounts = results[6].status === 'fulfilled' ? results[6].value : []
+      const azureOpenaiAccounts = results[7].status === 'fulfilled' ? results[7].value : []
+      const bedrockResult = results[8].status === 'fulfilled' ? results[8].value : { accounts: [] }
+      const droidAccounts = results[9].status === 'fulfilled' ? results[9].value : []
+      const ccrAccounts = results[10].status === 'fulfilled' ? results[10].value : []
+      const groups = results[11].status === 'fulfilled' ? results[11].value : []
 
       // Bedrock 返回格式特殊处理
       const bedrockAccounts = Array.isArray(bedrockResult)
         ? bedrockResult
         : bedrockResult.accounts || []
+      // GCP Vertex 返回格式特殊处理（{ success, data }）
+      const gcpVertexAccounts = Array.isArray(gcpVertexResult)
+        ? gcpVertexResult
+        : gcpVertexResult?.data || []
 
       // 填充账户缓存的辅助函数
       const addAccounts = (accounts, platform, prefix = '') => {
@@ -125,6 +132,7 @@ class AccountNameCacheService {
 
       addAccounts(claudeAccounts, 'claude')
       addAccounts(claudeConsoleAccounts, 'claude-console')
+      addAccounts(gcpVertexAccounts, 'claude-vertex')
       addAccounts(geminiAccounts, 'gemini')
       addAccounts(geminiApiAccounts, 'gemini-api', 'api:')
       addAccounts(openaiAccounts, 'openai')
@@ -214,6 +222,7 @@ class AccountNameCacheService {
     const bindingFields = [
       { field: 'claudeAccountId', platform: 'Claude' },
       { field: 'claudeConsoleAccountId', platform: 'Claude Console' },
+      { field: 'claudeVertexAccountId', platform: 'Claude Vertex' },
       { field: 'geminiAccountId', platform: 'Gemini' },
       { field: 'openaiAccountId', platform: 'OpenAI' },
       { field: 'azureOpenaiAccountId', platform: 'Azure OpenAI' },
