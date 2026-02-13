@@ -68,6 +68,28 @@ class GcpVertexRelayService {
     let queueLockAcquired = false
     let queueRequestId = null
     const skipQueueLock = options.skipQueueLock === true
+    const abortController = new AbortController()
+    let clientDisconnected = false
+
+    const handleClientDisconnect = () => {
+      clientDisconnected = true
+      logger.info('🔌 Client disconnected, aborting GCP Vertex non-stream request')
+      if (!abortController.signal.aborted) {
+        abortController.abort()
+      }
+    }
+
+    const cleanupClientListeners = () => {
+      clientRequest?.removeListener('close', handleClientDisconnect)
+      clientRequest?.removeListener('aborted', handleClientDisconnect)
+      clientResponse?.removeListener('close', handleClientDisconnect)
+      clientResponse?.removeListener('aborted', handleClientDisconnect)
+    }
+
+    clientRequest?.once('close', handleClientDisconnect)
+    clientRequest?.once('aborted', handleClientDisconnect)
+    clientResponse?.once('close', handleClientDisconnect)
+    clientResponse?.once('aborted', handleClientDisconnect)
 
     try {
       if (!skipQueueLock && userMessageQueueService.isUserMessageRequest(requestBody)) {
@@ -127,7 +149,8 @@ class GcpVertexRelayService {
         timeout: config.requestTimeout || 600000,
         httpsAgent: proxyAgent || undefined,
         proxy: false,
-        validateStatus: () => true
+        validateStatus: () => true,
+        signal: abortController.signal
       })
 
       if (response.status === 429) {
@@ -146,7 +169,21 @@ class GcpVertexRelayService {
         body,
         accountId
       }
+    } catch (error) {
+      if (
+        clientDisconnected ||
+        abortController.signal.aborted ||
+        error.code === 'ERR_CANCELED' ||
+        error.name === 'CanceledError' ||
+        error.name === 'AbortError'
+      ) {
+        logger.info('🔌 GCP Vertex non-stream request aborted due to client disconnect')
+        throw new Error('Client disconnected')
+      }
+
+      throw error
     } finally {
+      cleanupClientListeners()
       if (queueLockAcquired && queueRequestId) {
         try {
           await userMessageQueueService.releaseQueueLock(accountId, queueRequestId)
@@ -344,7 +381,14 @@ class GcpVertexRelayService {
 
       clientResponse.setHeader('Content-Type', 'text/event-stream')
       clientResponse.setHeader('Cache-Control', 'no-cache')
-      clientResponse.setHeader('Connection', 'keep-alive')
+      const existingConnection = clientResponse.getHeader
+        ? clientResponse.getHeader('Connection')
+        : null
+      if (existingConnection) {
+        logger.debug(`🔌 [Vertex Stream] Preserving existing Connection header: ${existingConnection}`)
+      } else {
+        clientResponse.setHeader('Connection', 'keep-alive')
+      }
 
       let buffer = ''
       let currentUsage = {}
