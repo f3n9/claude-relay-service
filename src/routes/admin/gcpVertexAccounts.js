@@ -171,6 +171,23 @@ router.post('/', authenticateAdmin, async (req, res) => {
         }
       } catch (groupError) {
         logger.error(`❌ Failed to bind GCP Vertex account ${result.data.id} to groups:`, groupError)
+        const createdAccountId = result?.data?.id
+        if (createdAccountId) {
+          try {
+            const rollbackResult = await gcpVertexAccountService.deleteAccount(createdAccountId)
+            if (!rollbackResult?.success) {
+              logger.error(
+                `❌ Failed to rollback GCP Vertex account ${createdAccountId} after group binding error:`,
+                rollbackResult?.error || 'unknown error'
+              )
+            }
+          } catch (rollbackError) {
+            logger.error(
+              `❌ Failed to rollback GCP Vertex account ${createdAccountId} after group binding error:`,
+              rollbackError
+            )
+          }
+        }
         return res
           .status(500)
           .json({ error: 'Failed to bind GCP Vertex account to groups', message: groupError.message })
