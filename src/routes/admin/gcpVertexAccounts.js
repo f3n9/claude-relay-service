@@ -422,7 +422,8 @@ router.post('/:accountId/test', authenticateAdmin, async (req, res) => {
       null,
       null,
       {},
-      accountId
+      accountId,
+      { skipQueueLock: true }
     )
 
     if (response.statusCode < 200 || response.statusCode >= 300) {

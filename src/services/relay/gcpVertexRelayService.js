@@ -63,13 +63,14 @@ class GcpVertexRelayService {
     clientResponse,
     clientHeaders,
     accountId,
-    _options = {}
+    options = {}
   ) {
     let queueLockAcquired = false
     let queueRequestId = null
+    const skipQueueLock = options.skipQueueLock === true
 
     try {
-      if (userMessageQueueService.isUserMessageRequest(requestBody)) {
+      if (!skipQueueLock && userMessageQueueService.isUserMessageRequest(requestBody)) {
         if (!accountId) {
           throw new Error('accountId missing for queue lock')
         }

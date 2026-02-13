@@ -1667,8 +1667,8 @@ class ApiKeyService {
         return
       }
 
-      // 判断是否为 claude-official、claude-console 或 ccr 账户
-      const opusAccountTypes = ['claude-official', 'claude-console', 'ccr']
+      // 判断是否为 Claude 系列账户（含 Vertex）
+      const opusAccountTypes = ['claude-official', 'claude-console', 'claude-vertex', 'ccr']
       if (!accountType || !opusAccountTypes.includes(accountType)) {
         logger.debug(`⚠️ Skipping Opus cost recording for non-Claude account type: ${accountType}`)
         return // 不是 claude 账户，直接返回
