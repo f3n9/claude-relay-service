@@ -1663,7 +1663,7 @@ router.post('/v1/messages/count_tokens', authenticateApiKey, async (req, res) =>
         try {
           const selection = await unifiedClaudeScheduler.selectAccountFromGroup(
             groupId,
-            sessionHash,
+            null,
             requestedModel,
             false,
             ['claude-official', 'claude-console']

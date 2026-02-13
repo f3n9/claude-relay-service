@@ -70,8 +70,9 @@ router.get('/', authenticateAdmin, async (req, res) => {
             statsError.message
           )
           const groupInfos = await accountGroupService.getAccountGroups(account.id)
+          const formattedAccount = formatAccountExpiry(account)
           return {
-            ...account,
+            ...formattedAccount,
             groupInfos,
             usage: {
               daily: { tokens: 0, requests: 0, allTokens: 0 },
