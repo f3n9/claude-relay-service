@@ -272,10 +272,19 @@ class AccountBalanceService {
     }
 
     const result = await service.getAllAccounts()
-    if (result && typeof result === 'object' && 'success' in result && 'data' in result) {
-      return result.success ? result.data || [] : []
+    if (result && typeof result === 'object' && 'success' in result) {
+      if (!result.success) {
+        return []
+      }
+      if (Array.isArray(result.data)) {
+        return result.data
+      }
+      return []
     }
-    return result
+    if (Array.isArray(result)) {
+      return result
+    }
+    return []
   }
 
   async _getAccountBalanceForAccount(account, platform, options = {}) {

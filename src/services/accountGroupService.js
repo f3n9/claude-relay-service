@@ -380,6 +380,7 @@ class AccountGroupService {
         if (
           keyData &&
           (keyData.claudeAccountId === groupKey ||
+            keyData.claudeVertexAccountId === groupKey ||
             keyData.geminiAccountId === groupKey ||
             keyData.openaiAccountId === groupKey ||
             keyData.droidAccountId === groupKey)
