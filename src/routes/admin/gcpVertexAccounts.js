@@ -240,6 +240,33 @@ router.put('/:accountId', authenticateAdmin, async (req, res) => {
     }
 
     let groupBindingsUpdated = false
+    const rollbackGroupBindings = async (context = 'update failure') => {
+      if (!groupBindingsUpdated) {
+        return
+      }
+
+      try {
+        const latestAccount = await gcpVertexAccountService.getAccount(accountId)
+        if (!latestAccount) {
+          logger.warn(
+            `⚠️ Skipping GCP Vertex group rollback (${context}) because account ${accountId} no longer exists`
+          )
+          return
+        }
+
+        if (previousGroupIds.length > 0) {
+          await accountGroupService.setAccountGroups(accountId, previousGroupIds, 'claude')
+        } else {
+          await accountGroupService.removeAccountFromAllGroups(accountId)
+        }
+      } catch (rollbackError) {
+        logger.error(
+          `❌ Failed to rollback GCP Vertex account ${accountId} group bindings after ${context}:`,
+          rollbackError
+        )
+      }
+    }
+
     try {
       if (currentAccount.accountType === 'group' && targetAccountType !== 'group') {
         await accountGroupService.removeAccountFromAllGroups(accountId)
@@ -264,22 +291,23 @@ router.put('/:accountId', authenticateAdmin, async (req, res) => {
         .json({ error: 'Failed to update GCP Vertex account groups', message: groupError.message })
     }
 
-    const result = await gcpVertexAccountService.updateAccount(accountId, mappedUpdates)
+    let result
+    try {
+      result = await gcpVertexAccountService.updateAccount(accountId, mappedUpdates)
+    } catch (updateError) {
+      await rollbackGroupBindings('update exception')
+      throw updateError
+    }
 
     if (!result.success) {
-      if (groupBindingsUpdated) {
-        try {
-          if (previousGroupIds.length > 0) {
-            await accountGroupService.setAccountGroups(accountId, previousGroupIds, 'claude')
-          } else {
-            await accountGroupService.removeAccountFromAllGroups(accountId)
-          }
-        } catch (rollbackError) {
-          logger.error(
-            `❌ Failed to rollback GCP Vertex account ${accountId} group bindings after update failure:`,
-            rollbackError
-          )
-        }
+      const isNotFoundError =
+        typeof result.error === 'string' && result.error.toLowerCase().includes('not found')
+      if (isNotFoundError) {
+        logger.warn(
+          `⚠️ Skipping GCP Vertex group rollback because account ${accountId} was not found during update`
+        )
+      } else {
+        await rollbackGroupBindings('update failure')
       }
 
       return res
