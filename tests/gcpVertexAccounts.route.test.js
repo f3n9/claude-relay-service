@@ -56,6 +56,14 @@ describe('GCP Vertex Accounts Admin Routes', () => {
     return routeLayer.route.stack[routeLayer.route.stack.length - 1].handle
   }
 
+  const getUpdateHandler = () => {
+    const routeLayer = router.stack.find(
+      (layer) => layer.route && layer.route.path === '/:accountId' && layer.route.methods.put
+    )
+
+    return routeLayer.route.stack[routeLayer.route.stack.length - 1].handle
+  }
+
   const createMockResponse = () => {
     const res = {}
     res.status = jest.fn().mockReturnValue(res)
@@ -102,6 +110,55 @@ describe('GCP Vertex Accounts Admin Routes', () => {
       ['group-1'],
       'claude'
     )
+    expect(accountGroupService.removeAccountFromAllGroups).toHaveBeenCalledWith(
+      'vertex-account-1',
+      'claude'
+    )
     expect(gcpVertexAccountService.deleteAccount).toHaveBeenCalledWith('vertex-account-1')
+    expect(
+      accountGroupService.removeAccountFromAllGroups.mock.invocationCallOrder[0]
+    ).toBeLessThan(gcpVertexAccountService.deleteAccount.mock.invocationCallOrder[0])
+  })
+
+  it('rolls back to previous groups when group update fails mid-way', async () => {
+    const updateHandler = getUpdateHandler()
+    const req = {
+      params: { accountId: 'vertex-account-2' },
+      body: {
+        accountType: 'group',
+        groupIds: ['group-new-1', 'group-new-2']
+      }
+    }
+    const res = createMockResponse()
+
+    gcpVertexAccountService.getAccount.mockResolvedValue({
+      id: 'vertex-account-2',
+      accountType: 'group'
+    })
+    accountGroupService.getAccountGroups.mockResolvedValue([{ id: 'group-old-1' }, { id: 'group-old-2' }])
+    accountGroupService.setAccountGroups
+      .mockRejectedValueOnce(new Error('invalid group in update'))
+      .mockResolvedValueOnce(undefined)
+
+    await updateHandler(req, res)
+
+    expect(res.status).toHaveBeenCalledWith(500)
+    expect(res.json).toHaveBeenCalledWith({
+      error: 'Failed to update GCP Vertex account groups',
+      message: 'invalid group in update'
+    })
+    expect(accountGroupService.setAccountGroups).toHaveBeenNthCalledWith(
+      1,
+      'vertex-account-2',
+      ['group-new-1', 'group-new-2'],
+      'claude'
+    )
+    expect(accountGroupService.setAccountGroups).toHaveBeenNthCalledWith(
+      2,
+      'vertex-account-2',
+      ['group-old-1', 'group-old-2'],
+      'claude'
+    )
+    expect(gcpVertexAccountService.updateAccount).not.toHaveBeenCalled()
   })
 })

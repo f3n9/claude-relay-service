@@ -174,6 +174,15 @@ router.post('/', authenticateAdmin, async (req, res) => {
         const createdAccountId = result?.data?.id
         if (createdAccountId) {
           try {
+            await accountGroupService.removeAccountFromAllGroups(createdAccountId, 'claude')
+          } catch (cleanupError) {
+            logger.error(
+              `❌ Failed to cleanup GCP Vertex account ${createdAccountId} group links after binding error:`,
+              cleanupError
+            )
+          }
+
+          try {
             const rollbackResult = await gcpVertexAccountService.deleteAccount(createdAccountId)
             if (!rollbackResult?.success) {
               logger.error(
@@ -286,22 +295,23 @@ router.put('/:accountId', authenticateAdmin, async (req, res) => {
 
     try {
       if (currentAccount.accountType === 'group' && targetAccountType !== 'group') {
-        await accountGroupService.removeAccountFromAllGroups(accountId)
         groupBindingsUpdated = true
+        await accountGroupService.removeAccountFromAllGroups(accountId)
       } else if (targetAccountType === 'group') {
         if (hasGroupIdsField) {
+          groupBindingsUpdated = true
           if (normalizedGroupIds.length > 0) {
             await accountGroupService.setAccountGroups(accountId, normalizedGroupIds, 'claude')
           } else {
             await accountGroupService.removeAccountFromAllGroups(accountId)
           }
-          groupBindingsUpdated = true
         } else if (hasGroupIdField && typeof groupId === 'string' && groupId.trim()) {
-          await accountGroupService.setAccountGroups(accountId, [groupId.trim()], 'claude')
           groupBindingsUpdated = true
+          await accountGroupService.setAccountGroups(accountId, [groupId.trim()], 'claude')
         }
       }
     } catch (groupError) {
+      await rollbackGroupBindings('group update failure')
       logger.error(`❌ Failed to update GCP Vertex account ${accountId} groups:`, groupError)
       return res
         .status(500)
