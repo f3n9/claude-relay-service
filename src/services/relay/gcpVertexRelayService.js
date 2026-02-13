@@ -391,25 +391,19 @@ class GcpVertexRelayService {
       }
 
       let buffer = ''
-      let currentUsage = {}
-      const usageEvents = []
+      const collectedUsage = {}
 
-      const flushUsage = () => {
+      const emitUsageOnce = () => {
         if (
-          currentUsage &&
-          currentUsage.input_tokens !== undefined &&
-          currentUsage.output_tokens !== undefined
+          collectedUsage.input_tokens !== undefined &&
+          collectedUsage.output_tokens !== undefined &&
+          typeof usageCallback === 'function'
         ) {
-          const usagePayload = {
-            ...currentUsage,
-            model: currentUsage.model || modelId,
+          usageCallback({
+            ...collectedUsage,
+            model: collectedUsage.model || modelId,
             accountId
-          }
-          usageEvents.push(usagePayload)
-          if (typeof usageCallback === 'function') {
-            usageCallback(usagePayload)
-          }
-          currentUsage = {}
+          })
         }
       }
 
@@ -426,20 +420,20 @@ class GcpVertexRelayService {
         try {
           const data = JSON.parse(dataStr)
           if (data.type === 'message_start' && data.message?.usage) {
-            currentUsage.input_tokens = data.message.usage.input_tokens || 0
-            currentUsage.cache_creation_input_tokens =
+            collectedUsage.input_tokens = data.message.usage.input_tokens || 0
+            collectedUsage.cache_creation_input_tokens =
               data.message.usage.cache_creation_input_tokens || 0
-            currentUsage.cache_read_input_tokens = data.message.usage.cache_read_input_tokens || 0
+            collectedUsage.cache_read_input_tokens =
+              data.message.usage.cache_read_input_tokens || 0
             if (data.message?.usage?.cache_creation) {
-              currentUsage.cache_creation = data.message.usage.cache_creation
+              collectedUsage.cache_creation = data.message.usage.cache_creation
             }
             if (data.message?.model) {
-              currentUsage.model = data.message.model
+              collectedUsage.model = data.message.model
             }
           }
           if (data.type === 'message_delta' && data.usage) {
-            currentUsage.output_tokens = data.usage.output_tokens || 0
-            flushUsage()
+            collectedUsage.output_tokens = data.usage.output_tokens || 0
           }
         } catch {
           // ignore parse errors
@@ -498,7 +492,7 @@ class GcpVertexRelayService {
             }
           }
 
-          flushUsage()
+          emitUsageOnce()
           if (isStreamWritable(clientResponse)) {
             clientResponse.end()
           }

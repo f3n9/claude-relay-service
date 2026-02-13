@@ -8,6 +8,7 @@ function registerAllProviders(balanceService) {
   // Claude
   balanceService.registerProvider('claude', new ClaudeBalanceProvider())
   balanceService.registerProvider('claude-console', new ClaudeConsoleBalanceProvider())
+  balanceService.registerProvider('claude-vertex', new GenericBalanceProvider('claude-vertex'))
 
   // OpenAI / Codex
   balanceService.registerProvider('openai-responses', new OpenAIResponsesBalanceProvider())

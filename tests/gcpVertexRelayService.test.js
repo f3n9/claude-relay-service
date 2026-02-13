@@ -115,6 +115,48 @@ describe('gcpVertexRelayService', () => {
     expect(clientResponse.setHeader).not.toHaveBeenCalledWith('Connection', 'keep-alive')
   })
 
+  it('emits usage callback once for stream with multiple message_delta events', async () => {
+    const upstreamStream = new PassThrough()
+    axios.post.mockImplementation(async () => {
+      setImmediate(() => {
+        upstreamStream.write(
+          'data: {"type":"message_start","message":{"usage":{"input_tokens":3,"cache_creation_input_tokens":1,"cache_read_input_tokens":2}}}\n\n'
+        )
+        upstreamStream.write('data: {"type":"message_delta","usage":{"output_tokens":4}}\n\n')
+        upstreamStream.write('data: {"type":"message_delta","usage":{"output_tokens":9}}\n\n')
+        upstreamStream.end()
+      })
+      return {
+        status: 200,
+        headers: {},
+        data: upstreamStream
+      }
+    })
+
+    const clientResponse = createMockResponse()
+    const usageCallback = jest.fn()
+
+    await gcpVertexRelayService.relayStreamRequestWithUsageCapture(
+      { model: 'claude-opus-4-1', stream: true },
+      { id: 'key-1', name: 'key-1' },
+      clientResponse,
+      {},
+      usageCallback,
+      'vertex-account-1'
+    )
+
+    expect(usageCallback).toHaveBeenCalledTimes(1)
+    expect(usageCallback).toHaveBeenCalledWith(
+      expect.objectContaining({
+        input_tokens: 3,
+        cache_creation_input_tokens: 1,
+        cache_read_input_tokens: 2,
+        output_tokens: 9,
+        accountId: 'vertex-account-1'
+      })
+    )
+  })
+
   it('aborts non-stream upstream call when client disconnects', async () => {
     const clientRequest = new EventEmitter()
     const clientResponse = createMockResponse()
