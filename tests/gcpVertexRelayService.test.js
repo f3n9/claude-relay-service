@@ -115,6 +115,32 @@ describe('gcpVertexRelayService', () => {
     expect(clientResponse.setHeader).not.toHaveBeenCalledWith('Connection', 'keep-alive')
   })
 
+  it('forwards filtered Claude headers (e.g. anthropic-beta) for Vertex requests', async () => {
+    axios.post.mockResolvedValue({
+      status: 200,
+      headers: {},
+      data: { ok: true }
+    })
+
+    await gcpVertexRelayService.relayRequest(
+      { model: 'claude-opus-4-1' },
+      { id: 'key-1', name: 'key-1' },
+      null,
+      createMockResponse(),
+      {
+        'anthropic-beta': 'test-beta-feature',
+        'x-stainless-lang': 'js'
+      },
+      'vertex-account-1'
+    )
+
+    const axiosConfig = axios.post.mock.calls[0][2]
+    expect(axiosConfig.headers['anthropic-beta']).toBe('test-beta-feature')
+    expect(axiosConfig.headers['x-stainless-lang']).toBe('js')
+    expect(axiosConfig.headers.Authorization).toBe('Bearer vertex-token')
+    expect(axiosConfig.headers['Content-Type']).toBe('application/json')
+  })
+
   it('emits usage callback once for stream with multiple message_delta events', async () => {
     const upstreamStream = new PassThrough()
     axios.post.mockImplementation(async () => {

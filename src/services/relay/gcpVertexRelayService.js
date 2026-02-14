@@ -44,6 +44,7 @@ class GcpVertexRelayService {
     const userAgent = filtered['user-agent'] || filtered['User-Agent'] || this.defaultUserAgent
 
     const headers = {
+      ...filtered,
       Authorization: `Bearer ${accessToken}`,
       'Content-Type': 'application/json',
       'User-Agent': userAgent
