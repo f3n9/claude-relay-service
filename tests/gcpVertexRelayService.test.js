@@ -141,6 +141,52 @@ describe('gcpVertexRelayService', () => {
     expect(axiosConfig.headers['Content-Type']).toBe('application/json')
   })
 
+  it('prefers request model over account default for non-stream requests', async () => {
+    axios.post.mockResolvedValue({
+      status: 200,
+      headers: {},
+      data: { ok: true }
+    })
+
+    await gcpVertexRelayService.relayRequest(
+      { model: 'claude-haiku-3' },
+      { id: 'key-1', name: 'key-1' },
+      null,
+      createMockResponse(),
+      {},
+      'vertex-account-1'
+    )
+
+    const endpoint = axios.post.mock.calls[0][0]
+    expect(endpoint).toContain('/models/claude-haiku-3:rawPredict')
+  })
+
+  it('prefers request model over account default for stream requests', async () => {
+    const upstreamStream = new PassThrough()
+    axios.post.mockImplementation(async () => {
+      setImmediate(() => {
+        upstreamStream.end()
+      })
+      return {
+        status: 200,
+        headers: {},
+        data: upstreamStream
+      }
+    })
+
+    await gcpVertexRelayService.relayStreamRequestWithUsageCapture(
+      { model: 'claude-haiku-3', stream: true },
+      { id: 'key-1', name: 'key-1' },
+      createMockResponse(),
+      {},
+      null,
+      'vertex-account-1'
+    )
+
+    const endpoint = axios.post.mock.calls[0][0]
+    expect(endpoint).toContain('/models/claude-haiku-3:streamRawPredict')
+  })
+
   it('emits usage callback once for stream with multiple message_delta events', async () => {
     const upstreamStream = new PassThrough()
     axios.post.mockImplementation(async () => {

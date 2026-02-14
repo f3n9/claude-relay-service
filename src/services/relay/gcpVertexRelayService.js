@@ -134,7 +134,7 @@ class GcpVertexRelayService {
         throw new Error('GCP Vertex account not found')
       }
 
-      const modelId = account.defaultModel || requestBody.model
+      const modelId = requestBody.model || account.defaultModel
       if (!modelId) {
         throw new Error('Model is required for GCP Vertex request')
       }
@@ -293,7 +293,7 @@ class GcpVertexRelayService {
         throw new Error('GCP Vertex account not found')
       }
 
-      const modelId = account.defaultModel || requestBody.model
+      const modelId = requestBody.model || account.defaultModel
       if (!modelId) {
         throw new Error('Model is required for GCP Vertex request')
       }
