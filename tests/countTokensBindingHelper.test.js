@@ -1,6 +1,7 @@
 const {
   hasExplicitDedicatedClaudeBinding,
-  getCountTokensFallbackGroupId
+  getCountTokensFallbackGroupId,
+  selectCountTokensCapableFallbackAccount
 } = require('../src/routes/countTokensBindingHelper')
 
 describe('countTokensBindingHelper', () => {
@@ -18,5 +19,20 @@ describe('countTokensBindingHelper', () => {
     }
 
     expect(getCountTokensFallbackGroupId(apiKey)).toBe('vertex-group-1')
+  })
+
+  it('skips count_tokens-unavailable console accounts in fallback selection', async () => {
+    const availableAccounts = [
+      { accountId: 'console-1', accountType: 'claude-console' },
+      { accountId: 'official-1', accountType: 'claude-official' }
+    ]
+    const isCountTokensUnavailable = jest.fn(async (accountId) => accountId === 'console-1')
+
+    const selected = await selectCountTokensCapableFallbackAccount(
+      availableAccounts,
+      isCountTokensUnavailable
+    )
+
+    expect(selected).toEqual({ accountId: 'official-1', accountType: 'claude-official' })
   })
 })

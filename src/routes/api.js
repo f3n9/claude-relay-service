@@ -29,7 +29,8 @@ const {
 const { sortAccountsByPriority } = require('../utils/commonHelper')
 const {
   hasExplicitDedicatedClaudeBinding,
-  getCountTokensFallbackGroupId
+  getCountTokensFallbackGroupId,
+  selectCountTokensCapableFallbackAccount
 } = require('./countTokensBindingHelper')
 const router = express.Router()
 
@@ -1654,6 +1655,17 @@ router.post('/v1/messages/count_tokens', authenticateApiKey, async (req, res) =>
     // 选中不支持 count_tokens 的 Vertex 账号时，尝试重选支持账号（官方/Console）
     if (accountType === 'claude-vertex') {
       let supportedAccount = null
+      const pickCountTokensCapableFallbackAccount = async (candidates) =>
+        selectCountTokensCapableFallbackAccount(candidates, async (candidateAccountId) => {
+          const isUnavailable =
+            await claudeConsoleAccountService.isCountTokensUnavailable(candidateAccountId)
+          if (isUnavailable) {
+            logger.info(
+              `⏭️ Skipping count_tokens-unavailable Claude Console fallback account ${candidateAccountId}`
+            )
+          }
+          return isUnavailable
+        })
 
       if (fallbackGroupId) {
         try {
@@ -1665,7 +1677,25 @@ router.post('/v1/messages/count_tokens', authenticateApiKey, async (req, res) =>
             ['claude-official', 'claude-console']
           )
           if (selection) {
-            supportedAccount = selection
+            supportedAccount = await pickCountTokensCapableFallbackAccount([selection])
+            if (!supportedAccount && selection.accountType === 'claude-console') {
+              try {
+                const officialSelection = await unifiedClaudeScheduler.selectAccountFromGroup(
+                  fallbackGroupId,
+                  null,
+                  requestedModel,
+                  false,
+                  ['claude-official']
+                )
+                if (officialSelection) {
+                  supportedAccount = officialSelection
+                }
+              } catch (officialFallbackError) {
+                logger.info(
+                  `ℹ️ No Claude Official fallback account available in group ${fallbackGroupId}: ${officialFallbackError.message}`
+                )
+              }
+            }
           }
         } catch (groupFallbackError) {
           logger.info(
@@ -1678,10 +1708,11 @@ router.post('/v1/messages/count_tokens', authenticateApiKey, async (req, res) =>
           requestedModel,
           false
         )
-        supportedAccount = sortAccountsByPriority(availableAccounts).find(
+        const fallbackCandidates = sortAccountsByPriority(availableAccounts).filter(
           (account) =>
             account.accountType === 'claude-official' || account.accountType === 'claude-console'
         )
+        supportedAccount = await pickCountTokensCapableFallbackAccount(fallbackCandidates)
       }
 
       if (supportedAccount) {
