@@ -514,6 +514,18 @@ class GcpVertexRelayService {
           }
           settle()
         })
+
+        response.data.on('close', () => {
+          // close may fire without end/error when stream is destroyed on client disconnect
+          if (!streamFinished) {
+            streamFinished = true
+            cleanupClientListeners()
+            if (isStreamWritable(clientResponse)) {
+              clientResponse.end()
+            }
+          }
+          settle()
+        })
       })
     } finally {
       cleanupClientListeners()

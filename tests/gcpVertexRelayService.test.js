@@ -194,4 +194,40 @@ describe('gcpVertexRelayService', () => {
     expect(capturedSignal).toBeDefined()
     expect(capturedSignal.aborted).toBe(true)
   })
+
+  it('settles stream relay when upstream closes after client disconnect', async () => {
+    const upstreamStream = new EventEmitter()
+    upstreamStream.destroy = jest.fn(() => {
+      setImmediate(() => {
+        upstreamStream.emit('close')
+      })
+    })
+
+    axios.post.mockResolvedValue({
+      status: 200,
+      headers: {},
+      data: upstreamStream
+    })
+
+    const clientResponse = createMockResponse()
+    const relayPromise = gcpVertexRelayService.relayStreamRequestWithUsageCapture(
+      { model: 'claude-opus-4-1', stream: true },
+      { id: 'key-1', name: 'key-1' },
+      clientResponse,
+      {},
+      null,
+      'vertex-account-1'
+    )
+
+    await new Promise((resolve) => setImmediate(resolve))
+    clientResponse.emit('close')
+
+    const outcome = await Promise.race([
+      relayPromise.then(() => 'resolved'),
+      new Promise((resolve) => setTimeout(() => resolve('timeout'), 200))
+    ])
+
+    expect(upstreamStream.destroy).toHaveBeenCalled()
+    expect(outcome).toBe('resolved')
+  })
 })
