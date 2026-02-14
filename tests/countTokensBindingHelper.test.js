@@ -1,7 +1,8 @@
 const {
   hasExplicitDedicatedClaudeBinding,
   getCountTokensFallbackGroupId,
-  selectCountTokensCapableFallbackAccount
+  selectCountTokensCapableFallbackAccount,
+  selectCountTokensCapableGroupFallbackAccount
 } = require('../src/routes/countTokensBindingHelper')
 
 describe('countTokensBindingHelper', () => {
@@ -34,5 +35,22 @@ describe('countTokensBindingHelper', () => {
     )
 
     expect(selected).toEqual({ accountId: 'official-1', accountType: 'claude-official' })
+  })
+
+  it('keeps scanning group fallback candidates when first console is unavailable', async () => {
+    const selectFromGroup = jest
+      .fn()
+      .mockResolvedValueOnce({ accountId: 'console-1', accountType: 'claude-console' })
+      .mockResolvedValueOnce({ accountId: 'console-2', accountType: 'claude-console' })
+    const isCountTokensUnavailable = jest.fn(async (accountId) => accountId === 'console-1')
+
+    const selected = await selectCountTokensCapableGroupFallbackAccount(
+      selectFromGroup,
+      isCountTokensUnavailable
+    )
+
+    expect(selected).toEqual({ accountId: 'console-2', accountType: 'claude-console' })
+    expect(selectFromGroup).toHaveBeenNthCalledWith(1, [])
+    expect(selectFromGroup).toHaveBeenNthCalledWith(2, ['console-1'])
   })
 })

@@ -30,7 +30,8 @@ const { sortAccountsByPriority } = require('../utils/commonHelper')
 const {
   hasExplicitDedicatedClaudeBinding,
   getCountTokensFallbackGroupId,
-  selectCountTokensCapableFallbackAccount
+  selectCountTokensCapableFallbackAccount,
+  selectCountTokensCapableGroupFallbackAccount
 } = require('./countTokensBindingHelper')
 const router = express.Router()
 
@@ -1669,34 +1670,27 @@ router.post('/v1/messages/count_tokens', authenticateApiKey, async (req, res) =>
 
       if (fallbackGroupId) {
         try {
-          const selection = await unifiedClaudeScheduler.selectAccountFromGroup(
-            fallbackGroupId,
-            null,
-            requestedModel,
-            false,
-            ['claude-official', 'claude-console']
-          )
-          if (selection) {
-            supportedAccount = await pickCountTokensCapableFallbackAccount([selection])
-            if (!supportedAccount && selection.accountType === 'claude-console') {
-              try {
-                const officialSelection = await unifiedClaudeScheduler.selectAccountFromGroup(
-                  fallbackGroupId,
-                  null,
-                  requestedModel,
-                  false,
-                  ['claude-official']
-                )
-                if (officialSelection) {
-                  supportedAccount = officialSelection
-                }
-              } catch (officialFallbackError) {
+          supportedAccount = await selectCountTokensCapableGroupFallbackAccount(
+            async (excludedAccountIds) =>
+              unifiedClaudeScheduler.selectAccountFromGroup(
+                fallbackGroupId,
+                null,
+                requestedModel,
+                false,
+                ['claude-official', 'claude-console'],
+                excludedAccountIds
+              ),
+            async (candidateAccountId) => {
+              const isUnavailable =
+                await claudeConsoleAccountService.isCountTokensUnavailable(candidateAccountId)
+              if (isUnavailable) {
                 logger.info(
-                  `ℹ️ No Claude Official fallback account available in group ${fallbackGroupId}: ${officialFallbackError.message}`
+                  `⏭️ Skipping count_tokens-unavailable Claude Console fallback account ${candidateAccountId}`
                 )
               }
+              return isUnavailable
             }
-          }
+          )
         } catch (groupFallbackError) {
           logger.info(
             `ℹ️ No supported count_tokens account available in Claude group ${fallbackGroupId}: ${groupFallbackError.message}`

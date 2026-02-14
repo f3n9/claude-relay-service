@@ -58,8 +58,47 @@ async function selectCountTokensCapableFallbackAccount(
   return null
 }
 
+async function selectCountTokensCapableGroupFallbackAccount(
+  selectFromGroup,
+  isCountTokensUnavailable = async () => false
+) {
+  if (typeof selectFromGroup !== 'function') {
+    return null
+  }
+
+  const excludedAccountIds = new Set()
+
+  let hasMoreCandidates = true
+  while (hasMoreCandidates) {
+    const candidate = await selectFromGroup(Array.from(excludedAccountIds))
+    if (!candidate) {
+      hasMoreCandidates = false
+      continue
+    }
+
+    if (candidate.accountType === 'claude-official') {
+      return candidate
+    }
+
+    if (candidate.accountType === 'claude-console') {
+      const isUnavailable = await isCountTokensUnavailable(candidate.accountId)
+      if (!isUnavailable) {
+        return candidate
+      }
+
+      excludedAccountIds.add(candidate.accountId)
+      continue
+    }
+
+    excludedAccountIds.add(candidate.accountId)
+  }
+
+  return null
+}
+
 module.exports = {
   hasExplicitDedicatedClaudeBinding,
   getCountTokensFallbackGroupId,
-  selectCountTokensCapableFallbackAccount
+  selectCountTokensCapableFallbackAccount,
+  selectCountTokensCapableGroupFallbackAccount
 }

@@ -1626,11 +1626,15 @@ class UnifiedClaudeScheduler {
     sessionHash = null,
     requestedModel = null,
     allowCcr = false,
-    allowedAccountTypes = null
+    allowedAccountTypes = null,
+    excludedAccountIds = null
   ) {
     try {
       const isAllowedAccountType = (accountType) =>
         !Array.isArray(allowedAccountTypes) || allowedAccountTypes.includes(accountType)
+      const excludedSet = new Set(
+        Array.isArray(excludedAccountIds) ? excludedAccountIds.filter(Boolean) : []
+      )
 
       // 获取分组信息
       const group = await accountGroupService.getGroup(groupId)
@@ -1689,6 +1693,11 @@ class UnifiedClaudeScheduler {
 
       // 获取所有成员账户的详细信息
       for (const memberId of memberIds) {
+        if (excludedSet.has(memberId)) {
+          logger.debug(`⏭️ Skipping excluded group member ${memberId}`)
+          continue
+        }
+
         let account = null
         let accountType = null
 
