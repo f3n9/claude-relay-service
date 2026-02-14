@@ -376,6 +376,21 @@ class GcpVertexRelayService {
             }
             settle()
           })
+
+          response.data.on('close', () => {
+            if (!streamFinished) {
+              streamFinished = true
+              cleanupClientListeners()
+              if (isStreamWritable(clientResponse)) {
+                clientResponse.status(response.status)
+                clientResponse.setHeader('Content-Type', 'application/json')
+                clientResponse.end(
+                  errorBody || JSON.stringify({ error: 'Upstream error stream closed' })
+                )
+              }
+            }
+            settle()
+          })
         })
         return
       }
