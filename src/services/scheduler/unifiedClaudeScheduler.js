@@ -406,7 +406,8 @@ class UnifiedClaudeScheduler {
         if (
           boundVertexAccount &&
           boundVertexAccount.isActive === true &&
-          isSchedulable(boundVertexAccount.schedulable)
+          isSchedulable(boundVertexAccount.schedulable) &&
+          this._isModelSupportedByAccount(boundVertexAccount, 'claude-vertex', effectiveModel)
         ) {
           const isTempUnavailable = await this.isAccountTemporarilyUnavailable(
             apiKeyData.claudeVertexAccountId,
@@ -668,7 +669,8 @@ class UnifiedClaudeScheduler {
       if (
         boundVertexAccount &&
         boundVertexAccount.isActive === true &&
-        isSchedulable(boundVertexAccount.schedulable)
+        isSchedulable(boundVertexAccount.schedulable) &&
+        this._isModelSupportedByAccount(boundVertexAccount, 'claude-vertex', requestedModel)
       ) {
         const isTempUnavailable = await this.isAccountTemporarilyUnavailable(
           apiKeyData.claudeVertexAccountId,
