@@ -14,6 +14,21 @@ const { formatAccountExpiry, mapExpiryField } = require('./utils')
 const { createClaudeTestPayload } = require('../../utils/testPayloadHelper')
 const gcpVertexRelayService = require('../../services/relay/gcpVertexRelayService')
 
+const VERTEX_CREDENTIAL_VALIDATION_PREFIXES = [
+  'service account json is required',
+  'invalid service account json',
+  'service account json missing fields:'
+]
+
+function isVertexCredentialValidationError(error) {
+  const message = error?.message
+  if (typeof message !== 'string') {
+    return false
+  }
+  const normalized = message.toLowerCase()
+  return VERTEX_CREDENTIAL_VALIDATION_PREFIXES.some((prefix) => normalized.startsWith(prefix))
+}
+
 // ☁️ GCP Vertex 账户管理
 
 // 获取所有 GCP Vertex 账户
@@ -207,6 +222,9 @@ router.post('/', authenticateAdmin, async (req, res) => {
     const formattedAccount = formatAccountExpiry(result.data)
     return res.json({ success: true, data: formattedAccount })
   } catch (error) {
+    if (isVertexCredentialValidationError(error)) {
+      return res.status(400).json({ error: error.message })
+    }
     logger.error('❌ Failed to create GCP Vertex account:', error)
     return res
       .status(500)
@@ -345,6 +363,9 @@ router.put('/:accountId', authenticateAdmin, async (req, res) => {
     const formattedAccount = formatAccountExpiry(result.data)
     return res.json({ success: true, data: formattedAccount })
   } catch (error) {
+    if (isVertexCredentialValidationError(error)) {
+      return res.status(400).json({ error: error.message })
+    }
     logger.error('❌ Failed to update GCP Vertex account:', error)
     return res
       .status(500)

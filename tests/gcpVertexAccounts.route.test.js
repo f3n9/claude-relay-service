@@ -120,6 +120,26 @@ describe('GCP Vertex Accounts Admin Routes', () => {
     ).toBeLessThan(gcpVertexAccountService.deleteAccount.mock.invocationCallOrder[0])
   })
 
+  it('returns 400 when create fails due to invalid service account payload', async () => {
+    const createHandler = getCreateHandler()
+    const req = {
+      body: {
+        name: 'Invalid Vertex Account',
+        serviceAccountJson: '{invalid-json}'
+      }
+    }
+    const res = createMockResponse()
+
+    gcpVertexAccountService.createAccount.mockRejectedValue(new Error('Invalid service account JSON'))
+
+    await createHandler(req, res)
+
+    expect(res.status).toHaveBeenCalledWith(400)
+    expect(res.json).toHaveBeenCalledWith({
+      error: 'Invalid service account JSON'
+    })
+  })
+
   it('rolls back to previous groups when group update fails mid-way', async () => {
     const updateHandler = getUpdateHandler()
     const req = {
