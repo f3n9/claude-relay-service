@@ -250,6 +250,7 @@ router.get('/accounts/:accountId/usage-history', authenticateAdmin, async (req, 
     const allowedPlatforms = [
       'claude',
       'claude-console',
+      'claude-vertex',
       'openai',
       'openai-responses',
       'gemini',
@@ -265,6 +266,7 @@ router.get('/accounts/:accountId/usage-history', authenticateAdmin, async (req, 
     }
 
     const accountTypeMap = {
+      'claude-vertex': 'claude-vertex',
       openai: 'openai',
       'openai-responses': 'openai-responses',
       'gemini-api': 'gemini-api',
@@ -275,6 +277,7 @@ router.get('/accounts/:accountId/usage-history', authenticateAdmin, async (req, 
     const fallbackModelMap = {
       claude: 'claude-3-5-sonnet-20241022',
       'claude-console': 'claude-3-5-sonnet-20241022',
+      'claude-vertex': 'claude-3-5-sonnet-20241022',
       openai: 'gpt-4o-mini-2024-07-18',
       'openai-responses': 'gpt-4o-mini-2024-07-18',
       gemini: 'gemini-1.5-flash',
@@ -294,6 +297,9 @@ router.get('/accounts/:accountId/usage-history', authenticateAdmin, async (req, 
           break
         case 'claude-console':
           accountData = await claudeConsoleAccountService.getAccount(accountId)
+          break
+        case 'claude-vertex':
+          accountData = await gcpVertexAccountService.getAccount(accountId)
           break
         case 'openai':
           accountData = await openaiAccountService.getAccount(accountId)

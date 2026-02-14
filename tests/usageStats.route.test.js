@@ -42,7 +42,12 @@ jest.mock('../src/services/apiKeyService', () => ({}))
 
 jest.mock('../src/models/redis', () => ({
   getApiKey: jest.fn(),
-  getUsageRecords: jest.fn()
+  getUsageRecords: jest.fn(),
+  getAccountUsageStats: jest.fn(),
+  getDateInTimezone: jest.fn(),
+  getDateStringInTimezone: jest.fn(),
+  getClientSafe: jest.fn(),
+  scanAndGetAllChunked: jest.fn()
 }))
 
 jest.mock('../src/middleware/auth', () => ({
@@ -81,6 +86,17 @@ describe('Usage Stats Admin Routes', () => {
       (layer) =>
         layer.route &&
         layer.route.path === '/api-keys/:keyId/usage-records' &&
+        layer.route.methods.get
+    )
+
+    return routeLayer.route.stack[routeLayer.route.stack.length - 1].handle
+  }
+
+  const getAccountUsageHistoryHandler = () => {
+    const routeLayer = router.stack.find(
+      (layer) =>
+        layer.route &&
+        layer.route.path === '/accounts/:accountId/usage-history' &&
         layer.route.methods.get
     )
 
@@ -144,6 +160,52 @@ describe('Usage Stats Admin Routes', () => {
               accountType: 'claude-vertex'
             })
           ]
+        })
+      })
+    )
+  })
+
+  it('allows usage history for GCP Vertex platform', async () => {
+    const handler = getAccountUsageHistoryHandler()
+    const req = {
+      params: { accountId: 'vertex-1' },
+      query: { platform: 'claude-vertex', days: '1' }
+    }
+    const res = createMockResponse()
+
+    const mockClient = {
+      hgetall: jest.fn().mockResolvedValue({
+        inputTokens: '0',
+        outputTokens: '0',
+        cacheCreateTokens: '0',
+        cacheReadTokens: '0',
+        requests: '0',
+        allTokens: '0'
+      })
+    }
+
+    gcpVertexAccountService.getAccount.mockResolvedValue({
+      id: 'vertex-1',
+      createdAt: '2026-02-01T00:00:00.000Z'
+    })
+    redis.getAccountUsageStats.mockResolvedValue({})
+    redis.getDateInTimezone.mockImplementation((date) => date)
+    redis.getDateStringInTimezone.mockReturnValue('2026-02-14')
+    redis.getClientSafe.mockReturnValue(mockClient)
+    redis.scanAndGetAllChunked.mockResolvedValue([])
+    CostCalculator.calculateCost.mockReturnValue({ costs: { total: 0 } })
+    CostCalculator.formatCost.mockReturnValue('$0.00')
+
+    await handler(req, res)
+
+    expect(res.status).not.toHaveBeenCalledWith(400)
+    expect(res.json).toHaveBeenCalledWith(
+      expect.objectContaining({
+        success: true,
+        data: expect.objectContaining({
+          history: expect.any(Array),
+          summary: expect.any(Object),
+          overview: expect.any(Object)
         })
       })
     )
