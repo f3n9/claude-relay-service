@@ -2482,6 +2482,7 @@ router.get('/api-keys/:keyId/usage-records', authenticateAdmin, async (req, res)
     const accountServices = [
       { type: 'claude', getter: (id) => claudeAccountService.getAccount(id) },
       { type: 'claude-console', getter: (id) => claudeConsoleAccountService.getAccount(id) },
+      { type: 'claude-vertex', getter: (id) => gcpVertexAccountService.getAccount(id) },
       { type: 'ccr', getter: (id) => ccrAccountService.getAccount(id) },
       { type: 'openai', getter: (id) => openaiAccountService.getAccount(id) },
       { type: 'openai-responses', getter: (id) => openaiResponsesAccountService.getAccount(id) },
