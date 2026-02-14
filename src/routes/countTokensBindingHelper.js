@@ -13,6 +13,22 @@ function hasExplicitDedicatedClaudeBinding(apiKey) {
   )
 }
 
+function getCountTokensFallbackGroupId(apiKey) {
+  if (typeof apiKey?.claudeAccountId === 'string' && apiKey.claudeAccountId.startsWith('group:')) {
+    return apiKey.claudeAccountId.replace('group:', '')
+  }
+
+  if (
+    typeof apiKey?.claudeVertexAccountId === 'string' &&
+    apiKey.claudeVertexAccountId.startsWith('group:')
+  ) {
+    return apiKey.claudeVertexAccountId.replace('group:', '')
+  }
+
+  return null
+}
+
 module.exports = {
-  hasExplicitDedicatedClaudeBinding
+  hasExplicitDedicatedClaudeBinding,
+  getCountTokensFallbackGroupId
 }
