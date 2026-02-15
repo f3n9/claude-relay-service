@@ -1,7 +1,6 @@
 function hasExplicitDedicatedClaudeBinding(apiKey) {
   const isClaudeGroupBinding =
-    typeof apiKey?.claudeAccountId === 'string' &&
-    apiKey.claudeAccountId.startsWith('group:')
+    typeof apiKey?.claudeAccountId === 'string' && apiKey.claudeAccountId.startsWith('group:')
   const isVertexGroupBindingFromClaude =
     typeof apiKey?.claudeAccountId === 'string' &&
     apiKey.claudeAccountId.startsWith('vertex:group:')
@@ -10,9 +9,7 @@ function hasExplicitDedicatedClaudeBinding(apiKey) {
     apiKey.claudeVertexAccountId.startsWith('group:')
 
   return !!(
-    (apiKey?.claudeAccountId &&
-      !isClaudeGroupBinding &&
-      !isVertexGroupBindingFromClaude) ||
+    (apiKey?.claudeAccountId && !isClaudeGroupBinding && !isVertexGroupBindingFromClaude) ||
     apiKey?.claudeConsoleAccountId ||
     apiKey?.bedrockAccountId ||
     (apiKey?.claudeVertexAccountId && !isVertexGroupBinding)

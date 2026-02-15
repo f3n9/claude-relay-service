@@ -2411,6 +2411,12 @@ class ApiKeyService {
       } else if (accountType === 'gemini-api') {
         // Gemini-API 特殊处理：查找 geminiAccountId 字段中带 api: 前缀的
         boundKeys = allKeys.filter((key) => key.geminiAccountId === `api:${accountId}`)
+      } else if (accountType === 'claude-vertex') {
+        // Claude Vertex 特殊处理：兼容 claudeAccountId 的 vertex: 前缀
+        const vertexKey = `vertex:${accountId}`
+        boundKeys = allKeys.filter(
+          (key) => key.claudeVertexAccountId === accountId || key.claudeAccountId === vertexKey
+        )
       } else {
         // 其他账号类型正常匹配
         boundKeys = allKeys.filter((key) => key[field] === accountId)
@@ -2425,6 +2431,11 @@ class ApiKeyService {
           updates.geminiAccountId = null
         } else if (accountType === 'claude-console') {
           updates.claudeConsoleAccountId = null
+        } else if (accountType === 'claude-vertex') {
+          updates.claudeVertexAccountId = null
+          if (key.claudeAccountId === `vertex:${accountId}`) {
+            updates.claudeAccountId = null
+          }
         } else {
           updates[field] = null
         }
