@@ -252,64 +252,125 @@ class UnifiedClaudeScheduler {
       }
       // 如果API Key绑定了专属账户或分组，优先使用
       if (apiKeyData.claudeAccountId) {
-        // 检查是否是分组
-        if (apiKeyData.claudeAccountId.startsWith('group:')) {
-          const groupId = apiKeyData.claudeAccountId.replace('group:', '')
+        const boundClaudeAccountId = apiKeyData.claudeAccountId
+        const isVertexBinding = boundClaudeAccountId.startsWith('vertex:')
+
+        if (boundClaudeAccountId.startsWith('vertex:group:')) {
+          const groupId = boundClaudeAccountId.substring(13)
           logger.info(
-            `🎯 API key ${apiKeyData.name} is bound to group ${groupId}, selecting from group`
+            `🎯 API key ${apiKeyData.name} is bound to Vertex group ${groupId}, selecting from group`
           )
           return await this.selectAccountFromGroup(
             groupId,
             sessionHash,
             effectiveModel,
-            vendor === 'ccr'
+            vendor === 'ccr',
+            ['claude-vertex']
           )
         }
 
-        // 普通专属账户
-        const boundAccount = await redis.getClaudeAccount(apiKeyData.claudeAccountId)
-        if (boundAccount && boundAccount.isActive === 'true' && boundAccount.status !== 'error') {
-          // 检查是否临时不可用
-          const isTempUnavailable = await this.isAccountTemporarilyUnavailable(
-            boundAccount.id,
-            'claude-official'
-          )
-          if (isTempUnavailable) {
-            logger.warn(
-              `⏱️ Bound Claude OAuth account ${boundAccount.id} is temporarily unavailable, falling back to pool`
+        if (boundClaudeAccountId.startsWith('vertex:')) {
+          const vertexAccountId = boundClaudeAccountId.substring(7)
+          const boundVertexAccount = await gcpVertexAccountService.getAccount(vertexAccountId)
+          if (
+            boundVertexAccount &&
+            boundVertexAccount.isActive === true &&
+            isSchedulable(boundVertexAccount.schedulable) &&
+            this._isModelSupportedByAccount(boundVertexAccount, 'claude-vertex', effectiveModel)
+          ) {
+            const isTempUnavailable = await this.isAccountTemporarilyUnavailable(
+              vertexAccountId,
+              'claude-vertex'
             )
-          } else {
-            const isRateLimited = await claudeAccountService.isAccountRateLimited(boundAccount.id)
-            if (isRateLimited) {
-              const rateInfo = await claudeAccountService.getAccountRateLimitInfo(boundAccount.id)
-              const error = new Error('Dedicated Claude account is rate limited')
-              error.code = 'CLAUDE_DEDICATED_RATE_LIMITED'
-              error.accountId = boundAccount.id
-              error.rateLimitEndAt = rateInfo?.rateLimitEndAt || boundAccount.rateLimitEndAt || null
-              throw error
-            }
-
-            if (!isSchedulable(boundAccount.schedulable)) {
+            if (isTempUnavailable) {
               logger.warn(
-                `⚠️ Bound Claude OAuth account ${apiKeyData.claudeAccountId} is not schedulable (schedulable: ${boundAccount?.schedulable}), falling back to pool`
+                `⏱️ Bound GCP Vertex account ${vertexAccountId} is temporarily unavailable, falling back to pool`
               )
             } else {
-              if (isOpusRequest) {
-                await claudeAccountService.clearExpiredOpusRateLimit(boundAccount.id)
-              }
-              logger.info(
-                `🎯 Using bound dedicated Claude OAuth account: ${boundAccount.name} (${apiKeyData.claudeAccountId}) for API key ${apiKeyData.name}`
+              const isRateLimited = await gcpVertexAccountService.isAccountRateLimited(
+                vertexAccountId
               )
-              return {
-                accountId: apiKeyData.claudeAccountId,
-                accountType: 'claude-official'
+              if (isRateLimited) {
+                logger.warn(
+                  `⏱️ Bound GCP Vertex account ${vertexAccountId} is rate limited, falling back to pool`
+                )
+              } else {
+                logger.info(
+                  `🎯 Using bound dedicated GCP Vertex account: ${boundVertexAccount.name} (${vertexAccountId}) for API key ${apiKeyData.name}`
+                )
+                return {
+                  accountId: vertexAccountId,
+                  accountType: 'claude-vertex'
+                }
               }
             }
+          } else {
+            logger.warn(
+              `⚠️ Bound GCP Vertex account ${vertexAccountId} is not available (isActive: ${boundVertexAccount?.isActive}, schedulable: ${boundVertexAccount?.schedulable}), falling back to pool`
+            )
           }
-        } else {
-          logger.warn(
-            `⚠️ Bound Claude OAuth account ${apiKeyData.claudeAccountId} is not available (isActive: ${boundAccount?.isActive}, status: ${boundAccount?.status}), falling back to pool`
-          )
+        }
+
+        if (!isVertexBinding) {
+          // 检查是否是分组
+          if (boundClaudeAccountId.startsWith('group:')) {
+            const groupId = boundClaudeAccountId.replace('group:', '')
+            logger.info(
+              `🎯 API key ${apiKeyData.name} is bound to group ${groupId}, selecting from group`
+            )
+            return await this.selectAccountFromGroup(
+              groupId,
+              sessionHash,
+              effectiveModel,
+              vendor === 'ccr'
+            )
+          }
+
+          // 普通专属账户
+          const boundAccount = await redis.getClaudeAccount(boundClaudeAccountId)
+          if (boundAccount && boundAccount.isActive === 'true' && boundAccount.status !== 'error') {
+            // 检查是否临时不可用
+            const isTempUnavailable = await this.isAccountTemporarilyUnavailable(
+              boundAccount.id,
+              'claude-official'
+            )
+            if (isTempUnavailable) {
+              logger.warn(
+                `⏱️ Bound Claude OAuth account ${boundAccount.id} is temporarily unavailable, falling back to pool`
+              )
+            } else {
+              const isRateLimited = await claudeAccountService.isAccountRateLimited(boundAccount.id)
+              if (isRateLimited) {
+                const rateInfo = await claudeAccountService.getAccountRateLimitInfo(boundAccount.id)
+                const error = new Error('Dedicated Claude account is rate limited')
+                error.code = 'CLAUDE_DEDICATED_RATE_LIMITED'
+                error.accountId = boundAccount.id
+                error.rateLimitEndAt = rateInfo?.rateLimitEndAt || boundAccount.rateLimitEndAt || null
+                throw error
+              }
+
+              if (!isSchedulable(boundAccount.schedulable)) {
+                logger.warn(
+                  `⚠️ Bound Claude OAuth account ${boundClaudeAccountId} is not schedulable (schedulable: ${boundAccount?.schedulable}), falling back to pool`
+                )
+              } else {
+                if (isOpusRequest) {
+                  await claudeAccountService.clearExpiredOpusRateLimit(boundAccount.id)
+                }
+                logger.info(
+                  `🎯 Using bound dedicated Claude OAuth account: ${boundAccount.name} (${boundClaudeAccountId}) for API key ${apiKeyData.name}`
+                )
+                return {
+                  accountId: boundClaudeAccountId,
+                  accountType: 'claude-official'
+                }
+              }
+            }
+          } else {
+            logger.warn(
+              `⚠️ Bound Claude OAuth account ${boundClaudeAccountId} is not available (isActive: ${boundAccount?.isActive}, status: ${boundAccount?.status}), falling back to pool`
+            )
+          }
         }
       }
 
@@ -538,7 +599,55 @@ class UnifiedClaudeScheduler {
 
     // 如果API Key绑定了专属账户，优先返回
     // 1. 检查Claude OAuth账户绑定
-    if (apiKeyData.claudeAccountId) {
+    const boundClaudeAccountId = apiKeyData.claudeAccountId
+    const isVertexBinding =
+      typeof boundClaudeAccountId === 'string' && boundClaudeAccountId.startsWith('vertex:')
+    const isVertexGroupBinding = isVertexBinding && boundClaudeAccountId.startsWith('vertex:group:')
+
+    if (isVertexBinding && !isVertexGroupBinding) {
+      const vertexAccountId = boundClaudeAccountId.substring(7)
+      const boundVertexAccount = await gcpVertexAccountService.getAccount(vertexAccountId)
+      if (
+        boundVertexAccount &&
+        boundVertexAccount.isActive === true &&
+        isSchedulable(boundVertexAccount.schedulable) &&
+        this._isModelSupportedByAccount(boundVertexAccount, 'claude-vertex', requestedModel)
+      ) {
+        const isTempUnavailable = await this.isAccountTemporarilyUnavailable(
+          vertexAccountId,
+          'claude-vertex'
+        )
+        if (isTempUnavailable) {
+          logger.warn(
+            `⏱️ Bound GCP Vertex account ${vertexAccountId} is temporarily unavailable`
+          )
+        } else {
+          const isRateLimited = await gcpVertexAccountService.isAccountRateLimited(vertexAccountId)
+          if (isRateLimited) {
+            logger.warn(`⏱️ Bound GCP Vertex account ${vertexAccountId} is rate limited`)
+          } else {
+            logger.info(
+              `🎯 Using bound dedicated GCP Vertex account: ${boundVertexAccount.name} (${vertexAccountId})`
+            )
+            return [
+              {
+                ...boundVertexAccount,
+                accountId: boundVertexAccount.id,
+                accountType: 'claude-vertex',
+                priority: parseInt(boundVertexAccount.priority) || 50,
+                lastUsedAt: boundVertexAccount.lastUsedAt || '0'
+              }
+            ]
+          }
+        }
+      } else {
+        logger.warn(
+          `⚠️ Bound GCP Vertex account ${vertexAccountId} is not available (isActive: ${boundVertexAccount?.isActive}, schedulable: ${boundVertexAccount?.schedulable})`
+        )
+      }
+    }
+
+    if (apiKeyData.claudeAccountId && !isVertexBinding) {
       const boundAccount = await redis.getClaudeAccount(apiKeyData.claudeAccountId)
       if (
         boundAccount &&

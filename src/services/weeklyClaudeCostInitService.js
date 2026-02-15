@@ -116,6 +116,9 @@ class WeeklyClaudeCostInitService {
         if (keyData?.claudeConsoleAccountId) {
           return 'claude-console'
         }
+        if (keyData?.claudeAccountId && keyData.claudeAccountId.startsWith('vertex:')) {
+          return 'claude-vertex'
+        }
         if (keyData?.claudeVertexAccountId) {
           return 'claude-vertex'
         }

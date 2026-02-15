@@ -882,10 +882,16 @@ router.get('/accounts/binding-counts', authenticateAdmin, async (req, res) => {
 
     // 遍历一次，统计每个账户的绑定数量
     for (const key of apiKeys) {
-      // Claude 账户
+      // Claude 账户（含 Vertex 前缀）
       if (key.claudeAccountId) {
-        const id = key.claudeAccountId
-        bindingCounts.claudeAccountId[id] = (bindingCounts.claudeAccountId[id] || 0) + 1
+        if (key.claudeAccountId.startsWith('vertex:')) {
+          const id = key.claudeAccountId.replace(/^vertex:/, '')
+          bindingCounts.claudeVertexAccountId[id] =
+            (bindingCounts.claudeVertexAccountId[id] || 0) + 1
+        } else {
+          const id = key.claudeAccountId
+          bindingCounts.claudeAccountId[id] = (bindingCounts.claudeAccountId[id] || 0) + 1
+        }
       }
 
       // Claude Console 账户
@@ -895,7 +901,7 @@ router.get('/accounts/binding-counts', authenticateAdmin, async (req, res) => {
           (bindingCounts.claudeConsoleAccountId[id] || 0) + 1
       }
 
-      if (key.claudeVertexAccountId) {
+      if (key.claudeVertexAccountId && !key.claudeAccountId?.startsWith('vertex:')) {
         const id = key.claudeVertexAccountId
         bindingCounts.claudeVertexAccountId[id] = (bindingCounts.claudeVertexAccountId[id] || 0) + 1
       }

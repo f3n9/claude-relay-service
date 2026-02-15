@@ -711,20 +711,6 @@
               </div>
               <div>
                 <label class="mb-1 block text-sm font-medium text-gray-600 dark:text-gray-400"
-                  >GCP Vertex Claude 专属账号</label
-                >
-                <AccountSelector
-                  v-model="form.claudeVertexAccountId"
-                  :accounts="localAccounts.gcpVertex"
-                  default-option-text="使用共享账号池"
-                  :disabled="form.permissions.length > 0 && !form.permissions.includes('claude')"
-                  :groups="localAccounts.claudeGroups"
-                  placeholder="请选择Vertex账号"
-                  platform="claude-vertex"
-                />
-              </div>
-              <div>
-                <label class="mb-1 block text-sm font-medium text-gray-600 dark:text-gray-400"
                   >Gemini 专属账号</label
                 >
                 <AccountSelector
@@ -1022,7 +1008,6 @@ const handleCancelModal = () => {
 
 const localAccounts = ref({
   claude: [],
-  gcpVertex: [],
   gemini: [],
   openai: [],
   bedrock: [],
@@ -1084,7 +1069,6 @@ const form = reactive({
   activationUnit: 'days', // 激活时间单位：hours 或 days
   permissions: [], // 数组格式，空数组表示全部服务
   claudeAccountId: '',
-  claudeVertexAccountId: '',
   geminiAccountId: '',
   openaiAccountId: '',
   bedrockAccountId: '',
@@ -1134,12 +1118,13 @@ onMounted(async () => {
       })
     }
 
+    const vertexAccounts = (props.accounts.gcpVertex || []).map((account) => ({
+      ...account,
+      platform: account.platform || 'claude-vertex'
+    }))
+
     localAccounts.value = {
-      claude: props.accounts.claude || [],
-      gcpVertex: (props.accounts.gcpVertex || []).map((account) => ({
-        ...account,
-        platform: account.platform || 'claude-vertex'
-      })),
+      claude: [...(props.accounts.claude || []), ...vertexAccounts],
       gemini: geminiAccounts,
       openai: openaiAccounts,
       bedrock: props.accounts.bedrock || [],
@@ -1185,7 +1170,7 @@ const refreshAccounts = async () => {
       httpApis.getAccountGroupsApi()
     ])
 
-    // 合并Claude OAuth账户和Claude Console账户
+    // 合并Claude OAuth账户、Claude Console账户和GCP Vertex账户
     const claudeAccounts = []
 
     if (claudeData.success) {
@@ -1208,17 +1193,18 @@ const refreshAccounts = async () => {
       })
     }
 
-    localAccounts.value.claude = claudeAccounts
-
+    const vertexAccounts = []
     if (gcpVertexData.success) {
-      localAccounts.value.gcpVertex = (gcpVertexData.data || []).map((account) => ({
-        ...account,
-        platform: 'claude-vertex',
-        isDedicated: account.accountType === 'dedicated'
-      }))
-    } else {
-      localAccounts.value.gcpVertex = []
+      ;(gcpVertexData.data || []).forEach((account) => {
+        vertexAccounts.push({
+          ...account,
+          platform: 'claude-vertex',
+          isDedicated: account.accountType === 'dedicated'
+        })
+      })
     }
+
+    localAccounts.value.claude = [...claudeAccounts, ...vertexAccounts]
 
     // 合并 Gemini OAuth 和 Gemini API 账号
     const geminiAccounts = []
@@ -1539,22 +1525,19 @@ const createApiKey = async () => {
       allowedClients: form.allowedClients
     }
 
-    // 处理Claude账户绑定（区分OAuth和Console）
+    // 处理Claude账户绑定（区分OAuth / Console / Vertex）
     if (form.claudeAccountId) {
       if (form.claudeAccountId.startsWith('console:')) {
         // Claude Console账户
         baseData.claudeConsoleAccountId = form.claudeAccountId.substring(8)
-        // 确保不会同时设置OAuth账号
+        // 确保不会同时设置Claude账号
         delete baseData.claudeAccountId
       } else {
-        // Claude OAuth账户或分组
+        // Claude OAuth账户 / 分组 / Vertex前缀
         baseData.claudeAccountId = form.claudeAccountId
         // 确保不会同时设置Console账号
         delete baseData.claudeConsoleAccountId
       }
-    }
-    if (form.claudeVertexAccountId) {
-      baseData.claudeVertexAccountId = form.claudeVertexAccountId
     }
 
     // Gemini账户绑定

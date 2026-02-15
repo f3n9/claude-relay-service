@@ -498,7 +498,11 @@
                           <template v-else>
                             <!-- Claude 绑定 -->
                             <div
-                              v-if="key.claudeAccountId || key.claudeConsoleAccountId"
+                              v-if="
+                                key.claudeAccountId ||
+                                key.claudeConsoleAccountId ||
+                                key.claudeVertexAccountId
+                              "
                               class="flex items-center gap-1 text-xs"
                             >
                               <span
@@ -509,21 +513,6 @@
                               </span>
                               <span class="truncate text-gray-600 dark:text-gray-400">
                                 {{ getClaudeBindingInfo(key) }}
-                              </span>
-                            </div>
-                            <!-- Claude Vertex 绑定 -->
-                            <div
-                              v-if="key.claudeVertexAccountId"
-                              class="flex items-center gap-1 text-xs"
-                            >
-                              <span
-                                class="inline-flex items-center rounded bg-blue-100 px-1.5 py-0.5 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300"
-                              >
-                                <i class="fab fa-google mr-1 text-[10px]" />
-                                Vertex
-                              </span>
-                              <span class="truncate text-gray-600 dark:text-gray-400">
-                                {{ getVertexBindingInfo(key) }}
                               </span>
                             </div>
                             <!-- Gemini 绑定 -->
@@ -1325,7 +1314,9 @@
               <div class="mb-3 space-y-1.5">
                 <!-- Claude 绑定 -->
                 <div
-                  v-if="key.claudeAccountId || key.claudeConsoleAccountId"
+                  v-if="
+                    key.claudeAccountId || key.claudeConsoleAccountId || key.claudeVertexAccountId
+                  "
                   class="flex flex-wrap items-center gap-1 text-xs"
                 >
                   <span
@@ -1336,21 +1327,6 @@
                   </span>
                   <span class="text-gray-600 dark:text-gray-400">
                     {{ getClaudeBindingInfo(key) }}
-                  </span>
-                </div>
-                <!-- Claude Vertex 绑定 -->
-                <div
-                  v-if="key.claudeVertexAccountId"
-                  class="flex flex-wrap items-center gap-1 text-xs"
-                >
-                  <span
-                    class="inline-flex items-center rounded bg-blue-100 px-2 py-0.5 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300"
-                  >
-                    <i class="fab fa-google mr-1" />
-                    Vertex
-                  </span>
-                  <span class="text-gray-600 dark:text-gray-400">
-                    {{ getVertexBindingInfo(key) }}
                   </span>
                 </div>
                 <!-- Gemini 绑定 -->
@@ -1912,37 +1888,23 @@
                       <!-- 所属账号 -->
                       <td class="px-3 py-3">
                         <div class="space-y-1">
-                          <!-- Claude OAuth 绑定 -->
-                          <div v-if="key.claudeAccountId" class="flex items-center gap-1 text-xs">
-                            <span
-                              class="inline-flex items-center rounded bg-blue-100 px-1.5 py-0.5 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300"
-                            >
-                              <i class="fas fa-robot mr-1 text-[10px]" />
-                              Claude OAuth
-                            </span>
-                          </div>
-                          <!-- Claude Console 绑定 -->
+                          <!-- Claude 绑定 -->
                           <div
-                            v-else-if="key.claudeConsoleAccountId"
-                            class="flex items-center gap-1 text-xs"
-                          >
-                            <span
-                              class="inline-flex items-center rounded bg-green-100 px-1.5 py-0.5 text-green-700 dark:bg-green-900/30 dark:text-green-300"
-                            >
-                              <i class="fas fa-terminal mr-1 text-[10px]" />
-                              Claude Console
-                            </span>
-                          </div>
-                          <!-- Claude Vertex 绑定 -->
-                          <div
-                            v-else-if="key.claudeVertexAccountId"
+                            v-if="
+                              key.claudeAccountId ||
+                              key.claudeConsoleAccountId ||
+                              key.claudeVertexAccountId
+                            "
                             class="flex items-center gap-1 text-xs"
                           >
                             <span
                               class="inline-flex items-center rounded bg-blue-100 px-1.5 py-0.5 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300"
                             >
-                              <i class="fab fa-google mr-1 text-[10px]" />
-                              GCP Vertex
+                              <i class="fas fa-brain mr-1 text-[10px]" />
+                              Claude
+                            </span>
+                            <span class="text-gray-500 dark:text-gray-400">
+                              {{ getClaudeBindingInfo(key) }}
                             </span>
                           </div>
                           <!-- Gemini 绑定 -->
@@ -3048,6 +3010,26 @@ const getBoundAccountName = (accountId) => {
     return `分组-${groupId.substring(0, 8)}`
   }
 
+  if (accountId.startsWith('vertex:group:')) {
+    const groupId = accountId.substring(13)
+
+    const claudeGroup = accounts.value.claudeGroups.find((g) => g.id === groupId)
+    if (claudeGroup) {
+      return `分组-${claudeGroup.name}`
+    }
+
+    return `分组-${groupId.substring(0, 8)}`
+  }
+
+  if (accountId.startsWith('vertex:')) {
+    const realAccountId = accountId.substring(7)
+    const vertexAccount = accounts.value.gcpVertex.find((acc) => acc.id === realAccountId)
+    if (vertexAccount) {
+      return `${vertexAccount.name}`
+    }
+    return `${realAccountId.substring(0, 8)}`
+  }
+
   // 从Claude账户列表中查找
   const claudeAccount = accounts.value.claude.find((acc) => acc.id === accountId)
   if (claudeAccount) {
@@ -3134,6 +3116,23 @@ const hasAnyBinding = (key) => {
 // 获取Claude绑定信息
 const getClaudeBindingInfo = (key) => {
   if (key.claudeAccountId) {
+    if (key.claudeAccountId.startsWith('vertex:group:')) {
+      const info = getBoundAccountName(key.claudeAccountId)
+      return `Vertex-${info}`
+    }
+    if (key.claudeAccountId.startsWith('vertex:')) {
+      const realAccountId = key.claudeAccountId.substring(7)
+      const info = getBoundAccountName(key.claudeAccountId)
+      const account = accounts.value.gcpVertex.find((acc) => acc.id === realAccountId)
+      if (!account) {
+        return `⚠️ Vertex-${info} (账户不存在)`
+      }
+      if (account.accountType === 'dedicated') {
+        return `Vertex-🔒 专属-${info}`
+      }
+      return `Vertex-${info}`
+    }
+
     const info = getBoundAccountName(key.claudeAccountId)
     if (key.claudeAccountId.startsWith('group:')) {
       return info
@@ -3157,24 +3156,21 @@ const getClaudeBindingInfo = (key) => {
     }
     return `Console-${account.name}`
   }
+  if (key.claudeVertexAccountId) {
+    const info = getBoundAccountName(key.claudeVertexAccountId)
+    if (key.claudeVertexAccountId.startsWith('group:')) {
+      return `Vertex-${info}`
+    }
+    const account = accounts.value.gcpVertex.find((acc) => acc.id === key.claudeVertexAccountId)
+    if (!account) {
+      return `⚠️ Vertex-${info} (账户不存在)`
+    }
+    if (account.accountType === 'dedicated') {
+      return `Vertex-🔒 专属-${info}`
+    }
+    return `Vertex-${info}`
+  }
   return ''
-}
-
-// 获取GCP Vertex绑定信息
-const getVertexBindingInfo = (key) => {
-  if (!key.claudeVertexAccountId) return ''
-  const info = getBoundAccountName(key.claudeVertexAccountId)
-  if (key.claudeVertexAccountId.startsWith('group:')) {
-    return info
-  }
-  const account = accounts.value.gcpVertex.find((acc) => acc.id === key.claudeVertexAccountId)
-  if (!account) {
-    return `⚠️ ${info} (账户不存在)`
-  }
-  if (account.accountType === 'dedicated') {
-    return `🔒 专属-${info}`
-  }
-  return info
 }
 
 // 获取Gemini绑定信息
@@ -4588,9 +4584,16 @@ const exportToExcel = () => {
             : `$${key.totalCostLimit}` || '',
 
         // 账户绑定
-        Claude专属账户: key.claudeAccountId || '',
+        Claude专属账户: (() => {
+          if (key.claudeAccountId) {
+            return key.claudeAccountId
+          }
+          if (key.claudeVertexAccountId) {
+            return `vertex:${key.claudeVertexAccountId}`
+          }
+          return ''
+        })(),
         Claude控制台账户: key.claudeConsoleAccountId || '',
-        GCPVertex专属账户: key.claudeVertexAccountId || '',
         Gemini专属账户: key.geminiAccountId || '',
         OpenAI专属账户: key.openaiAccountId || '',
         'Azure OpenAI专属账户': key.azureOpenaiAccountId || '',

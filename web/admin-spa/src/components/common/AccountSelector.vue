@@ -116,6 +116,37 @@
               </div>
             </div>
 
+            <!-- Vertex 分组（仅 Claude） -->
+            <div
+              v-if="
+                platform === 'claude' &&
+                filteredGroups.length > 0 &&
+                filteredVertexAccounts.length > 0
+              "
+            >
+              <div
+                class="bg-gray-50 px-4 py-2 text-xs font-semibold text-gray-500 dark:bg-gray-700 dark:text-gray-400"
+              >
+                GCP Vertex 调度分组
+              </div>
+              <div
+                v-for="group in filteredGroups"
+                :key="`vertex:group:${group.id}`"
+                class="cursor-pointer px-4 py-2 transition-colors hover:bg-gray-50 dark:hover:bg-gray-700"
+                :class="{
+                  'bg-blue-50 dark:bg-blue-900/20': modelValue === `vertex:group:${group.id}`
+                }"
+                @click="selectAccount(`vertex:group:${group.id}`)"
+              >
+                <div class="flex items-center justify-between">
+                  <span class="text-gray-700 dark:text-gray-300">{{ group.name }}</span>
+                  <span class="text-xs text-gray-500 dark:text-gray-400"
+                    >{{ group.memberCount || 0 }} 个成员</span
+                  >
+                </div>
+              </div>
+            </div>
+
             <!-- OAuth 账号 -->
             <div v-if="filteredOAuthAccounts.length > 0">
               <div
@@ -180,6 +211,45 @@
                   'bg-blue-50 dark:bg-blue-900/20': modelValue === `console:${account.id}`
                 }"
                 @click="selectAccount(`console:${account.id}`)"
+              >
+                <div class="flex items-center justify-between">
+                  <div>
+                    <span class="text-gray-700 dark:text-gray-300">{{ account.name }}</span>
+                    <span
+                      class="ml-2 rounded-full px-2 py-0.5 text-xs"
+                      :class="
+                        account.isActive
+                          ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
+                          : account.status === 'unauthorized'
+                            ? 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400'
+                            : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
+                      "
+                    >
+                      {{ getAccountStatusText(account) }}
+                    </span>
+                  </div>
+                  <span class="text-xs text-gray-400 dark:text-gray-500">
+                    {{ formatDate(account.createdAt) }}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Vertex 账号（仅 Claude） -->
+            <div v-if="platform === 'claude' && filteredVertexAccounts.length > 0">
+              <div
+                class="bg-gray-50 px-4 py-2 text-xs font-semibold text-gray-500 dark:bg-gray-700 dark:text-gray-400"
+              >
+                GCP Vertex Claude 专属账号
+              </div>
+              <div
+                v-for="account in filteredVertexAccounts"
+                :key="account.id"
+                class="cursor-pointer px-4 py-2 transition-colors hover:bg-gray-50 dark:hover:bg-gray-700"
+                :class="{
+                  'bg-blue-50 dark:bg-blue-900/20': modelValue === `vertex:${account.id}`
+                }"
+                @click="selectAccount(`vertex:${account.id}`)"
               >
                 <div class="flex items-center justify-between">
                   <div>
@@ -361,6 +431,13 @@ const selectedLabel = computed(() => {
   // 如果没有选中值，显示默认选项文本
   if (!props.modelValue) return props.defaultOptionText
 
+  // Vertex 分组
+  if (props.modelValue.startsWith('vertex:group:')) {
+    const groupId = props.modelValue.substring(13)
+    const group = props.groups.find((g) => g.id === groupId)
+    return group ? `Vertex-${group.name} (${group.memberCount || 0} 个成员)` : ''
+  }
+
   // 分组
   if (props.modelValue.startsWith('group:')) {
     const groupId = props.modelValue.substring(6)
@@ -374,6 +451,13 @@ const selectedLabel = computed(() => {
     const account = props.accounts.find(
       (a) => a.id === accountId && a.platform === 'claude-console'
     )
+    return account ? `${account.name} (${getAccountStatusText(account)})` : ''
+  }
+
+  // Vertex 账号
+  if (props.modelValue.startsWith('vertex:')) {
+    const accountId = props.modelValue.substring(7)
+    const account = props.accounts.find((a) => a.id === accountId && a.platform === 'claude-vertex')
     return account ? `${account.name} (${getAccountStatusText(account)})` : ''
   }
 
@@ -502,6 +586,20 @@ const filteredConsoleAccounts = computed(() => {
   if (props.platform !== 'claude') return []
 
   let accounts = sortedAccounts.value.filter((a) => a.platform === 'claude-console')
+
+  if (searchQuery.value) {
+    const query = searchQuery.value.toLowerCase()
+    accounts = accounts.filter((account) => account.name.toLowerCase().includes(query))
+  }
+
+  return accounts
+})
+
+// 过滤的 Vertex 账号（仅 Claude）
+const filteredVertexAccounts = computed(() => {
+  if (props.platform !== 'claude') return []
+
+  let accounts = sortedAccounts.value.filter((a) => a.platform === 'claude-vertex')
 
   if (searchQuery.value) {
     const query = searchQuery.value.toLowerCase()

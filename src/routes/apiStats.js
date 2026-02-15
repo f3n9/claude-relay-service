@@ -390,7 +390,7 @@ router.post('/api/user-stats', async (req, res) => {
 
     const accountDetailTasks = []
 
-    if (fullKeyData.claudeAccountId) {
+    if (fullKeyData.claudeAccountId && !fullKeyData.claudeAccountId.startsWith('vertex:')) {
       accountDetailTasks.push(
         (async () => {
           try {

@@ -176,6 +176,16 @@ class AccountNameCacheService {
       return null
     }
 
+    // Vertex 分组前缀
+    if (accountId.startsWith('vertex:group:')) {
+      const groupId = accountId.substring(13)
+      const group = this.groupCache.get(groupId)
+      if (group) {
+        return `分组-${group.name}`
+      }
+      return `分组-${groupId.substring(0, 8)}`
+    }
+
     // 处理账户组
     if (accountId.startsWith('group:')) {
       const groupId = accountId.substring(6)
@@ -198,6 +208,8 @@ class AccountNameCacheService {
       realId = accountId.substring(4)
     } else if (accountId.startsWith('responses:')) {
       realId = accountId.substring(10)
+    } else if (accountId.startsWith('vertex:')) {
+      realId = accountId.substring(7)
     }
 
     if (realId !== accountId) {
@@ -234,8 +246,12 @@ class AccountNameCacheService {
     for (const { field, platform } of bindingFields) {
       const accountId = apiKey[field]
       if (accountId) {
+        let displayPlatform = platform
+        if (field === 'claudeAccountId' && accountId.startsWith('vertex:')) {
+          displayPlatform = 'Claude Vertex'
+        }
         const name = this.getAccountDisplayName(accountId, field)
-        bindings.push({ field, platform, name, accountId })
+        bindings.push({ field, platform: displayPlatform, name, accountId })
       }
     }
 
