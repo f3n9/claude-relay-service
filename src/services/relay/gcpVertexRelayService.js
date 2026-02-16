@@ -18,10 +18,33 @@ class GcpVertexRelayService {
     this.defaultUserAgent = 'claude-relay-service/2.0'
   }
 
+  _mapVertexModelId(modelId) {
+    if (!modelId) {
+      return modelId
+    }
+
+    const normalized = String(modelId).trim()
+    if (!normalized) {
+      return modelId
+    }
+
+    if (normalized.includes('@')) {
+      return normalized
+    }
+
+    const mapping = {
+      'claude-haiku-4-5-20251001': 'claude-haiku-4-5@20251001',
+      'claude-sonnet-4-5-20250929': 'claude-sonnet-4-5@20250929',
+      'claude-opus-4-6': 'claude-opus-4-6'
+    }
+
+    return mapping[normalized] || normalized
+  }
+
   _buildEndpoint(account, modelId, isStream) {
     const { projectId } = account
     const location = account.location || config.gcpVertex?.defaultLocation || 'global'
-    const encodedModel = encodeURIComponent(modelId)
+    const encodedModel = encodeURIComponent(this._mapVertexModelId(modelId))
     const action = isStream ? 'streamRawPredict' : 'rawPredict'
     return `https://aiplatform.googleapis.com/v1/projects/${projectId}/locations/${location}/publishers/anthropic/models/${encodedModel}:${action}`
   }
