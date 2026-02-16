@@ -16,6 +16,11 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
+function isHealthcheckUserAgent(req) {
+  const userAgent = req.get('User-Agent') || ''
+  return userAgent.toLowerCase() === 'clb-healthcheck'
+}
+
 /**
  * 检查排队是否过载，决定是否应该快速失败
  * 详见 design.md Decision 7: 排队健康检查与快速失败
@@ -1324,11 +1329,13 @@ const authenticateApiKey = async (req, res, next) => {
     }
 
     const authDuration = Date.now() - startTime
-    const userAgent = req.headers['user-agent'] || 'No User-Agent'
-    logger.api(
-      `🔓 Authenticated request from key: ${validation.keyData.name} (${validation.keyData.id}) in ${authDuration}ms`
-    )
-    logger.api(`   User-Agent: "${userAgent}"`)
+    if (!isHealthcheckUserAgent(req)) {
+      const userAgent = req.headers['user-agent'] || 'No User-Agent'
+      logger.api(
+        `🔓 Authenticated request from key: ${validation.keyData.name} (${validation.keyData.id}) in ${authDuration}ms`
+      )
+      logger.api(`   User-Agent: "${userAgent}"`)
+    }
 
     return next()
   } catch (error) {
@@ -1770,6 +1777,10 @@ const requestLogger = (req, res, next) => {
   // 添加请求ID到请求对象
   req.requestId = requestId
   res.setHeader('X-Request-ID', requestId)
+
+  if (isHealthcheckUserAgent(req)) {
+    return next()
+  }
 
   // 获取客户端信息
   const clientIP = req.ip || req.connection?.remoteAddress || req.socket?.remoteAddress || 'unknown'
