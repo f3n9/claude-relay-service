@@ -64,6 +64,9 @@ class GcpVertexRelayService {
 
   _buildHeaders(clientHeaders, accessToken, isStream) {
     const filtered = filterForClaude(clientHeaders)
+    delete filtered['anthropic-beta']
+    delete filtered['Anthropic-Beta']
+    delete filtered['ANTHROPIC-BETA']
     const userAgent = filtered['user-agent'] || filtered['User-Agent'] || this.defaultUserAgent
 
     const headers = {

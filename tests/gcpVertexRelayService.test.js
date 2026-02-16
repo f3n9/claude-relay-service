@@ -115,7 +115,7 @@ describe('gcpVertexRelayService', () => {
     expect(clientResponse.setHeader).not.toHaveBeenCalledWith('Connection', 'keep-alive')
   })
 
-  it('forwards filtered Claude headers (e.g. anthropic-beta) for Vertex requests', async () => {
+  it('drops anthropic-beta header for Vertex requests', async () => {
     axios.post.mockResolvedValue({
       status: 200,
       headers: {},
@@ -135,7 +135,7 @@ describe('gcpVertexRelayService', () => {
     )
 
     const axiosConfig = axios.post.mock.calls[0][2]
-    expect(axiosConfig.headers['anthropic-beta']).toBe('test-beta-feature')
+    expect(axiosConfig.headers['anthropic-beta']).toBeUndefined()
     expect(axiosConfig.headers['x-stainless-lang']).toBe('js')
     expect(axiosConfig.headers.Authorization).toBe('Bearer vertex-token')
     expect(axiosConfig.headers['Content-Type']).toBe('application/json')
