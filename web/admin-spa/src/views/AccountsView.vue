@@ -3749,10 +3749,12 @@ const editAccount = (account) => {
 
 const getBoundApiKeysForAccount = (account) => {
   if (!account || !account.id) return []
+  const accountId = account.id
+  const vertexKeyId = `vertex:${accountId}`
   return apiKeys.value.filter((key) => {
-    const accountId = account.id
     return (
       key.claudeAccountId === accountId ||
+      key.claudeAccountId === vertexKeyId ||
       key.claudeConsoleAccountId === accountId ||
       key.claudeVertexAccountId === accountId ||
       key.geminiAccountId === accountId ||
