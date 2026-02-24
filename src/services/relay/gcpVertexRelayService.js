@@ -28,17 +28,20 @@ class GcpVertexRelayService {
       return modelId
     }
 
-    if (normalized.includes('@')) {
-      return normalized
+    // Strip relay-only suffixes before building Vertex endpoint model id.
+    const cleaned = normalized.replace(/\[1m\]/gi, '').trim()
+    if (cleaned.includes('@')) {
+      return cleaned
     }
 
     const mapping = {
       'claude-haiku-4-5-20251001': 'claude-haiku-4-5@20251001',
       'claude-sonnet-4-5-20250929': 'claude-sonnet-4-5@20250929',
-      'claude-opus-4-6': 'claude-opus-4-6'
+      'claude-opus-4-6': 'claude-opus-4-6',
+      'claude-sonnet-4-6': 'claude-sonnet-4-6'
     }
 
-    return mapping[normalized] || normalized
+    return mapping[cleaned] || cleaned
   }
 
   _buildEndpoint(account, modelId, isStream) {
