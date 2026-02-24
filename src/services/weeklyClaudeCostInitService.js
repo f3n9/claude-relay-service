@@ -58,6 +58,11 @@ class WeeklyClaudeCostInitService {
     return dates
   }
 
+  // Back-compat: older tests/callers used this name.
+  _getCurrentWeekDatesInTimezone() {
+    return this._getLast7DaysInTimezone()
+  }
+
   _buildWeeklyOpusKey(keyId, periodString) {
     return `usage:opus:weekly:${keyId}:${periodString}`
   }

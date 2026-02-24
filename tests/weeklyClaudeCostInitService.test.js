@@ -1,9 +1,12 @@
 jest.mock('../src/models/redis', () => ({
   getClientSafe: jest.fn(),
-  getWeekStringInTimezone: jest.fn(),
+  getDateStringInTimezone: jest.fn(),
+  getDateInTimezone: jest.fn(),
   setAccountLock: jest.fn(),
   releaseAccountLock: jest.fn(),
-  scanApiKeyIds: jest.fn()
+  scanApiKeyIds: jest.fn(),
+  getPeriodStartDate: jest.fn(),
+  getPeriodString: jest.fn()
 }))
 
 jest.mock('../src/utils/logger', () => ({
@@ -24,13 +27,13 @@ jest.mock('../src/services/serviceRatesService', () => ({
 }))
 
 jest.mock('../src/utils/modelHelper', () => ({
-  isOpusModel: jest.fn()
+  isClaudeFamilyModel: jest.fn()
 }))
 
 const redis = require('../src/models/redis')
 const pricingService = require('../src/services/pricingService')
 const serviceRatesService = require('../src/services/serviceRatesService')
-const { isOpusModel } = require('../src/utils/modelHelper')
+const { isClaudeFamilyModel } = require('../src/utils/modelHelper')
 const weeklyClaudeCostInitService = require('../src/services/weeklyClaudeCostInitService')
 
 describe('WeeklyClaudeCostInitService', () => {
@@ -39,7 +42,8 @@ describe('WeeklyClaudeCostInitService', () => {
   })
 
   it('backfills weekly Opus cost for keys bound to Vertex accounts', async () => {
-    const weekString = '2026-W07'
+    const periodString = '2026-W07'
+    const todayStr = '2026-02-24'
     const dateStr = '2026-02-10'
     const keyId = 'key-1'
     const usageKey = `usage:${keyId}:model:daily:claude-opus-4-1:${dateStr}`
@@ -96,25 +100,30 @@ describe('WeeklyClaudeCostInitService', () => {
     }
 
     redis.getClientSafe.mockReturnValue(client)
-    redis.getWeekStringInTimezone.mockReturnValue(weekString)
+    redis.getDateStringInTimezone.mockReturnValue(todayStr)
     redis.setAccountLock.mockResolvedValue(true)
     redis.releaseAccountLock.mockResolvedValue(true)
     redis.scanApiKeyIds.mockResolvedValue([keyId])
+    redis.getPeriodStartDate.mockReturnValue(new Date('2026-02-09T00:00:00.000Z'))
+    redis.getPeriodString.mockReturnValue(periodString)
 
-    isOpusModel.mockReturnValue(true)
+    isClaudeFamilyModel.mockReturnValue(true)
     pricingService.calculateCost.mockReturnValue({ totalCost: 2 })
     serviceRatesService.getService.mockReturnValue('claude')
     serviceRatesService.getServiceRate.mockResolvedValue(1)
 
     const dateSpy = jest
-      .spyOn(weeklyClaudeCostInitService, '_getCurrentWeekDatesInTimezone')
+      .spyOn(weeklyClaudeCostInitService, '_getLast7DaysInTimezone')
       .mockReturnValue([dateStr])
 
     const result = await weeklyClaudeCostInitService.backfillCurrentWeekClaudeCosts()
 
     expect(result.success).toBe(true)
     expect(serviceRatesService.getService).toHaveBeenCalledWith('claude-vertex', 'claude-opus-4-1')
-    expect(pipelineInstances[2].set).toHaveBeenCalledWith(`usage:opus:weekly:${keyId}:${weekString}`, '2')
+    expect(pipelineInstances[2].set).toHaveBeenCalledWith(
+      `usage:opus:weekly:${keyId}:${periodString}`,
+      '2'
+    )
 
     dateSpy.mockRestore()
   })

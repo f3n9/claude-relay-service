@@ -654,6 +654,7 @@ class PricingService {
     const standardPricing = this.getModelPricing(modelName)
     const fastPricing = isFastModeRequest ? this.getFastModePricing(normalizedModelName) : null
     const pricing = fastPricing || standardPricing
+    const fastModeFallbackMultiplier = isFastModeRequest && !fastPricing ? 6 : 1
     const isLongContextModeEnabled = isLongContextModel || hasContext1mBeta
 
     // 当 [1m] 模型总输入超过 200K 时，进入 200K+ 计费逻辑
@@ -689,7 +690,7 @@ class PricingService {
       logger.info(`🚀 Fast mode pricing profile selected: fast/${normalizedModelName}`)
     } else if (isFastModeRequest && !fastPricing) {
       logger.warn(
-        `⚠️ Fast mode request detected but no fast pricing profile found for ${normalizedModelName}; fallback to standard profile`
+        `⚠️ Fast mode request detected but no fast pricing profile found for ${normalizedModelName}; fallback to standard profile x${fastModeFallbackMultiplier}`
       )
     }
 
@@ -707,6 +708,7 @@ class PricingService {
           ? baseInputPrice * 2
           : baseInputPrice
       : baseInputPrice
+    const fastAdjustedInputPrice = actualInputPrice * fastModeFallbackMultiplier
 
     const baseOutputPrice = pricing.output_cost_per_token || 0
     const hasOutput200kPrice =
@@ -717,6 +719,7 @@ class PricingService {
         ? pricing.output_cost_per_token_above_200k_tokens
         : baseOutputPrice
       : baseOutputPrice
+    const fastAdjustedOutputPrice = actualOutputPrice * fastModeFallbackMultiplier
 
     let actualCacheCreatePrice = 0
     let actualCacheReadPrice = 0
@@ -724,9 +727,9 @@ class PricingService {
 
     if (isClaudeModel) {
       // Claude 模型缓存价格统一按输入价格倍率推导，避免来源字段不一致导致计费偏差
-      actualCacheCreatePrice = actualInputPrice * this.claudeCacheMultipliers.write5m
-      actualCacheReadPrice = actualInputPrice * this.claudeCacheMultipliers.read
-      actualEphemeral1hPrice = actualInputPrice * this.claudeCacheMultipliers.write1h
+      actualCacheCreatePrice = fastAdjustedInputPrice * this.claudeCacheMultipliers.write5m
+      actualCacheReadPrice = fastAdjustedInputPrice * this.claudeCacheMultipliers.read
+      actualEphemeral1hPrice = fastAdjustedInputPrice * this.claudeCacheMultipliers.write1h
     } else {
       actualCacheCreatePrice = useLongContextPricing
         ? pricing.cache_creation_input_token_cost_above_200k_tokens ||
@@ -752,8 +755,8 @@ class PricingService {
     }
 
     // 计算各项费用
-    const inputCost = inputTokens * actualInputPrice
-    const outputCost = (usage.output_tokens || 0) * actualOutputPrice
+    const inputCost = inputTokens * fastAdjustedInputPrice
+    const outputCost = (usage.output_tokens || 0) * fastAdjustedOutputPrice
 
     // 处理缓存费用
     let ephemeral5mCost = 0
@@ -794,8 +797,8 @@ class PricingService {
       hasPricing: true,
       isLongContextRequest,
       pricing: {
-        input: actualInputPrice,
-        output: actualOutputPrice,
+        input: fastAdjustedInputPrice,
+        output: fastAdjustedOutputPrice,
         cacheCreate: actualCacheCreatePrice,
         cacheRead: actualCacheReadPrice,
         ephemeral1h: actualEphemeral1hPrice
