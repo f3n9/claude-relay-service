@@ -77,6 +77,27 @@ class GcpVertexAccountService {
     return crypto.createHash('sha256').update(basis).digest('hex')
   }
 
+  _getServiceAccountCredentials(serviceAccountJson) {
+    if (!serviceAccountJson) {
+      throw new Error('Service account JSON is required')
+    }
+
+    if (typeof serviceAccountJson === 'string') {
+      const trimmed = serviceAccountJson.trim()
+      if (trimmed.startsWith('{')) {
+        const { parsed } = this._parseServiceAccountJson(trimmed)
+        return parsed
+      }
+
+      const decrypted = this._decrypt(serviceAccountJson)
+      const { parsed } = this._parseServiceAccountJson(decrypted)
+      return parsed
+    }
+
+    const { parsed } = this._parseServiceAccountJson(serviceAccountJson)
+    return parsed
+  }
+
   async _getAuthClient(account) {
     const cacheKey = this._getAuthCacheKey(account)
     const cached = this._authClientCache.get(cacheKey)
@@ -84,8 +105,7 @@ class GcpVertexAccountService {
       return cached
     }
 
-    const serviceAccountJson = this._decrypt(account.serviceAccountJson)
-    const credentials = JSON.parse(serviceAccountJson)
+    const credentials = this._getServiceAccountCredentials(account.serviceAccountJson)
     const scope = 'https://www.googleapis.com/auth/cloud-platform'
 
     const proxyAgent = account.proxy ? ProxyHelper.createProxyAgent(account.proxy) : null
