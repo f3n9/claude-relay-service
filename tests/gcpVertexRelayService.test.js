@@ -161,6 +161,67 @@ describe('gcpVertexRelayService', () => {
     expect(endpoint).toContain('/models/claude-haiku-3:rawPredict')
   })
 
+  it('uses correct Vertex model id for claude-opus-4-6', async () => {
+    axios.post.mockResolvedValue({
+      status: 200,
+      headers: {},
+      data: { ok: true }
+    })
+
+    await gcpVertexRelayService.relayRequest(
+      { model: 'claude-opus-4-6' },
+      { id: 'key-1', name: 'key-1' },
+      null,
+      createMockResponse(),
+      {},
+      'vertex-account-1'
+    )
+
+    const endpoint = axios.post.mock.calls[0][0]
+    expect(endpoint).toContain('/models/claude-opus-4-6:rawPredict')
+  })
+
+  it('uses correct Vertex model id for claude-sonnet-4-6', async () => {
+    axios.post.mockResolvedValue({
+      status: 200,
+      headers: {},
+      data: { ok: true }
+    })
+
+    await gcpVertexRelayService.relayRequest(
+      { model: 'claude-sonnet-4-6' },
+      { id: 'key-1', name: 'key-1' },
+      null,
+      createMockResponse(),
+      {},
+      'vertex-account-1'
+    )
+
+    const endpoint = axios.post.mock.calls[0][0]
+    expect(endpoint).toContain('/models/claude-sonnet-4-6:rawPredict')
+  })
+
+  it('strips [1m] suffix from Vertex model ids', async () => {
+    axios.post.mockResolvedValue({
+      status: 200,
+      headers: {},
+      data: { ok: true }
+    })
+
+    await gcpVertexRelayService.relayRequest(
+      { model: 'claude-opus-4-6[1m]' },
+      { id: 'key-1', name: 'key-1' },
+      null,
+      createMockResponse(),
+      {},
+      'vertex-account-1'
+    )
+
+    const endpoint = axios.post.mock.calls[0][0]
+    expect(endpoint).toContain('/models/claude-opus-4-6:rawPredict')
+    expect(endpoint).not.toContain('%5B1m%5D')
+  })
+
   it('prefers request model over account default for stream requests', async () => {
     const upstreamStream = new PassThrough()
     axios.post.mockImplementation(async () => {
