@@ -197,10 +197,29 @@ class Application {
       this.app.use(
         compression({
           filter: (req, res) => {
-            // 不压缩 Server-Sent Events
-            if (res.getHeader('Content-Type') === 'text/event-stream') {
+            // 不压缩 Server-Sent Events (SSE)
+            //
+            // 注意：compression 的 filter 在路由处理之前执行，此时通常还没设置响应的 Content-Type。
+            // 因此不能依赖 res.getHeader('Content-Type') 来判断 SSE，否则会导致 SSE 被压缩/缓冲，
+            // 客户端看起来像是“整块返回”而不是实时流式输出。
+            const accept = String(req.headers.accept || '')
+            if (accept.includes('text/event-stream')) {
               return false
             }
+
+            // Gemini 标准/内部 API：streamGenerateContent 使用 SSE
+            if (req.originalUrl && req.originalUrl.includes('streamGenerateContent')) {
+              return false
+            }
+
+            // 上游/代理常用的 SSE 标识
+            if (
+              req.query?.alt === 'sse' ||
+              (req.originalUrl && req.originalUrl.includes('alt=sse'))
+            ) {
+              return false
+            }
+
             // 使用默认的压缩判断
             return compression.filter(req, res)
           }
