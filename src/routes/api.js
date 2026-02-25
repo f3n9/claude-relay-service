@@ -725,50 +725,81 @@ async function handleMessagesRequest(req, res) {
               const model = usageData.model || 'unknown'
               const usageAccountId = usageData.accountId
 
-              const usageObject = {
-                input_tokens: inputTokens,
-                output_tokens: outputTokens,
-                cache_creation_input_tokens: cacheCreateTokens,
-                cache_read_input_tokens: cacheReadTokens
-              }
+	              const usageObject = {
+	                input_tokens: inputTokens,
+	                output_tokens: outputTokens,
+	                cache_creation_input_tokens: cacheCreateTokens,
+	                cache_read_input_tokens: cacheReadTokens
+	              }
+	              const requestBetaHeader =
+	                _headersVertex['anthropic-beta'] ||
+	                _headersVertex['Anthropic-Beta'] ||
+	                _headersVertex['ANTHROPIC-BETA']
+	              if (requestBetaHeader) {
+	                usageObject.request_anthropic_beta = requestBetaHeader
+	              }
+	              if (
+	                typeof _requestBodyVertex?.speed === 'string' &&
+	                _requestBodyVertex.speed.trim()
+	              ) {
+	                usageObject.request_speed = _requestBodyVertex.speed.trim().toLowerCase()
+	              }
+	              if (typeof usageData.speed === 'string' && usageData.speed.trim()) {
+	                usageObject.speed = usageData.speed.trim().toLowerCase()
+	              }
 
-              if (ephemeral5mTokens > 0 || ephemeral1hTokens > 0) {
-                usageObject.cache_creation = {
-                  ephemeral_5m_input_tokens: ephemeral5mTokens,
-                  ephemeral_1h_input_tokens: ephemeral1hTokens
+	              if (ephemeral5mTokens > 0 || ephemeral1hTokens > 0) {
+	                usageObject.cache_creation = {
+	                  ephemeral_5m_input_tokens: ephemeral5mTokens,
+	                  ephemeral_1h_input_tokens: ephemeral1hTokens
                 }
               }
 
-              apiKeyService
-                .recordUsageWithDetails(
-                  _apiKeyIdVertex,
-                  usageObject,
-                  model,
-                  usageAccountId,
-                  accountType
-                )
-                .catch((error) => {
-                  logger.error('❌ Failed to record stream usage:', error)
-                })
+	              apiKeyService
+	                .recordUsageWithDetails(
+	                  _apiKeyIdVertex,
+	                  usageObject,
+	                  model,
+	                  usageAccountId,
+	                  accountType
+	                )
+	                .then((costs) => {
+	                  queueRateLimitUpdate(
+	                    _rateLimitInfoVertex,
+	                    {
+	                      inputTokens,
+	                      outputTokens,
+	                      cacheCreateTokens,
+	                      cacheReadTokens
+	                    },
+	                    model,
+	                    'claude-vertex-stream',
+	                    _apiKeyIdVertex,
+	                    accountType,
+	                    costs
+	                  )
+	                })
+	                .catch((error) => {
+	                  logger.error('❌ Failed to record stream usage:', error)
+	                  queueRateLimitUpdate(
+	                    _rateLimitInfoVertex,
+	                    {
+	                      inputTokens,
+	                      outputTokens,
+	                      cacheCreateTokens,
+	                      cacheReadTokens
+	                    },
+	                    model,
+	                    'claude-vertex-stream',
+	                    _apiKeyIdVertex,
+	                    accountType
+	                  )
+	                })
 
-              queueRateLimitUpdate(
-                _rateLimitInfoVertex,
-                {
-                  inputTokens,
-                  outputTokens,
-                  cacheCreateTokens,
-                  cacheReadTokens
-                },
-                model,
-                'claude-vertex-stream',
-                _apiKeyIdVertex,
-                accountType
-              )
-
-              usageDataCaptured = true
-              logger.api(
-                `📊 Stream usage recorded (real) - Model: ${model}, Input: ${inputTokens}, Output: ${outputTokens}, Cache Create: ${cacheCreateTokens}, Cache Read: ${cacheReadTokens}, Total: ${inputTokens + outputTokens + cacheCreateTokens + cacheReadTokens} tokens`
-              )
+	              usageDataCaptured = true
+	              logger.api(
+	                `📊 Stream usage recorded (real) - Model: ${model}, Input: ${inputTokens}, Output: ${outputTokens}, Cache Create: ${cacheCreateTokens}, Cache Read: ${cacheReadTokens}, Total: ${inputTokens + outputTokens + cacheCreateTokens + cacheReadTokens} tokens`
+	              )
             } else {
               logger.warn(
                 '⚠️ Usage callback triggered but data is incomplete:',
