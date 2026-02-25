@@ -31,7 +31,8 @@ function queueRateLimitUpdate(
   model,
   context = '',
   keyId = null,
-  accountType = null
+  accountType = null,
+  preCalculatedCost = null
 ) {
   if (!rateLimitInfo) {
     return
@@ -39,7 +40,7 @@ function queueRateLimitUpdate(
 
   const label = context ? ` (${context})` : ''
 
-  updateRateLimitCounters(rateLimitInfo, usageSummary, model, keyId, accountType)
+  updateRateLimitCounters(rateLimitInfo, usageSummary, model, keyId, accountType, preCalculatedCost)
     .then(({ totalTokens, totalCost }) => {
       if (totalTokens > 0) {
         logger.api(`📊 Updated rate limit token count${label}: +${totalTokens} tokens`)
@@ -307,23 +308,38 @@ async function handleChatCompletion(req, res, apiKeyData) {
               accountId,
               accountType
             )
+            .then((costs) => {
+              queueRateLimitUpdate(
+                req.rateLimitInfo,
+                {
+                  inputTokens: usage.input_tokens || 0,
+                  outputTokens: usage.output_tokens || 0,
+                  cacheCreateTokens,
+                  cacheReadTokens
+                },
+                model,
+                `openai-${accountType}-stream`,
+                req.apiKey?.id,
+                accountType,
+                costs
+              )
+            })
             .catch((error) => {
               logger.error('❌ Failed to record usage:', error)
+              queueRateLimitUpdate(
+                req.rateLimitInfo,
+                {
+                  inputTokens: usage.input_tokens || 0,
+                  outputTokens: usage.output_tokens || 0,
+                  cacheCreateTokens,
+                  cacheReadTokens
+                },
+                model,
+                `openai-${accountType}-stream`,
+                req.apiKey?.id,
+                accountType
+              )
             })
-
-          queueRateLimitUpdate(
-            req.rateLimitInfo,
-            {
-              inputTokens: usage.input_tokens || 0,
-              outputTokens: usage.output_tokens || 0,
-              cacheCreateTokens,
-              cacheReadTokens
-            },
-            model,
-            `openai-${accountType}-stream`,
-            req.apiKey?.id,
-            accountType
-          )
         }
       }
 
@@ -464,23 +480,38 @@ async function handleChatCompletion(req, res, apiKeyData) {
             accountId,
             accountType
           )
+          .then((costs) => {
+            queueRateLimitUpdate(
+              req.rateLimitInfo,
+              {
+                inputTokens: usage.input_tokens || 0,
+                outputTokens: usage.output_tokens || 0,
+                cacheCreateTokens,
+                cacheReadTokens
+              },
+              claudeRequest.model,
+              `openai-${accountType}-non-stream`,
+              req.apiKey?.id,
+              accountType,
+              costs
+            )
+          })
           .catch((error) => {
             logger.error('❌ Failed to record usage:', error)
+            queueRateLimitUpdate(
+              req.rateLimitInfo,
+              {
+                inputTokens: usage.input_tokens || 0,
+                outputTokens: usage.output_tokens || 0,
+                cacheCreateTokens,
+                cacheReadTokens
+              },
+              claudeRequest.model,
+              `openai-${accountType}-non-stream`,
+              req.apiKey?.id,
+              accountType
+            )
           })
-
-        queueRateLimitUpdate(
-          req.rateLimitInfo,
-          {
-            inputTokens: usage.input_tokens || 0,
-            outputTokens: usage.output_tokens || 0,
-            cacheCreateTokens,
-            cacheReadTokens
-          },
-          claudeRequest.model,
-          `openai-${accountType}-non-stream`,
-          req.apiKey?.id,
-          accountType
-        )
       }
 
       // 返回 OpenAI 格式响应

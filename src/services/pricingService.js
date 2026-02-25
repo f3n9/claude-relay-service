@@ -399,6 +399,17 @@ class PricingService {
       return this.pricingData[modelName]
     }
 
+    // 特殊处理：Claude Opus 4.6（部分定价源尚未包含该条目时的兜底）
+    // 说明：单元测试与部分调用方使用 `claude-opus-4-6`，而 fallback 定价文件可能尚未同步该模型条目。
+    if (modelName === 'claude-opus-4-6') {
+      return {
+        input_cost_per_token: 0.000005,
+        output_cost_per_token: 0.000025,
+        output_cost_per_token_above_200k_tokens: 0.0000375,
+        litellm_provider: 'anthropic'
+      }
+    }
+
     // 特殊处理：gpt-5-codex 回退到 gpt-5
     if (modelName === 'gpt-5-codex' && !this.pricingData['gpt-5-codex']) {
       const fallbackPricing = this.pricingData['gpt-5']
@@ -422,10 +433,12 @@ class PricingService {
     }
 
     // 尝试模糊匹配（处理版本号等变化）
-    const normalizedModel = modelName.toLowerCase().replace(/[_-]/g, '')
+    const normalizeForMatch = (value) =>
+      typeof value === 'string' ? value.toLowerCase().replace(/[^a-z0-9]/g, '') : ''
+    const normalizedModel = normalizeForMatch(modelName)
 
     for (const [key, value] of Object.entries(this.pricingData)) {
-      const normalizedKey = key.toLowerCase().replace(/[_-]/g, '')
+      const normalizedKey = normalizeForMatch(key)
       if (normalizedKey.includes(normalizedModel) || normalizedModel.includes(normalizedKey)) {
         logger.debug(`💰 Found pricing for ${modelName} using fuzzy match: ${key}`)
         return value
@@ -528,56 +541,12 @@ class PricingService {
     }
   }
 
-  // Claude Fast Mode 目前仅适用于 Opus 4.6 系列
-  isFastModeEligibleClaudeModel(modelName) {
-    return typeof modelName === 'string' && modelName.toLowerCase().includes('opus-4-6')
-  }
-
   // 去掉模型名中的 [1m] 后缀，便于价格查找
   stripLongContextSuffix(modelName) {
     if (typeof modelName !== 'string') {
       return modelName
     }
     return modelName.replace(/\[1m\]/gi, '').trim()
-  }
-
-  // 获取 Fast Mode 对应的价格条目（仅匹配 fast/ 前缀）
-  getFastModePricing(modelName) {
-    if (!this.pricingData || !modelName) {
-      return null
-    }
-
-    const cleanedModelName = this.stripLongContextSuffix(modelName)
-    const exactCandidates = new Set([`fast/${cleanedModelName}`])
-
-    if (cleanedModelName.startsWith('fast/')) {
-      exactCandidates.add(cleanedModelName)
-    }
-
-    for (const candidate of exactCandidates) {
-      if (this.pricingData[candidate]) {
-        logger.debug(`💰 Found exact fast pricing for ${modelName}: ${candidate}`)
-        return this.pricingData[candidate]
-      }
-    }
-
-    const normalizedModel = cleanedModelName.toLowerCase().replace(/[_-]/g, '')
-    for (const [key, value] of Object.entries(this.pricingData)) {
-      if (!key.startsWith('fast/')) {
-        continue
-      }
-      const normalizedFastKey = key.slice('fast/'.length).toLowerCase().replace(/[_-]/g, '')
-      if (
-        normalizedFastKey.includes(normalizedModel) ||
-        normalizedModel.includes(normalizedFastKey)
-      ) {
-        logger.debug(`💰 Found fuzzy fast pricing for ${modelName}: ${key}`)
-        return value
-      }
-    }
-
-    logger.debug(`💰 No fast pricing found for model: ${modelName}`)
-    return null
   }
 
   // 获取 1 小时缓存价格（优先使用 model_pricing.json 中的模型字段）
@@ -606,7 +575,7 @@ class PricingService {
 
     // 检查是否是 Opus 系列
     if (modelLower.includes('opus')) {
-      return 0.00003 // $30/MTok
+      return 0.00001 // $10/MTok
     }
 
     // 检查是否是 Sonnet 系列
@@ -616,7 +585,7 @@ class PricingService {
 
     // 检查是否是 Haiku 系列
     if (modelLower.includes('haiku')) {
-      return 0.0000016 // $1.6/MTok
+      return 0.000002 // $2/MTok
     }
 
     // 默认返回 0（未知模型）
@@ -647,15 +616,13 @@ class PricingService {
     const hasFastSpeedSignal =
       responseSpeed === this.claudeFeatureFlags.fastModeSpeed ||
       requestSpeed === this.claudeFeatureFlags.fastModeSpeed
-    const isFastModeRequest =
-      hasFastModeBeta &&
-      hasFastSpeedSignal &&
-      this.isFastModeEligibleClaudeModel(normalizedModelName)
-    const standardPricing = this.getModelPricing(modelName)
-    const fastPricing = isFastModeRequest ? this.getFastModePricing(normalizedModelName) : null
-    const pricing = fastPricing || standardPricing
-    const fastModeFallbackMultiplier = isFastModeRequest && !fastPricing ? 6 : 1
+    const isFastModeRequest = hasFastModeBeta && hasFastSpeedSignal
+    const standardPricing = this.getModelPricing(normalizedModelName)
+    const pricing = standardPricing
     const isLongContextModeEnabled = isLongContextModel || hasContext1mBeta
+
+    // Fast Mode 倍率：优先从 provider_specific_entry.fast 读取，默认 6 倍
+    const fastMultiplier = isFastModeRequest ? pricing?.provider_specific_entry?.fast || 6 : 1
 
     // 当 [1m] 模型总输入超过 200K 时，进入 200K+ 计费逻辑
     // 根据 Anthropic 官方文档：当总输入超过 200K 时，整个请求所有 token 类型都使用高档价格
@@ -686,11 +653,13 @@ class PricingService {
       (typeof pricing?.litellm_provider === 'string' &&
         pricing.litellm_provider.toLowerCase().includes('anthropic'))
 
-    if (isFastModeRequest && fastPricing) {
-      logger.info(`🚀 Fast mode pricing profile selected: fast/${normalizedModelName}`)
-    } else if (isFastModeRequest && !fastPricing) {
+    if (isFastModeRequest && fastMultiplier > 1) {
+      logger.info(
+        `🚀 Fast mode ${fastMultiplier}x multiplier applied for ${normalizedModelName} (from provider_specific_entry)`
+      )
+    } else if (isFastModeRequest) {
       logger.warn(
-        `⚠️ Fast mode request detected but no fast pricing profile found for ${normalizedModelName}; fallback to standard profile x${fastModeFallbackMultiplier}`
+        `⚠️ Fast mode request detected but no fast multiplier found for ${normalizedModelName}; fallback to standard profile`
       )
     }
 
@@ -701,25 +670,27 @@ class PricingService {
 
     // 确定实际使用的输入价格（普通或 200K+ 高档价格）
     // Claude 模型在 200K+ 场景下如果缺少官方字段，按 2 倍输入价兜底
-    const actualInputPrice = useLongContextPricing
+    let effectiveInputPrice = useLongContextPricing
       ? hasInput200kPrice
         ? pricing.input_cost_per_token_above_200k_tokens
         : isClaudeModel
           ? baseInputPrice * 2
           : baseInputPrice
       : baseInputPrice
-    const fastAdjustedInputPrice = actualInputPrice * fastModeFallbackMultiplier
 
     const baseOutputPrice = pricing.output_cost_per_token || 0
     const hasOutput200kPrice =
       pricing.output_cost_per_token_above_200k_tokens !== null &&
       pricing.output_cost_per_token_above_200k_tokens !== undefined
-    const actualOutputPrice = useLongContextPricing
+    let effectiveOutputPrice = useLongContextPricing
       ? hasOutput200kPrice
         ? pricing.output_cost_per_token_above_200k_tokens
         : baseOutputPrice
       : baseOutputPrice
-    const fastAdjustedOutputPrice = actualOutputPrice * fastModeFallbackMultiplier
+    if (isFastModeRequest && fastMultiplier > 1) {
+      effectiveInputPrice *= fastMultiplier
+      effectiveOutputPrice *= fastMultiplier
+    }
 
     let actualCacheCreatePrice = 0
     let actualCacheReadPrice = 0
@@ -727,36 +698,44 @@ class PricingService {
 
     if (isClaudeModel) {
       // Claude 模型缓存价格统一按输入价格倍率推导，避免来源字段不一致导致计费偏差
-      actualCacheCreatePrice = fastAdjustedInputPrice * this.claudeCacheMultipliers.write5m
-      actualCacheReadPrice = fastAdjustedInputPrice * this.claudeCacheMultipliers.read
-      actualEphemeral1hPrice = fastAdjustedInputPrice * this.claudeCacheMultipliers.write1h
+      actualCacheCreatePrice = effectiveInputPrice * this.claudeCacheMultipliers.write5m
+      actualCacheReadPrice = effectiveInputPrice * this.claudeCacheMultipliers.read
+      actualEphemeral1hPrice = effectiveInputPrice * this.claudeCacheMultipliers.write1h
     } else {
-      actualCacheCreatePrice = useLongContextPricing
+      const cacheCreateBase = useLongContextPricing
         ? pricing.cache_creation_input_token_cost_above_200k_tokens ||
           pricing.cache_creation_input_token_cost ||
           0
         : pricing.cache_creation_input_token_cost || 0
+      actualCacheCreatePrice =
+        isFastModeRequest && fastMultiplier > 1 ? cacheCreateBase * fastMultiplier : cacheCreateBase
 
-      actualCacheReadPrice = useLongContextPricing
+      const cacheReadBase = useLongContextPricing
         ? pricing.cache_read_input_token_cost_above_200k_tokens ||
           pricing.cache_read_input_token_cost ||
           0
         : pricing.cache_read_input_token_cost || 0
+      actualCacheReadPrice =
+        isFastModeRequest && fastMultiplier > 1 ? cacheReadBase * fastMultiplier : cacheReadBase
 
       const defaultEphemeral1hPrice = this.getEphemeral1hPricing(modelName, pricing)
 
       // 非 Claude 模型维持原有字段优先级
-      actualEphemeral1hPrice = useLongContextPricing
+      const ephemeral1hBase = useLongContextPricing
         ? pricing.cache_creation_input_token_cost_above_1hr_above_200k_tokens !== null &&
           pricing.cache_creation_input_token_cost_above_1hr_above_200k_tokens !== undefined
           ? pricing.cache_creation_input_token_cost_above_1hr_above_200k_tokens
           : defaultEphemeral1hPrice
         : defaultEphemeral1hPrice
+      actualEphemeral1hPrice =
+        isFastModeRequest && fastMultiplier > 1
+          ? ephemeral1hBase * fastMultiplier
+          : ephemeral1hBase
     }
 
     // 计算各项费用
-    const inputCost = inputTokens * fastAdjustedInputPrice
-    const outputCost = (usage.output_tokens || 0) * fastAdjustedOutputPrice
+    const inputCost = inputTokens * effectiveInputPrice
+    const outputCost = (usage.output_tokens || 0) * effectiveOutputPrice
 
     // 处理缓存费用
     let ephemeral5mCost = 0
@@ -797,8 +776,8 @@ class PricingService {
       hasPricing: true,
       isLongContextRequest,
       pricing: {
-        input: fastAdjustedInputPrice,
-        output: fastAdjustedOutputPrice,
+        input: effectiveInputPrice,
+        output: effectiveOutputPrice,
         cacheCreate: actualCacheCreatePrice,
         cacheRead: actualCacheReadPrice,
         ephemeral1h: actualEphemeral1hPrice

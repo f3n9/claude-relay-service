@@ -1676,8 +1676,11 @@ class ApiKeyService {
       logParts.push(`Total: ${totalTokens} tokens`)
 
       logger.database(`📊 Recorded usage: ${keyId} - ${logParts.join(', ')}`)
+
+      return { realCost, ratedCost }
     } catch (error) {
       logger.error('❌ Failed to record usage:', error)
+      return { realCost: 0, ratedCost: 0 }
     }
   }
 
@@ -1972,8 +1975,11 @@ class ApiKeyService {
         // 发布失败不影响主流程，只记录错误
         logger.warn('⚠️ Failed to publish billing event:', err.message)
       })
+
+      return { realCost: realCostWithDetails, ratedCost: ratedCostWithDetails }
     } catch (error) {
       logger.error('❌ Failed to record usage:', error)
+      return { realCost: 0, ratedCost: 0 }
     }
   }
 
