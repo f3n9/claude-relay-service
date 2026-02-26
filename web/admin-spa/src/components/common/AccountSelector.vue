@@ -120,7 +120,7 @@
             <div
               v-if="
                 platform === 'claude' &&
-                filteredGroups.length > 0 &&
+                filteredVertexGroups.length > 0 &&
                 filteredVertexAccounts.length > 0
               "
             >
@@ -130,7 +130,7 @@
                 GCP Vertex 调度分组
               </div>
               <div
-                v-for="group in filteredGroups"
+                v-for="group in filteredVertexGroups"
                 :key="`vertex:group:${group.id}`"
                 class="cursor-pointer px-4 py-2 transition-colors hover:bg-gray-50 dark:hover:bg-gray-700"
                 :class="{
@@ -547,6 +547,53 @@ const filteredGroups = computed(() => {
   }
 
   return groups
+})
+
+const getAccountGroupIds = (account) => {
+  if (!account || typeof account !== 'object') return []
+
+  const groupIds = []
+
+  if (Array.isArray(account.groupInfos)) {
+    account.groupInfos.forEach((group) => {
+      if (group && typeof group.id === 'string' && group.id) {
+        groupIds.push(group.id)
+      }
+    })
+  }
+
+  if (account.groupInfo && typeof account.groupInfo.id === 'string' && account.groupInfo.id) {
+    groupIds.push(account.groupInfo.id)
+  }
+
+  if (Array.isArray(account.groupIds)) {
+    account.groupIds.forEach((id) => {
+      if (typeof id === 'string' && id) {
+        groupIds.push(id)
+      }
+    })
+  }
+
+  if (typeof account.groupId === 'string' && account.groupId) {
+    groupIds.push(account.groupId)
+  }
+
+  return [...new Set(groupIds)]
+}
+
+const filteredVertexGroups = computed(() => {
+  if (props.platform !== 'claude') return []
+
+  const vertexGroupIds = new Set()
+
+  props.accounts.forEach((account) => {
+    if (account.platform !== 'claude-vertex') return
+    getAccountGroupIds(account).forEach((groupId) => vertexGroupIds.add(groupId))
+  })
+
+  if (vertexGroupIds.size === 0) return []
+
+  return filteredGroups.value.filter((group) => vertexGroupIds.has(group.id))
 })
 
 // 过滤的 OAuth 账号
