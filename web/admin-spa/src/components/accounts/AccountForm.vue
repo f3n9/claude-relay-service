@@ -735,6 +735,25 @@
               </p>
             </div>
 
+            <div v-if="form.platform === 'openai' || form.platform === 'openai-responses'">
+              <label class="mb-3 block text-sm font-semibold text-gray-700 dark:text-gray-300">
+                Pass-Through 模式
+              </label>
+              <label class="inline-flex cursor-pointer items-center">
+                <input
+                  v-model="form.passThrough"
+                  class="mr-2 rounded border-gray-300 text-blue-600 focus:border-blue-500 focus:ring focus:ring-blue-200 dark:border-gray-600 dark:bg-gray-700"
+                  type="checkbox"
+                />
+                <span class="text-sm text-gray-700 dark:text-gray-300">
+                  透传 headers / prompts / instructions
+                </span>
+              </label>
+              <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                启用后不再注入或改写请求内容，仅保留鉴权相关头部和必要的模型名称标准化
+              </p>
+            </div>
+
             <!-- 到期时间 - 仅在创建账户时显示，编辑时使用独立的过期时间编辑弹窗，Gemini API 不需要 -->
             <div v-if="!isEdit && form.platform !== 'gemini-api'">
               <label class="mb-2 block text-sm font-semibold text-gray-700 dark:text-gray-300"
@@ -2119,25 +2138,6 @@
               </p>
             </div>
 
-            <div v-if="form.platform === 'openai' || form.platform === 'openai-responses'">
-              <label class="mb-3 block text-sm font-semibold text-gray-700 dark:text-gray-300">
-                Pass-Through 模式
-              </label>
-              <label class="inline-flex cursor-pointer items-center">
-                <input
-                  v-model="form.passThrough"
-                  class="mr-2 rounded border-gray-300 text-blue-600 focus:border-blue-500 focus:ring focus:ring-blue-200 dark:border-gray-600 dark:bg-gray-700"
-                  type="checkbox"
-                />
-                <span class="text-sm text-gray-700 dark:text-gray-300">
-                  透传 headers / prompts / instructions
-                </span>
-              </label>
-              <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                启用后不再注入或改写请求内容，仅保留鉴权相关头部和必要的模型名称标准化
-              </p>
-            </div>
-
             <!-- 手动输入 Token 字段 -->
             <div
               v-if="
@@ -2840,6 +2840,25 @@
             </p>
           </div>
 
+          <div v-if="form.platform === 'openai' || form.platform === 'openai-responses'">
+            <label class="mb-3 block text-sm font-semibold text-gray-700 dark:text-gray-300">
+              Pass-Through 模式
+            </label>
+            <label class="inline-flex cursor-pointer items-center">
+              <input
+                v-model="form.passThrough"
+                class="mr-2 rounded border-gray-300 text-blue-600 focus:border-blue-500 focus:ring focus:ring-blue-200 dark:border-gray-600 dark:bg-gray-700"
+                type="checkbox"
+              />
+              <span class="text-sm text-gray-700 dark:text-gray-300">
+                透传 headers / prompts / instructions
+              </span>
+            </label>
+            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              启用后不再注入或改写请求内容，仅保留鉴权相关头部和必要的模型名称标准化
+            </p>
+          </div>
+
           <!-- 到期时间 - 仅在创建账户时显示，编辑时使用独立的过期时间编辑弹窗 -->
           <div v-if="!isEdit">
             <label class="mb-2 block text-sm font-semibold text-gray-700 dark:text-gray-300"
@@ -3538,25 +3557,6 @@
                 <p class="mt-1 text-xs text-gray-500">账号被限流后暂停调度的时间（分钟）</p>
               </div>
             </div>
-          </div>
-
-          <div v-if="form.platform === 'openai' || form.platform === 'openai-responses'">
-            <label class="mb-3 block text-sm font-semibold text-gray-700 dark:text-gray-300">
-              Pass-Through 模式
-            </label>
-            <label class="inline-flex cursor-pointer items-center">
-              <input
-                v-model="form.passThrough"
-                class="mr-2 rounded border-gray-300 text-blue-600 focus:border-blue-500 focus:ring focus:ring-blue-200 dark:border-gray-600 dark:bg-gray-700"
-                type="checkbox"
-              />
-              <span class="text-sm text-gray-700 dark:text-gray-300">
-                透传 headers / prompts / instructions
-              </span>
-            </label>
-            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
-              启用后不再注入或改写请求内容，仅保留鉴权相关头部和必要的模型名称标准化
-            </p>
           </div>
 
           <!-- 上游错误处理（编辑模式）-->
