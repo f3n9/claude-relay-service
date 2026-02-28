@@ -1788,8 +1788,7 @@ const requestLogger = (req, res, next) => {
   const isDebugRoute = req.originalUrl.includes('event_logging')
   if (req.originalUrl !== '/health') {
     logger.debug(`▶ [${requestId}] ${req.method} ${req.originalUrl}`, {
-      ip: clientIP,
-      body: req.body && Object.keys(req.body).length > 0 ? req.body : undefined
+      ip: clientIP
     })
   }
 
@@ -1817,11 +1816,6 @@ const requestLogger = (req, res, next) => {
 
     // 构建树形 metadata
     const meta = { requestId }
-
-    // 请求体（非 GET 且有内容时显示）
-    if (req.method !== 'GET' && req.body && Object.keys(req.body).length > 0) {
-      meta.req = req.body
-    }
 
     // 查询参数（GET 请求且有查询参数时单独显示）
     const queryIdx = req.originalUrl.indexOf('?')
