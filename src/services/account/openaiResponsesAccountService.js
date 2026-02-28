@@ -51,7 +51,8 @@ class OpenAIResponsesAccountService {
       dailyQuota = 0, // 每日额度限制（美元），0表示不限制
       quotaResetTime = '00:00', // 额度重置时间（HH:mm格式）
       rateLimitDuration = 60, // 限流时间（分钟）
-      disableAutoProtection = false // 是否关闭自动防护（429/401/400/529 不自动禁用）
+      disableAutoProtection = false, // 是否关闭自动防护（429/401/400/529 不自动禁用）
+      passThrough = false // 是否启用请求直通模式
     } = options
 
     // 验证必填字段
@@ -96,7 +97,8 @@ class OpenAIResponsesAccountService {
       lastResetDate: redis.getDateStringInTimezone(),
       quotaResetTime,
       quotaStoppedAt: '',
-      disableAutoProtection: disableAutoProtection.toString() // 关闭自动防护
+      disableAutoProtection: disableAutoProtection.toString(), // 关闭自动防护
+      passThrough: passThrough === true || passThrough === 'true' ? 'true' : 'false'
     }
 
     // 保存到 Redis
@@ -168,6 +170,11 @@ class OpenAIResponsesAccountService {
     // 自动防护开关
     if (updates.disableAutoProtection !== undefined) {
       updates.disableAutoProtection = updates.disableAutoProtection.toString()
+    }
+
+    if (updates.passThrough !== undefined) {
+      updates.passThrough =
+        updates.passThrough === true || updates.passThrough === 'true' ? 'true' : 'false'
     }
 
     // 更新 Redis
@@ -259,6 +266,7 @@ class OpenAIResponsesAccountService {
       // 转换字段类型
       accountData.schedulable = accountData.schedulable !== 'false'
       accountData.isActive = accountData.isActive === 'true'
+      accountData.passThrough = accountData.passThrough === 'true'
       accountData.expiresAt = accountData.subscriptionExpiresAt || null
       accountData.platform = accountData.platform || 'openai-responses'
 

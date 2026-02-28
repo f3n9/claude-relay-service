@@ -502,6 +502,8 @@ async function createAccount(accountData) {
       accountData.disableAutoProtection === true || accountData.disableAutoProtection === 'true'
         ? 'true'
         : 'false',
+    passThrough:
+      accountData.passThrough === true || accountData.passThrough === 'true' ? 'true' : 'false',
     lastRefresh: now,
     createdAt: now,
     updatedAt: now
@@ -617,6 +619,11 @@ async function updateAccount(accountId, updates) {
       updates.disableAutoProtection === true || updates.disableAutoProtection === 'true'
         ? 'true'
         : 'false'
+  }
+
+  if (updates.passThrough !== undefined) {
+    updates.passThrough =
+      updates.passThrough === true || updates.passThrough === 'true' ? 'true' : 'false'
   }
 
   // 更新账户类型时处理共享账户集合
@@ -745,6 +752,7 @@ async function getAllAccounts() {
         ...accountData,
         isActive: accountData.isActive === 'true',
         schedulable: accountData.schedulable !== 'false',
+        passThrough: accountData.passThrough === 'true',
         openaiOauth: maskedOauth,
         accessToken: maskedAccessToken,
         refreshToken: maskedRefreshToken,
@@ -813,6 +821,7 @@ async function getAccountOverview(accountId) {
     platform: accountData.platform || 'openai',
     isActive: accountData.isActive === 'true',
     schedulable: accountData.schedulable !== 'false',
+    passThrough: accountData.passThrough === 'true',
     rateLimitStatus: rateLimitInfo || {
       status: 'normal',
       isRateLimited: false,

@@ -1,7 +1,7 @@
 const axios = require('axios')
 const ProxyHelper = require('../../utils/proxyHelper')
 const logger = require('../../utils/logger')
-const { filterForOpenAI } = require('../../utils/headerFilter')
+const { cdnHeaders, filterForOpenAI } = require('../../utils/headerFilter')
 const openaiResponsesAccountService = require('../account/openaiResponsesAccountService')
 const apiKeyService = require('../apiKeyService')
 const unifiedOpenAIScheduler = require('../scheduler/unifiedOpenAIScheduler')
@@ -43,6 +43,37 @@ function extractCacheCreationTokens(usageData) {
 class OpenAIResponsesRelayService {
   constructor() {
     this.defaultTimeout = config.requestTimeout || 600000
+  }
+
+  _isPassThroughEnabled(account) {
+    return account?.passThrough === true || account?.passThrough === 'true'
+  }
+
+  _buildPassThroughHeaders(headers = {}) {
+    const skipHeaders = new Set(
+      [
+        'host',
+        'content-length',
+        'authorization',
+        'x-api-key',
+        'x-cr-api-key',
+        'connection',
+        'upgrade',
+        'sec-websocket-key',
+        'sec-websocket-version',
+        'sec-websocket-extensions',
+        ...cdnHeaders
+      ].map((key) => key.toLowerCase())
+    )
+
+    const forwardedHeaders = {}
+    for (const [key, value] of Object.entries(headers || {})) {
+      if (!skipHeaders.has(key.toLowerCase())) {
+        forwardedHeaders[key] = value
+      }
+    }
+
+    return forwardedHeaders
   }
 
   // 节流更新 lastUsedAt
@@ -95,15 +126,21 @@ class OpenAIResponsesRelayService {
       const targetUrl = `${fullAccount.baseApi}${req.path}`
       logger.info(`🎯 Forwarding to: ${targetUrl}`)
 
-      // 构建请求头 - 使用统一的 headerFilter 移除 CDN headers
-      const headers = {
-        ...filterForOpenAI(req.headers),
-        Authorization: `Bearer ${fullAccount.apiKey}`,
-        'Content-Type': 'application/json'
-      }
+      const passThroughEnabled = this._isPassThroughEnabled(fullAccount)
+
+      // 构建请求头
+      const headers = passThroughEnabled
+        ? this._buildPassThroughHeaders(req.headers)
+        : {
+            ...filterForOpenAI(req.headers),
+            'Content-Type': 'application/json'
+          }
+      headers.Authorization = `Bearer ${fullAccount.apiKey}`
 
       // 处理 User-Agent
-      if (fullAccount.userAgent) {
+      if (passThroughEnabled) {
+        logger.debug('🚀 Pass-through mode enabled, preserving request headers')
+      } else if (fullAccount.userAgent) {
         // 使用自定义 User-Agent
         headers['User-Agent'] = fullAccount.userAgent
         logger.debug(`📱 Using custom User-Agent: ${fullAccount.userAgent}`)

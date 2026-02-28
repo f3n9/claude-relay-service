@@ -2119,6 +2119,25 @@
               </p>
             </div>
 
+            <div v-if="form.platform === 'openai' || form.platform === 'openai-responses'">
+              <label class="mb-3 block text-sm font-semibold text-gray-700 dark:text-gray-300">
+                Pass-Through 模式
+              </label>
+              <label class="inline-flex cursor-pointer items-center">
+                <input
+                  v-model="form.passThrough"
+                  class="mr-2 rounded border-gray-300 text-blue-600 focus:border-blue-500 focus:ring focus:ring-blue-200 dark:border-gray-600 dark:bg-gray-700"
+                  type="checkbox"
+                />
+                <span class="text-sm text-gray-700 dark:text-gray-300">
+                  透传 headers / prompts / instructions
+                </span>
+              </label>
+              <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                启用后不再注入或改写请求内容，仅保留鉴权相关头部和必要的模型名称标准化
+              </p>
+            </div>
+
             <!-- 手动输入 Token 字段 -->
             <div
               v-if="
@@ -3521,6 +3540,25 @@
             </div>
           </div>
 
+          <div v-if="form.platform === 'openai' || form.platform === 'openai-responses'">
+            <label class="mb-3 block text-sm font-semibold text-gray-700 dark:text-gray-300">
+              Pass-Through 模式
+            </label>
+            <label class="inline-flex cursor-pointer items-center">
+              <input
+                v-model="form.passThrough"
+                class="mr-2 rounded border-gray-300 text-blue-600 focus:border-blue-500 focus:ring focus:ring-blue-200 dark:border-gray-600 dark:bg-gray-700"
+                type="checkbox"
+              />
+              <span class="text-sm text-gray-700 dark:text-gray-300">
+                透传 headers / prompts / instructions
+              </span>
+            </label>
+            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              启用后不再注入或改写请求内容，仅保留鉴权相关头部和必要的模型名称标准化
+            </p>
+          </div>
+
           <!-- 上游错误处理（编辑模式）-->
           <div v-if="autoProtectionPlatforms.includes(form.platform)">
             <label class="mb-3 block text-sm font-semibold text-gray-700 dark:text-gray-300">
@@ -4537,6 +4575,7 @@ const form = ref({
   disableAutoProtection:
     props.account?.disableAutoProtection === true ||
     props.account?.disableAutoProtection === 'true',
+  passThrough: props.account?.passThrough === true || props.account?.passThrough === 'true',
   // 额度管理字段
   dailyQuota: props.account?.dailyQuota || 0,
   dailyUsage: props.account?.dailyUsage || 0,
@@ -5645,6 +5684,7 @@ const createAccount = async () => {
       data.needsImmediateRefresh = true
       data.requireRefreshSuccess = true // 必须刷新成功才能创建账户
       data.priority = form.value.priority || 50
+      data.passThrough = !!form.value.passThrough
     } else if (form.value.platform === 'droid') {
       data.priority = form.value.priority || 50
       data.endpointType = form.value.endpointType || 'anthropic'
@@ -5702,6 +5742,7 @@ const createAccount = async () => {
       data.apiKey = form.value.apiKey
       data.userAgent = form.value.userAgent || ''
       data.priority = form.value.priority || 50
+      data.passThrough = !!form.value.passThrough
       data.rateLimitDuration = 60 // 默认值60，不从用户输入获取
       data.dailyQuota = form.value.dailyQuota || 0
       data.quotaResetTime = form.value.quotaResetTime || '00:00'
@@ -6020,6 +6061,7 @@ const updateAccount = async () => {
     // OpenAI 账号优先级更新
     if (props.account.platform === 'openai') {
       data.priority = form.value.priority || 50
+      data.passThrough = !!form.value.passThrough
     }
 
     // Gemini 账号优先级更新
@@ -6078,6 +6120,7 @@ const updateAccount = async () => {
       }
       data.userAgent = form.value.userAgent || ''
       data.priority = form.value.priority || 50
+      data.passThrough = !!form.value.passThrough
       // 编辑时不上传 rateLimitDuration，保持原值
       data.dailyQuota = form.value.dailyQuota || 0
       data.quotaResetTime = form.value.quotaResetTime || '00:00'

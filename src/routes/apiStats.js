@@ -1271,6 +1271,12 @@ router.post('/api-key/test-openai', async (req, res) => {
               res.write(`data: ${JSON.stringify({ type: 'content', text: data.delta })}\n\n`)
             } else if (data.type === 'response.content_part.delta' && data.delta?.text) {
               res.write(`data: ${JSON.stringify({ type: 'content', text: data.delta.text })}\n\n`)
+            } else if (
+              typeof data.type === 'string' &&
+              data.type.startsWith('response.custom_tool_call_input.')
+            ) {
+              // 透传 custom tool input 事件，便于客户端实时接收工具输入增量
+              res.write(`data: ${JSON.stringify(data)}\n\n`)
             }
           } catch {
             // ignore

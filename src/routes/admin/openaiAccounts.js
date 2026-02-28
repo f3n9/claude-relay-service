@@ -330,6 +330,7 @@ router.post('/', authenticateAdmin, async (req, res) => {
       groupIds, // 支持多分组
       rateLimitDuration,
       priority,
+      passThrough,
       needsImmediateRefresh, // 是否需要立即刷新
       requireRefreshSuccess // 是否必须刷新成功才能创建
     } = req.body
@@ -353,7 +354,8 @@ router.post('/', authenticateAdmin, async (req, res) => {
       accountInfo: accountInfo || {},
       proxy: proxy || null,
       isActive: true,
-      schedulable: true
+      schedulable: true,
+      passThrough: passThrough === true || passThrough === 'true'
     }
 
     // 如果需要立即刷新且必须成功（OpenAI 手动模式）
