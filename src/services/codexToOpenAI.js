@@ -52,9 +52,11 @@ class CodexToOpenAIConverter {
         return this._handleOutputItemAdded(eventData, model, state)
 
       case 'response.function_call_arguments.delta':
+      case 'response.custom_tool_call_input.delta':
         return this._handleArgumentsDelta(eventData, model, state)
 
       case 'response.function_call_arguments.done':
+      case 'response.custom_tool_call_input.done':
         return this._handleArgumentsDone(eventData, model, state)
 
       case 'response.output_item.done':
@@ -164,7 +166,7 @@ class CodexToOpenAIConverter {
 
   _handleOutputItemAdded(eventData, model, state) {
     const { item } = eventData
-    if (!item || item.type !== 'function_call') {
+    if (!item || (item.type !== 'function_call' && item.type !== 'custom_tool_call')) {
       return []
     }
 
@@ -207,7 +209,7 @@ class CodexToOpenAIConverter {
       tool_calls: [
         {
           index: state.functionCallIndex,
-          function: { arguments: eventData.arguments || '{}' }
+          function: { arguments: eventData.arguments || eventData.input || '{}' }
         }
       ]
     })
@@ -215,7 +217,7 @@ class CodexToOpenAIConverter {
 
   _handleOutputItemDone(eventData, model, state) {
     const { item } = eventData
-    if (!item || item.type !== 'function_call') {
+    if (!item || (item.type !== 'function_call' && item.type !== 'custom_tool_call')) {
       return []
     }
 
@@ -235,7 +237,7 @@ class CodexToOpenAIConverter {
           type: 'function',
           function: {
             name: this._restoreToolName(item.name),
-            arguments: item.arguments || '{}'
+            arguments: item.arguments || item.input || '{}'
           }
         }
       ]
