@@ -49,6 +49,33 @@ function normalizeHeaders(headers = {}) {
   return normalized
 }
 
+function sanitizePassThroughHeaders(headers = {}) {
+  // Remove sensitive/transport headers that must not be relayed to chatgpt.com.
+  const blockedHeaders = new Set([
+    'cookie',
+    'cookie2',
+    'set-cookie',
+    'content-encoding',
+    'transfer-encoding',
+    'te',
+    'trailer',
+    'keep-alive',
+    'proxy-authenticate',
+    'proxy-authorization',
+    'proxy-connection',
+    'expect',
+    'via'
+  ])
+
+  const sanitized = {}
+  for (const [key, value] of Object.entries(headers || {})) {
+    if (!blockedHeaders.has(key.toLowerCase())) {
+      sanitized[key] = value
+    }
+  }
+  return sanitized
+}
+
 function toNumberSafe(value) {
   if (value === undefined || value === null || value === '') {
     return null
@@ -334,7 +361,7 @@ const handleResponses = async (req, res) => {
     // 基于白名单构造上游所需的请求头，确保键为小写且值受控
     const incoming = req.headers || {}
     const headers = passThroughEnabled
-      ? filterForOpenAI(incoming)
+      ? sanitizePassThroughHeaders(filterForOpenAI(incoming))
       : (() => {
           const allowedKeys = ['version', 'openai-beta', 'session_id']
           const whitelistedHeaders = {}

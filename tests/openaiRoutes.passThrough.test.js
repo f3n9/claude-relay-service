@@ -182,6 +182,11 @@ describe('openaiRoutes handleResponses passThrough behavior', () => {
     })
 
     const req = createBaseRequest()
+    req.headers.cookie = 'relay_session=secret-cookie'
+    req.headers['content-encoding'] = 'gzip'
+    req.headers['transfer-encoding'] = 'chunked'
+    req.headers.te = 'trailers'
+    req.headers.trailer = 'x-checksum'
     const res = createMockResponse()
 
     await handleResponses(req, res)
@@ -195,6 +200,11 @@ describe('openaiRoutes handleResponses passThrough behavior', () => {
     expect(body.store).toBe(true)
     expect(config.headers['x-codex-beta-features']).toBe('custom_tool_input')
     expect(config.headers['user-agent']).toBe('integration-client/1.0')
+    expect(config.headers.cookie).toBeUndefined()
+    expect(config.headers['content-encoding']).toBeUndefined()
+    expect(config.headers['transfer-encoding']).toBeUndefined()
+    expect(config.headers.te).toBeUndefined()
+    expect(config.headers.trailer).toBeUndefined()
     expect(config.headers.authorization).toBe('Bearer decrypted-openai-token')
   })
 })
