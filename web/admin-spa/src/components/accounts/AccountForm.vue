@@ -5924,6 +5924,10 @@ const updateAccount = async () => {
       expiresAt: form.value.expiresAt || undefined,
       proxy: proxyPayload
     }
+    const accountPassThrough =
+      props.account?.passThrough === true || props.account?.passThrough === 'true'
+    const normalizedPassThrough =
+      typeof form.value.passThrough === 'undefined' ? accountPassThrough : !!form.value.passThrough
 
     // 只有非空时才更新token
     if (form.value.accessToken || form.value.refreshToken) {
@@ -6061,7 +6065,7 @@ const updateAccount = async () => {
     // OpenAI 账号优先级更新
     if (props.account.platform === 'openai') {
       data.priority = form.value.priority || 50
-      data.passThrough = !!form.value.passThrough
+      data.passThrough = normalizedPassThrough
     }
 
     // Gemini 账号优先级更新
@@ -6120,7 +6124,7 @@ const updateAccount = async () => {
       }
       data.userAgent = form.value.userAgent || ''
       data.priority = form.value.priority || 50
-      data.passThrough = !!form.value.passThrough
+      data.passThrough = normalizedPassThrough
       // 编辑时不上传 rateLimitDuration，保持原值
       data.dailyQuota = form.value.dailyQuota || 0
       data.quotaResetTime = form.value.quotaResetTime || '00:00'
@@ -6737,6 +6741,7 @@ watch(
         enableRateLimit:
           newAccount.rateLimitDuration && newAccount.rateLimitDuration > 0 ? true : false,
         rateLimitDuration: newAccount.rateLimitDuration || 60,
+        passThrough: newAccount.passThrough === true || newAccount.passThrough === 'true',
         // Bedrock 特定字段
         accessKeyId: '', // 编辑模式不显示现有的访问密钥
         secretAccessKey: '', // 编辑模式不显示现有的秘密密钥
