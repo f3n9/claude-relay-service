@@ -182,3 +182,16 @@ describe('openaiResponsesRelayService passThrough behavior', () => {
     expect(getHeader(options.headers, 'authorization')).toBe('Bearer upstream-api-key')
   })
 })
+
+describe('openaiResponsesRelayService _appendApiVersion', () => {
+  it('replaces existing api-version query key case-insensitively without duplicating it', () => {
+    const result = openaiResponsesRelayService._appendApiVersion(
+      'https://example.com/v1/responses?API-Version=2023-01-01&foo=bar',
+      '2026-01-01-preview'
+    )
+
+    expect(result).toBe(
+      'https://example.com/v1/responses?API-Version=2026-01-01-preview&foo=bar'
+    )
+  })
+})

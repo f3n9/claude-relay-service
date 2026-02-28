@@ -85,7 +85,7 @@ class OpenAIResponsesRelayService {
         : DEFAULT_OPENAI_RESPONSES_API_VERSION
     const encodedVersion = encodeURIComponent(normalizedVersion)
 
-    if (/[?&]api-version=/.test(targetUrl)) {
+    if (/[?&]api-version=/i.test(targetUrl)) {
       return targetUrl.replace(/([?&]api-version=)[^&]*/i, `$1${encodedVersion}`)
     }
 
