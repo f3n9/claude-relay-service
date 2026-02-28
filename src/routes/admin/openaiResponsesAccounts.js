@@ -16,7 +16,24 @@ const { formatAccountExpiry, mapExpiryField } = require('./utils')
 const { createOpenAITestPayload, extractErrorMessage } = require('../../utils/testPayloadHelper')
 const { getProxyAgent } = require('../../utils/proxyHelper')
 
+const DEFAULT_OPENAI_RESPONSES_API_VERSION = '2025-04-01-preview'
+
 const router = express.Router()
+
+function appendApiVersion(targetUrl, apiVersion) {
+  const normalizedVersion =
+    typeof apiVersion === 'string' && apiVersion.trim()
+      ? apiVersion.trim()
+      : DEFAULT_OPENAI_RESPONSES_API_VERSION
+  const encodedVersion = encodeURIComponent(normalizedVersion)
+
+  if (/[?&]api-version=/.test(targetUrl)) {
+    return targetUrl.replace(/([?&]api-version=)[^&]*/i, `$1${encodedVersion}`)
+  }
+
+  const separator = targetUrl.includes('?') ? '&' : '?'
+  return `${targetUrl}${separator}api-version=${encodedVersion}`
+}
 
 // ==================== OpenAI-Responses 账户管理 API ====================
 
@@ -474,7 +491,7 @@ router.post('/openai-responses-accounts/:accountId/test', authenticateAdmin, asy
 
     // 构造测试请求
     const baseUrl = account.baseApi || 'https://api.openai.com'
-    const apiUrl = `${baseUrl}/responses`
+    const apiUrl = appendApiVersion(`${baseUrl}/responses`, account.apiVersion)
     const payload = createOpenAITestPayload(model, { stream: false })
 
     const requestConfig = {
