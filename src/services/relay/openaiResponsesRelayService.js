@@ -10,8 +10,6 @@ const crypto = require('crypto')
 const LRUCache = require('../../utils/lruCache')
 const upstreamErrorHelper = require('../../utils/upstreamErrorHelper')
 
-const DEFAULT_OPENAI_RESPONSES_API_VERSION = '2025-04-01-preview'
-
 // lastUsedAt 更新节流（每账户 60 秒内最多更新一次，使用 LRU 防止内存泄漏）
 const lastUsedAtThrottle = new LRUCache(1000) // 最多缓存 1000 个账户
 const LAST_USED_AT_THROTTLE_MS = 60000
@@ -78,21 +76,6 @@ class OpenAIResponsesRelayService {
     return forwardedHeaders
   }
 
-  _appendApiVersion(targetUrl, apiVersion) {
-    const normalizedVersion =
-      typeof apiVersion === 'string' && apiVersion.trim()
-        ? apiVersion.trim()
-        : DEFAULT_OPENAI_RESPONSES_API_VERSION
-    const encodedVersion = encodeURIComponent(normalizedVersion)
-
-    if (/[?&]api-version=/.test(targetUrl)) {
-      return targetUrl.replace(/([?&]api-version=)[^&]*/i, `$1${encodedVersion}`)
-    }
-
-    const separator = targetUrl.includes('?') ? '&' : '?'
-    return `${targetUrl}${separator}api-version=${encodedVersion}`
-  }
-
   // 节流更新 lastUsedAt
   async _throttledUpdateLastUsedAt(accountId) {
     const now = Date.now()
@@ -140,10 +123,7 @@ class OpenAIResponsesRelayService {
       res.once('close', handleClientDisconnect)
 
       // 构建目标 URL
-      const targetUrl = this._appendApiVersion(
-        `${fullAccount.baseApi}${req.path}`,
-        fullAccount.apiVersion
-      )
+      const targetUrl = `${fullAccount.baseApi}${req.path}`
       logger.info(`🎯 Forwarding to: ${targetUrl}`)
 
       const passThroughEnabled = this._isPassThroughEnabled(fullAccount)

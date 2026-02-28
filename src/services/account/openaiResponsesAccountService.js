@@ -6,8 +6,6 @@ const config = require('../../../config/config')
 const LRUCache = require('../../utils/lruCache')
 const upstreamErrorHelper = require('../../utils/upstreamErrorHelper')
 
-const DEFAULT_OPENAI_RESPONSES_API_VERSION = '2025-04-01-preview'
-
 class OpenAIResponsesAccountService {
   constructor() {
     // 加密相关常量
@@ -54,8 +52,7 @@ class OpenAIResponsesAccountService {
       quotaResetTime = '00:00', // 额度重置时间（HH:mm格式）
       rateLimitDuration = 60, // 限流时间（分钟）
       disableAutoProtection = false, // 是否关闭自动防护（429/401/400/529 不自动禁用）
-      passThrough = false, // 是否启用请求直通模式
-      apiVersion = DEFAULT_OPENAI_RESPONSES_API_VERSION // URL query 参数: api-version
+      passThrough = false // 是否启用请求直通模式
     } = options
 
     // 验证必填字段
@@ -74,7 +71,6 @@ class OpenAIResponsesAccountService {
       name,
       description,
       baseApi: normalizedBaseApi,
-      apiVersion: this._normalizeApiVersion(apiVersion),
       apiKey: this._encryptSensitiveData(apiKey),
       userAgent,
       priority: priority.toString(),
@@ -138,8 +134,6 @@ class OpenAIResponsesAccountService {
       }
     }
 
-    accountData.apiVersion = this._normalizeApiVersion(accountData.apiVersion)
-
     return accountData
   }
 
@@ -165,10 +159,6 @@ class OpenAIResponsesAccountService {
       updates.baseApi = updates.baseApi.endsWith('/')
         ? updates.baseApi.slice(0, -1)
         : updates.baseApi
-    }
-
-    if (updates.apiVersion !== undefined) {
-      updates.apiVersion = this._normalizeApiVersion(updates.apiVersion)
     }
 
     // ✅ 直接保存 subscriptionExpiresAt（如果提供）
@@ -277,7 +267,6 @@ class OpenAIResponsesAccountService {
       accountData.schedulable = accountData.schedulable !== 'false'
       accountData.isActive = accountData.isActive === 'true'
       accountData.passThrough = accountData.passThrough === 'true'
-      accountData.apiVersion = this._normalizeApiVersion(accountData.apiVersion)
       accountData.expiresAt = accountData.subscriptionExpiresAt || null
       accountData.platform = accountData.platform || 'openai-responses'
 
@@ -285,15 +274,6 @@ class OpenAIResponsesAccountService {
     })
 
     return accounts
-  }
-
-  _normalizeApiVersion(apiVersion) {
-    if (apiVersion === undefined || apiVersion === null) {
-      return DEFAULT_OPENAI_RESPONSES_API_VERSION
-    }
-
-    const normalized = String(apiVersion).trim()
-    return normalized || DEFAULT_OPENAI_RESPONSES_API_VERSION
   }
 
   // 标记账户限流

@@ -118,7 +118,6 @@ describe('openaiResponsesRelayService passThrough behavior', () => {
       id: 'resp-1',
       name: 'Responses Account',
       baseApi: 'https://example.com/v1',
-      apiVersion: '2026-01-01-preview',
       apiKey: 'upstream-api-key',
       userAgent: 'account-ua/9.9',
       passThrough: 'true',
@@ -140,7 +139,6 @@ describe('openaiResponsesRelayService passThrough behavior', () => {
     expect(axios).toHaveBeenCalledTimes(1)
     const options = axios.mock.calls[0][0]
 
-    expect(options.url).toBe('https://example.com/v1/responses?api-version=2026-01-01-preview')
     expect(filterForOpenAI).not.toHaveBeenCalled()
     expect(getHeader(options.headers, 'x-codex-beta-features')).toBe('custom_tool_input')
     expect(getHeader(options.headers, 'user-agent')).toBe('client-ua/1.0')
@@ -176,7 +174,6 @@ describe('openaiResponsesRelayService passThrough behavior', () => {
 
     expect(filterForOpenAI).toHaveBeenCalledWith(req.headers)
     const options = axios.mock.calls[0][0]
-    expect(options.url).toBe('https://example.com/v1/responses?api-version=2025-04-01-preview')
     expect(getHeader(options.headers, 'x-openai-meta')).toBe('keep-me')
     expect(getHeader(options.headers, 'User-Agent')).toBe('account-ua/9.9')
     expect(getHeader(options.headers, 'authorization')).toBe('Bearer upstream-api-key')

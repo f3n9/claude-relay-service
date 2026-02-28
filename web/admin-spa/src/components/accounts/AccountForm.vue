@@ -1817,21 +1817,6 @@
 
               <div>
                 <label class="mb-3 block text-sm font-semibold text-gray-700 dark:text-gray-300"
-                  >API Version</label
-                >
-                <input
-                  v-model="form.apiVersion"
-                  class="form-input w-full border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200 dark:placeholder-gray-400"
-                  placeholder="2025-04-01-preview"
-                  type="text"
-                />
-                <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                  将作为 `api-version` URL 参数附加到请求地址，默认 2025-04-01-preview
-                </p>
-              </div>
-
-              <div>
-                <label class="mb-3 block text-sm font-semibold text-gray-700 dark:text-gray-300"
                   >API 密钥 *</label
                 >
                 <div class="relative">
@@ -3605,19 +3590,6 @@
             </div>
 
             <div>
-              <label class="mb-3 block text-sm font-semibold text-gray-700">API Version</label>
-              <input
-                v-model="form.apiVersion"
-                class="form-input w-full"
-                placeholder="2025-04-01-preview"
-                type="text"
-              />
-              <p class="mt-1 text-xs text-gray-500">
-                将作为 `api-version` URL 参数附加到请求地址，默认 2025-04-01-preview
-              </p>
-            </div>
-
-            <div>
               <label class="mb-3 block text-sm font-semibold text-gray-700">API 密钥</label>
               <div class="relative">
                 <input
@@ -4623,9 +4595,7 @@ const form = ref({
   anthropicVersion: props.account?.anthropicVersion || 'vertex-2023-10-16',
   // Azure OpenAI 特定字段
   azureEndpoint: props.account?.azureEndpoint || '',
-  apiVersion:
-    props.account?.apiVersion ||
-    (props.account?.platform === 'openai-responses' ? '2025-04-01-preview' : ''),
+  apiVersion: props.account?.apiVersion || '',
   deploymentName: props.account?.deploymentName || '',
   // 到期时间字段
   expireDuration: (() => {
@@ -5770,7 +5740,6 @@ const createAccount = async () => {
       // OpenAI-Responses 账户特定数据
       data.baseApi = form.value.baseApi
       data.apiKey = form.value.apiKey
-      data.apiVersion = form.value.apiVersion || '2025-04-01-preview'
       data.userAgent = form.value.userAgent || ''
       data.priority = form.value.priority || 50
       data.passThrough = !!form.value.passThrough
@@ -6153,7 +6122,6 @@ const updateAccount = async () => {
       if (form.value.apiKey) {
         data.apiKey = form.value.apiKey
       }
-      data.apiVersion = form.value.apiVersion || '2025-04-01-preview'
       data.userAgent = form.value.userAgent || ''
       data.priority = form.value.priority || 50
       data.passThrough = normalizedPassThrough
@@ -6452,9 +6420,6 @@ watch(
       newPlatform === 'openai-responses'
     ) {
       form.value.addType = 'manual' // Claude Console、CCR、Bedrock 和 OpenAI-Responses 只支持手动模式
-      if (newPlatform === 'openai-responses' && !form.value.apiVersion) {
-        form.value.apiVersion = '2025-04-01-preview'
-      }
     } else if (newPlatform === 'claude') {
       // 切换到 Claude 时，使用 oauth 作为默认方式
       form.value.addType = 'oauth'
@@ -6788,9 +6753,7 @@ watch(
         anthropicVersion: newAccount.anthropicVersion || 'vertex-2023-10-16',
         // Azure OpenAI 特定字段
         azureEndpoint: newAccount.azureEndpoint || '',
-        apiVersion:
-          newAccount.apiVersion ||
-          (newAccount.platform === 'openai-responses' ? '2025-04-01-preview' : ''),
+        apiVersion: newAccount.apiVersion || '',
         deploymentName: newAccount.deploymentName || '',
         // OpenAI-Responses 特定字段
         baseApi: newAccount.baseApi || '',
