@@ -1201,6 +1201,7 @@
                     v-if="
                       account.platform === 'claude' ||
                       account.platform === 'claude-console' ||
+                      account.platform === 'claude-vertex' ||
                       account.platform === 'bedrock' ||
                       account.platform === 'gemini' ||
                       account.platform === 'openai' ||
