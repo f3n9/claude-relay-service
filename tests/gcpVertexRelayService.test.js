@@ -141,6 +141,33 @@ describe('gcpVertexRelayService', () => {
     expect(axiosConfig.headers['Content-Type']).toBe('application/json')
   })
 
+  it('drops context_management from Vertex request payload', async () => {
+    axios.post.mockResolvedValue({
+      status: 200,
+      headers: {},
+      data: { ok: true }
+    })
+
+    await gcpVertexRelayService.relayRequest(
+      {
+        model: 'claude-opus-4-1',
+        messages: [{ role: 'user', content: 'hello' }],
+        context_management: {
+          type: 'ephemeral'
+        }
+      },
+      { id: 'key-1', name: 'key-1' },
+      null,
+      createMockResponse(),
+      {},
+      'vertex-account-1'
+    )
+
+    const payload = axios.post.mock.calls[0][1]
+    expect(payload.context_management).toBeUndefined()
+    expect(payload.messages).toEqual([{ role: 'user', content: 'hello' }])
+  })
+
   it('prefers request model over account default for non-stream requests', async () => {
     axios.post.mockResolvedValue({
       status: 200,

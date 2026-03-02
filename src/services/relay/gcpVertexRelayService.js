@@ -56,6 +56,7 @@ class GcpVertexRelayService {
     const payload = safeClone(requestBody || {})
     delete payload.model
     delete payload.stream
+    delete payload.context_management
 
     if (!payload.anthropic_version) {
       payload.anthropic_version =
