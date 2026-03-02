@@ -55,12 +55,21 @@ class OpenAIResponsesAccountService {
       rateLimitDuration = 60, // 限流时间（分钟）
       disableAutoProtection = false, // 是否关闭自动防护（429/401/400/529 不自动禁用）
       passThrough = false, // 是否启用请求直通模式
-      apiVersion = DEFAULT_OPENAI_RESPONSES_API_VERSION // URL query 参数: api-version
+      apiVersion = DEFAULT_OPENAI_RESPONSES_API_VERSION, // URL query 参数: api-version
+      providerEndpoint = 'responses' // Provider 端点类型：responses | auto
     } = options
 
     // 验证必填字段
     if (!baseApi || !apiKey) {
       throw new Error('Base API URL and API Key are required for OpenAI-Responses account')
+    }
+
+    // 验证 providerEndpoint 枚举值
+    const validEndpoints = ['responses', 'auto']
+    if (!validEndpoints.includes(providerEndpoint)) {
+      throw new Error(
+        `Invalid providerEndpoint: ${providerEndpoint}. Must be one of: ${validEndpoints.join(', ')}`
+      )
     }
 
     // 规范化 baseApi（确保不以 / 结尾）
@@ -102,7 +111,8 @@ class OpenAIResponsesAccountService {
       quotaResetTime,
       quotaStoppedAt: '',
       disableAutoProtection: disableAutoProtection.toString(), // 关闭自动防护
-      passThrough: passThrough === true || passThrough === 'true' ? 'true' : 'false'
+      passThrough: passThrough === true || passThrough === 'true' ? 'true' : 'false',
+      providerEndpoint // Provider 端点类型：responses(默认) | auto
     }
 
     // 保存到 Redis
@@ -175,6 +185,16 @@ class OpenAIResponsesAccountService {
     // OpenAI-Responses 使用 API Key，没有 token 刷新逻辑，不会覆盖此字段
     if (updates.subscriptionExpiresAt !== undefined) {
       // 直接保存，不做任何调整
+    }
+
+    // 验证 providerEndpoint 枚举值
+    if (updates.providerEndpoint !== undefined) {
+      const validEndpoints = ['responses', 'auto']
+      if (!validEndpoints.includes(updates.providerEndpoint)) {
+        throw new Error(
+          `Invalid providerEndpoint: ${updates.providerEndpoint}. Must be one of: ${validEndpoints.join(', ')}`
+        )
+      }
     }
 
     // 自动防护开关
