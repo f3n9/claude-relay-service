@@ -1496,6 +1496,7 @@ router.post('/api-keys', authenticateAdmin, async (req, res) => {
       restrictedModels,
       enableClientRestriction,
       allowedClients,
+      allow1mContext,
       dailyCostLimit,
       totalCostLimit,
       weeklyOpusCostLimit,
@@ -1573,6 +1574,10 @@ router.post('/api-keys', authenticateAdmin, async (req, res) => {
 
     if (allowedClients !== undefined && !Array.isArray(allowedClients)) {
       return res.status(400).json({ error: 'Allowed clients must be an array' })
+    }
+
+    if (allow1mContext !== undefined && typeof allow1mContext !== 'boolean') {
+      return res.status(400).json({ error: 'allow1mContext must be a boolean' })
     }
 
     // 验证标签字段
@@ -1676,6 +1681,7 @@ router.post('/api-keys', authenticateAdmin, async (req, res) => {
       restrictedModels,
       enableClientRestriction,
       allowedClients,
+      allow1mContext,
       dailyCostLimit,
       totalCostLimit,
       weeklyOpusCostLimit,
@@ -1728,6 +1734,7 @@ router.post('/api-keys/batch', authenticateAdmin, async (req, res) => {
       restrictedModels,
       enableClientRestriction,
       allowedClients,
+      allow1mContext,
       dailyCostLimit,
       totalCostLimit,
       weeklyOpusCostLimit,
@@ -1794,6 +1801,7 @@ router.post('/api-keys/batch', authenticateAdmin, async (req, res) => {
           restrictedModels,
           enableClientRestriction,
           allowedClients,
+          allow1mContext,
           dailyCostLimit,
           totalCostLimit,
           weeklyOpusCostLimit,
@@ -1955,6 +1963,9 @@ router.put('/api-keys/batch', authenticateAdmin, async (req, res) => {
         if (updates.serviceRates !== undefined) {
           finalUpdates.serviceRates = updates.serviceRates
         }
+        if (updates.allow1mContext !== undefined) {
+          finalUpdates.allow1mContext = updates.allow1mContext
+        }
         if (updates.weeklyResetDay !== undefined) {
           const day = Number(updates.weeklyResetDay)
           if (Number.isInteger(day) && day >= 1 && day <= 7) {
@@ -2099,6 +2110,7 @@ router.put('/api-keys/:keyId', authenticateAdmin, async (req, res) => {
       restrictedModels,
       enableClientRestriction,
       allowedClients,
+      allow1mContext,
       expiresAt,
       dailyCostLimit,
       totalCostLimit,
@@ -2234,6 +2246,13 @@ router.put('/api-keys/:keyId', authenticateAdmin, async (req, res) => {
         return res.status(400).json({ error: 'Allowed clients must be an array' })
       }
       updates.allowedClients = allowedClients
+    }
+
+    if (allow1mContext !== undefined) {
+      if (typeof allow1mContext !== 'boolean') {
+        return res.status(400).json({ error: 'allow1mContext must be a boolean' })
+      }
+      updates.allow1mContext = allow1mContext
     }
 
     // 处理过期时间字段

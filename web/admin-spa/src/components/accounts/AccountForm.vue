@@ -1795,6 +1795,13 @@
                   勾选后遇到 401/400/429/529 等上游错误仅记录日志并透传，不自动禁用或限流
                 </p>
               </div>
+
+              <TempUnavailablePolicyFields
+                v-if="form.platform === 'claude'"
+                v-model:disable-temp-unavailable="form.disableTempUnavailable"
+                v-model:temp-unavailable-503-ttl-seconds="form.tempUnavailable503TtlSeconds"
+                v-model:temp-unavailable-5xx-ttl-seconds="form.tempUnavailable5xxTtlSeconds"
+              />
             </div>
 
             <!-- OpenAI-Responses 特定字段 -->
@@ -3609,6 +3616,13 @@
             </p>
           </div>
 
+          <TempUnavailablePolicyFields
+            v-if="form.platform === 'claude'"
+            v-model:disable-temp-unavailable="form.disableTempUnavailable"
+            v-model:temp-unavailable-503-ttl-seconds="form.tempUnavailable503TtlSeconds"
+            v-model:temp-unavailable-5xx-ttl-seconds="form.tempUnavailable5xxTtlSeconds"
+          />
+
           <!-- OpenAI-Responses 特定字段（编辑模式）-->
           <div v-if="form.platform === 'openai-responses'" class="space-y-4">
             <div>
@@ -4344,6 +4358,7 @@ import * as httpApis from '@/utils/http_apis'
 import { useAccountsStore } from '@/stores/accounts'
 import ProxyConfig from './ProxyConfig.vue'
 import OAuthFlow from './OAuthFlow.vue'
+import TempUnavailablePolicyFields from './TempUnavailablePolicyFields.vue'
 import ConfirmModal from '@/components/common/ConfirmModal.vue'
 import GroupManagementModal from './GroupManagementModal.vue'
 import ApiKeyManagementModal from './ApiKeyManagementModal.vue'
@@ -4579,6 +4594,27 @@ const initProxyConfig = () => {
   return normalizeProxyFormState(props.account?.proxy)
 }
 
+const toFormCooldownOverrideValue = (value) => {
+  if (value === null || value === undefined || value === '') {
+    return ''
+  }
+  const parsed = Number(value)
+  return Number.isFinite(parsed) && parsed >= 0 ? Math.floor(parsed) : ''
+}
+
+const normalizeAccountCooldownOverride = (value) => {
+  if (value === null || value === undefined || value === '') {
+    return null
+  }
+  const parsed = Number(value)
+  if (!Number.isFinite(parsed) || parsed < 0) {
+    return null
+  }
+  return Math.floor(parsed)
+}
+
+const toFormBoolean = (value) => value === true || value === 'true'
+
 // 表单数据
 const form = ref({
   platform: props.account?.platform || 'claude',
@@ -4636,9 +4672,14 @@ const form = ref({
   })(),
   userAgent: props.account?.userAgent || '',
   enableRateLimit: props.account ? props.account.rateLimitDuration > 0 : true,
-  disableAutoProtection:
-    props.account?.disableAutoProtection === true ||
-    props.account?.disableAutoProtection === 'true',
+  disableAutoProtection: toFormBoolean(props.account?.disableAutoProtection),
+  disableTempUnavailable: toFormBoolean(props.account?.disableTempUnavailable),
+  tempUnavailable503TtlSeconds: toFormCooldownOverrideValue(
+    props.account?.tempUnavailable503TtlSeconds
+  ),
+  tempUnavailable5xxTtlSeconds: toFormCooldownOverrideValue(
+    props.account?.tempUnavailable5xxTtlSeconds
+  ),
   passThrough: props.account?.passThrough === true || props.account?.passThrough === 'true',
   // 额度管理字段
   dailyQuota: props.account?.dailyQuota || 0,
@@ -4680,6 +4721,16 @@ const form = ref({
     return ''
   })(),
   expiresAt: props.account?.expiresAt || null
+})
+
+const buildClaudeTempUnavailablePolicyPayload = () => ({
+  disableTempUnavailable: !!form.value.disableTempUnavailable,
+  tempUnavailable503TtlSeconds: normalizeAccountCooldownOverride(
+    form.value.tempUnavailable503TtlSeconds
+  ),
+  tempUnavailable5xxTtlSeconds: normalizeAccountCooldownOverride(
+    form.value.tempUnavailable5xxTtlSeconds
+  )
 })
 
 // 模型限制配置
@@ -5347,6 +5398,7 @@ const handleOAuthSuccess = async (tokenInfoOrList) => {
       data.useUnifiedClientId = form.value.useUnifiedClientId || false
       data.unifiedClientId = form.value.unifiedClientId || ''
       data.maxConcurrency = form.value.serialQueueEnabled ? 1 : 0
+      Object.assign(data, buildClaudeTempUnavailablePolicyPayload())
       // 添加订阅类型信息
       data.subscriptionInfo = {
         accountType: form.value.subscriptionType || 'claude_max',
@@ -6121,6 +6173,7 @@ const updateAccount = async () => {
       data.useUnifiedClientId = form.value.useUnifiedClientId || false
       data.unifiedClientId = form.value.unifiedClientId || ''
       data.maxConcurrency = form.value.serialQueueEnabled ? 1 : 0
+      Object.assign(data, buildClaudeTempUnavailablePolicyPayload())
       // 更新订阅类型信息
       data.subscriptionInfo = {
         accountType: form.value.subscriptionType || 'claude_max',
@@ -6842,8 +6895,14 @@ watch(
         // 并发控制字段
         maxConcurrentTasks: newAccount.maxConcurrentTasks || 0,
         // 上游错误处理
-        disableAutoProtection:
-          newAccount.disableAutoProtection === true || newAccount.disableAutoProtection === 'true'
+        disableAutoProtection: toFormBoolean(newAccount.disableAutoProtection),
+        disableTempUnavailable: toFormBoolean(newAccount.disableTempUnavailable),
+        tempUnavailable503TtlSeconds: toFormCooldownOverrideValue(
+          newAccount.tempUnavailable503TtlSeconds
+        ),
+        tempUnavailable5xxTtlSeconds: toFormCooldownOverrideValue(
+          newAccount.tempUnavailable5xxTtlSeconds
+        )
       }
 
       // 如果是Claude Console账户，加载实时使用情况
