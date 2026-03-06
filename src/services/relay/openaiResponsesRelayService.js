@@ -42,6 +42,39 @@ function extractCacheCreationTokens(usageData) {
   return 0
 }
 
+function isCanceledStreamError(error) {
+  if (!error) {
+    return false
+  }
+
+  const code = String(error.code || '').toUpperCase()
+  const name = String(error.name || '')
+  const message = String(error.message || '').toLowerCase()
+
+  return (
+    code === 'ERR_CANCELED' ||
+    code === 'ECONNABORTED' ||
+    name === 'CanceledError' ||
+    message === 'canceled'
+  )
+}
+
+function buildCompactErrorInfo(error) {
+  if (!error || typeof error !== 'object') {
+    return {
+      message: String(error || '')
+    }
+  }
+
+  return {
+    name: error.name,
+    code: error.code,
+    message: error.message,
+    status: error.response?.status,
+    statusText: error.response?.statusText
+  }
+}
+
 class OpenAIResponsesRelayService {
   constructor() {
     this.defaultTimeout = config.requestTimeout || 600000
@@ -742,13 +775,32 @@ class OpenAIResponsesRelayService {
 
     response.data.on('error', (error) => {
       streamEnded = true
-      logger.error('Stream error:', error)
+      const compactError = buildCompactErrorInfo(error)
+      const canceled = isCanceledStreamError(error)
+      const clientDisconnected =
+        req.destroyed || req.aborted || res.destroyed || res.writableEnded || res.closed
 
-      void recordUsageIfNeeded('stream error')
+      if (canceled) {
+        logger.info('OpenAI-Responses stream canceled', {
+          ...compactError,
+          clientDisconnected: !!clientDisconnected
+        })
+      } else {
+        logger.error('Stream error:', compactError)
+      }
+
+      void recordUsageIfNeeded(canceled ? 'stream canceled' : 'stream error')
 
       // 清理监听器
       req.removeListener('close', handleClientDisconnect)
       res.removeListener('close', handleClientDisconnect)
+
+      if (canceled) {
+        if (!res.destroyed && !res.writableEnded && !res.headersSent) {
+          res.end()
+        }
+        return
+      }
 
       if (!res.headersSent) {
         res.status(502).json({ error: { message: 'Upstream stream error' } })

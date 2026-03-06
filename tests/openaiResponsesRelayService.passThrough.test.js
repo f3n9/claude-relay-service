@@ -48,6 +48,7 @@ const axios = require('axios')
 const { filterForOpenAI } = require('../src/utils/headerFilter')
 const openaiResponsesAccountService = require('../src/services/account/openaiResponsesAccountService')
 const openaiResponsesRelayService = require('../src/services/relay/openaiResponsesRelayService')
+const logger = require('../src/utils/logger')
 
 function createReq(overrides = {}) {
   const req = new EventEmitter()
@@ -193,5 +194,99 @@ describe('openaiResponsesRelayService _appendApiVersion', () => {
     expect(result).toBe(
       'https://example.com/v1/responses?API-Version=2026-01-01-preview&foo=bar'
     )
+  })
+})
+
+describe('openaiResponsesRelayService stream error logging', () => {
+  beforeEach(() => {
+    jest.clearAllMocks()
+  })
+
+  function createStreamRes() {
+    const res = createRes()
+    res.write = jest.fn()
+    res.destroyed = false
+    res.writableEnded = false
+    res.closed = false
+    return res
+  }
+
+  it('logs canceled stream errors compactly without dumping axios config', async () => {
+    const req = createReq({
+      body: { model: 'gpt-4.1', stream: true },
+      aborted: true
+    })
+    const res = createStreamRes()
+    const response = { data: new EventEmitter() }
+
+    await openaiResponsesRelayService._handleStreamResponse(
+      response,
+      res,
+      { id: 'resp-1', dailyQuota: '0' },
+      { id: 'key-1' },
+      'gpt-4.1',
+      jest.fn(),
+      req
+    )
+
+    const canceledError = {
+      name: 'CanceledError',
+      code: 'ERR_CANCELED',
+      message: 'canceled',
+      config: { huge: 'x'.repeat(20000) }
+    }
+    response.data.emit('error', canceledError)
+
+    expect(logger.info).toHaveBeenCalledWith(
+      'OpenAI-Responses stream canceled',
+      expect.objectContaining({
+        name: 'CanceledError',
+        code: 'ERR_CANCELED',
+        message: 'canceled'
+      })
+    )
+    expect(logger.error).not.toHaveBeenCalledWith('Stream error:', canceledError)
+    expect(res.status).not.toHaveBeenCalledWith(502)
+  })
+
+  it('logs non-canceled stream errors with compact fields only', async () => {
+    const req = createReq({
+      body: { model: 'gpt-4.1', stream: true }
+    })
+    const res = createStreamRes()
+    const response = { data: new EventEmitter() }
+
+    await openaiResponsesRelayService._handleStreamResponse(
+      response,
+      res,
+      { id: 'resp-1', dailyQuota: '0' },
+      { id: 'key-1' },
+      'gpt-4.1',
+      jest.fn(),
+      req
+    )
+
+    const upstreamError = {
+      name: 'AxiosError',
+      code: 'ECONNRESET',
+      message: 'socket hang up',
+      config: { huge: 'x'.repeat(20000) },
+      response: {
+        status: 502,
+        statusText: 'Bad Gateway'
+      }
+    }
+    response.data.emit('error', upstreamError)
+
+    const streamErrorCall = logger.error.mock.calls.find((args) => args[0] === 'Stream error:')
+    expect(streamErrorCall).toBeDefined()
+    expect(streamErrorCall[1]).toMatchObject({
+      name: 'AxiosError',
+      code: 'ECONNRESET',
+      message: 'socket hang up',
+      status: 502,
+      statusText: 'Bad Gateway'
+    })
+    expect(streamErrorCall[1].config).toBeUndefined()
   })
 })
