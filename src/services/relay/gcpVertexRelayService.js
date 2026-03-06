@@ -243,6 +243,39 @@ class GcpVertexRelayService {
     const abortController = new AbortController()
     let upstreamStream = null
     let streamFinished = false
+    let modelIdForUsage = null
+    const collectedUsage = {}
+    let usageEmitted = false
+    const partialUsageEnabled = config.billing?.vertexPartialUsageEnabled !== false
+
+    const emitUsageIfAvailable = (reason = 'unknown') => {
+      if (usageEmitted || typeof usageCallback !== 'function') {
+        return false
+      }
+
+      const hasInput = collectedUsage.input_tokens !== undefined
+      const hasOutput = collectedUsage.output_tokens !== undefined
+      if (!hasInput) {
+        return false
+      }
+      if (!hasOutput && !partialUsageEnabled) {
+        return false
+      }
+
+      const usageCaptureState = hasOutput ? 'complete' : 'partial'
+      usageCallback({
+        ...collectedUsage,
+        output_tokens: hasOutput ? collectedUsage.output_tokens : 0,
+        usage_capture_state: usageCaptureState,
+        model: collectedUsage.model || modelIdForUsage,
+        accountId
+      })
+      usageEmitted = true
+      logger.debug(
+        `📊 Emitted Vertex stream usage (${usageCaptureState}, reason=${reason}) for account ${accountId}`
+      )
+      return true
+    }
 
     const releaseQueueLockSafe = async (context = 'finally') => {
       if (!queueLockAcquired || !queueRequestId) {
@@ -327,6 +360,7 @@ class GcpVertexRelayService {
       if (!modelId) {
         throw new Error('Model is required for GCP Vertex request')
       }
+      modelIdForUsage = modelId
 
       const accessToken = await gcpVertexAccountService.getAccessToken(account)
       const endpoint = this._buildEndpoint(account, modelId, true)
@@ -437,21 +471,6 @@ class GcpVertexRelayService {
       }
 
       let buffer = ''
-      const collectedUsage = {}
-
-      const emitUsageOnce = () => {
-        if (
-          collectedUsage.input_tokens !== undefined &&
-          collectedUsage.output_tokens !== undefined &&
-          typeof usageCallback === 'function'
-        ) {
-          usageCallback({
-            ...collectedUsage,
-            model: collectedUsage.model || modelId,
-            accountId
-          })
-        }
-      }
 
       const parseUsageFromSSELine = (rawLine) => {
         const line = rawLine.trim()
@@ -538,7 +557,7 @@ class GcpVertexRelayService {
             }
           }
 
-          emitUsageOnce()
+          emitUsageIfAvailable('end')
           if (isStreamWritable(clientResponse)) {
             clientResponse.end()
           }
@@ -555,6 +574,7 @@ class GcpVertexRelayService {
           } else {
             logger.error('❌ GCP Vertex stream error:', error)
           }
+          emitUsageIfAvailable('error')
           if (isStreamWritable(clientResponse)) {
             clientResponse.end()
           }
@@ -566,6 +586,7 @@ class GcpVertexRelayService {
           if (!streamFinished) {
             streamFinished = true
             cleanupClientListeners()
+            emitUsageIfAvailable('close')
             if (isStreamWritable(clientResponse)) {
               clientResponse.end()
             }
@@ -574,6 +595,7 @@ class GcpVertexRelayService {
         })
       })
     } finally {
+      emitUsageIfAvailable('finally')
       cleanupClientListeners()
       await releaseQueueLockSafe('finally')
     }

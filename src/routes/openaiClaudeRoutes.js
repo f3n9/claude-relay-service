@@ -279,7 +279,7 @@ async function handleChatCompletion(req, res, apiKeyData) {
       // 创建 usage 回调函数
       const usageCallback = (usage) => {
         // 记录使用统计
-        if (usage && usage.input_tokens !== undefined && usage.output_tokens !== undefined) {
+        if (usage && usage.input_tokens !== undefined) {
           const model = usage.model || claudeRequest.model
           const cacheCreateTokens =
             (usage.cache_creation && typeof usage.cache_creation === 'object'
@@ -288,6 +288,7 @@ async function handleChatCompletion(req, res, apiKeyData) {
               : usage.cache_creation_input_tokens || 0) || 0
           const cacheReadTokens = usage.cache_read_input_tokens || 0
           const usageWithRequestMeta = { ...usage }
+          usageWithRequestMeta.output_tokens = usage.output_tokens ?? 0
           const requestBetaHeader =
             req.headers['anthropic-beta'] ||
             req.headers['Anthropic-Beta'] ||
@@ -297,6 +298,9 @@ async function handleChatCompletion(req, res, apiKeyData) {
           }
           if (typeof claudeRequest?.speed === 'string' && claudeRequest.speed.trim()) {
             usageWithRequestMeta.request_speed = claudeRequest.speed.trim().toLowerCase()
+          }
+          if (typeof usage.usage_capture_state === 'string' && usage.usage_capture_state.trim()) {
+            usageWithRequestMeta.usage_capture_state = usage.usage_capture_state.trim().toLowerCase()
           }
 
           // 使用新的 recordUsageWithDetails 方法来支持详细的缓存数据
@@ -313,7 +317,7 @@ async function handleChatCompletion(req, res, apiKeyData) {
                 req.rateLimitInfo,
                 {
                   inputTokens: usage.input_tokens || 0,
-                  outputTokens: usage.output_tokens || 0,
+                  outputTokens: usage.output_tokens ?? 0,
                   cacheCreateTokens,
                   cacheReadTokens
                 },
@@ -330,7 +334,7 @@ async function handleChatCompletion(req, res, apiKeyData) {
                 req.rateLimitInfo,
                 {
                   inputTokens: usage.input_tokens || 0,
-                  outputTokens: usage.output_tokens || 0,
+                  outputTokens: usage.output_tokens ?? 0,
                   cacheCreateTokens,
                   cacheReadTokens
                 },

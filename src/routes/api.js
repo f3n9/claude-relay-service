@@ -725,11 +725,10 @@ async function handleMessagesRequest(req, res) {
 
             if (
               usageData &&
-              usageData.input_tokens !== undefined &&
-              usageData.output_tokens !== undefined
+              usageData.input_tokens !== undefined
             ) {
               const inputTokens = usageData.input_tokens || 0
-              const outputTokens = usageData.output_tokens || 0
+              const outputTokens = usageData.output_tokens ?? 0
               let cacheCreateTokens = usageData.cache_creation_input_tokens || 0
               let ephemeral5mTokens = 0
               let ephemeral1hTokens = 0
@@ -765,6 +764,12 @@ async function handleMessagesRequest(req, res) {
 	              }
 	              if (typeof usageData.speed === 'string' && usageData.speed.trim()) {
 	                usageObject.speed = usageData.speed.trim().toLowerCase()
+	              }
+	              if (
+	                typeof usageData.usage_capture_state === 'string' &&
+	                usageData.usage_capture_state.trim()
+	              ) {
+	                usageObject.usage_capture_state = usageData.usage_capture_state.trim().toLowerCase()
 	              }
 
 	              if (ephemeral5mTokens > 0 || ephemeral1hTokens > 0) {

@@ -317,6 +317,95 @@ describe('gcpVertexRelayService', () => {
     )
   })
 
+  it('emits partial usage callback when stream closes after message_start', async () => {
+    const upstreamStream = new EventEmitter()
+    upstreamStream.destroy = jest.fn()
+
+    axios.post.mockImplementation(async () => {
+      setImmediate(() => {
+        upstreamStream.emit(
+          'data',
+          Buffer.from(
+            'data: {"type":"message_start","message":{"usage":{"input_tokens":12,"cache_creation_input_tokens":2,"cache_read_input_tokens":1}}}\n\n'
+          )
+        )
+        upstreamStream.emit('close')
+      })
+      return {
+        status: 200,
+        headers: {},
+        data: upstreamStream
+      }
+    })
+
+    const usageCallback = jest.fn()
+    await gcpVertexRelayService.relayStreamRequestWithUsageCapture(
+      { model: 'claude-opus-4-1', stream: true },
+      { id: 'key-1', name: 'key-1' },
+      createMockResponse(),
+      {},
+      usageCallback,
+      'vertex-account-1'
+    )
+
+    expect(usageCallback).toHaveBeenCalledTimes(1)
+    expect(usageCallback).toHaveBeenCalledWith(
+      expect.objectContaining({
+        input_tokens: 12,
+        cache_creation_input_tokens: 2,
+        cache_read_input_tokens: 1,
+        output_tokens: 0,
+        usage_capture_state: 'partial',
+        accountId: 'vertex-account-1'
+      })
+    )
+  })
+
+  it('emits usage callback at most once when stream errors then closes', async () => {
+    const upstreamStream = new EventEmitter()
+    upstreamStream.destroy = jest.fn()
+
+    axios.post.mockImplementation(async () => {
+      setImmediate(() => {
+        upstreamStream.emit(
+          'data',
+          Buffer.from('data: {"type":"message_start","message":{"usage":{"input_tokens":5}}}\n\n')
+        )
+        upstreamStream.emit(
+          'data',
+          Buffer.from('data: {"type":"message_delta","usage":{"output_tokens":7}}\n\n')
+        )
+        upstreamStream.emit('error', new Error('mock upstream error'))
+        upstreamStream.emit('close')
+      })
+      return {
+        status: 200,
+        headers: {},
+        data: upstreamStream
+      }
+    })
+
+    const usageCallback = jest.fn()
+    await gcpVertexRelayService.relayStreamRequestWithUsageCapture(
+      { model: 'claude-opus-4-1', stream: true },
+      { id: 'key-1', name: 'key-1' },
+      createMockResponse(),
+      {},
+      usageCallback,
+      'vertex-account-1'
+    )
+
+    expect(usageCallback).toHaveBeenCalledTimes(1)
+    expect(usageCallback).toHaveBeenCalledWith(
+      expect.objectContaining({
+        input_tokens: 5,
+        output_tokens: 7,
+        usage_capture_state: 'complete',
+        accountId: 'vertex-account-1'
+      })
+    )
+  })
+
   it('aborts non-stream upstream call when client disconnects', async () => {
     const clientRequest = new EventEmitter()
     const clientResponse = createMockResponse()

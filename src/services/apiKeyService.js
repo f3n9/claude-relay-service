@@ -1913,6 +1913,13 @@ class ApiKeyService {
         totalTokens,
         cost: Number(ratedCostWithDetails.toFixed(6)),
         realCost: Number(realCostWithDetails.toFixed(6)),
+        usageCaptureState:
+          typeof usageObject.usage_capture_state === 'string' &&
+          usageObject.usage_capture_state.trim()
+            ? usageObject.usage_capture_state.trim().toLowerCase()
+            : usageObject.output_tokens === undefined
+              ? 'partial'
+              : 'complete',
         realCostBreakdown: {
           input: costInfo.inputCost || 0,
           output: costInfo.outputCost || 0,

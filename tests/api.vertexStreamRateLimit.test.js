@@ -160,4 +160,71 @@ describe('API /v1/messages Vertex streaming rate limit costs', () => {
     expect(updateRateLimitCounters).toHaveBeenCalled()
     expect(updateRateLimitCounters.mock.calls[0][5]).toEqual(costs)
   })
+
+  it('records partial vertex usage when output_tokens is missing', async () => {
+    apiKeyService.hasPermission.mockReturnValue(true)
+    unifiedClaudeScheduler.selectAccountForApiKey.mockResolvedValue({
+      accountId: 'vertex-account-1',
+      accountType: 'claude-vertex'
+    })
+
+    const costs = { realCost: 0.12, ratedCost: 0.34 }
+    apiKeyService.recordUsageWithDetails.mockResolvedValue(costs)
+    updateRateLimitCounters.mockResolvedValue({ totalTokens: 0, totalCost: 0, ratedCost: 0 })
+
+    gcpVertexRelayService.relayStreamRequestWithUsageCapture.mockImplementation(
+      async (_body, _apiKey, _res, _headers, usageCallback) => {
+        usageCallback({
+          input_tokens: 88,
+          cache_creation_input_tokens: 5,
+          cache_read_input_tokens: 3,
+          usage_capture_state: 'partial',
+          model: 'claude-opus-4-6',
+          accountId: 'vertex-account-1'
+        })
+      }
+    )
+
+    const handler = getMessagesHandler()
+    const req = {
+      body: {
+        stream: true,
+        model: 'claude-opus-4-6',
+        messages: [{ role: 'user', content: 'hi' }]
+      },
+      headers: {},
+      apiKey: { id: 'key-2', permissions: [], enableModelRestriction: false },
+      rateLimitInfo: { tokenCountKey: 't2', costCountKey: 'c2' }
+    }
+    const res = {
+      status: jest.fn().mockReturnThis(),
+      json: jest.fn().mockReturnThis(),
+      setHeader: jest.fn(),
+      getHeader: jest.fn(),
+      headersSent: false,
+      destroyed: false,
+      finished: false,
+      write: jest.fn(),
+      end: jest.fn()
+    }
+
+    await handler(req, res)
+    await new Promise((resolve) => setImmediate(resolve))
+
+    expect(apiKeyService.recordUsageWithDetails).toHaveBeenCalledWith(
+      'key-2',
+      expect.objectContaining({
+        input_tokens: 88,
+        output_tokens: 0,
+        cache_creation_input_tokens: 5,
+        cache_read_input_tokens: 3,
+        usage_capture_state: 'partial'
+      }),
+      'claude-opus-4-6',
+      'vertex-account-1',
+      'claude-vertex'
+    )
+    expect(updateRateLimitCounters).toHaveBeenCalled()
+    expect(updateRateLimitCounters.mock.calls[0][5]).toEqual(costs)
+  })
 })
