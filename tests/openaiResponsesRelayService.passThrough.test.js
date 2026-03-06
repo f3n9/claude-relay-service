@@ -289,4 +289,52 @@ describe('openaiResponsesRelayService stream error logging', () => {
     })
     expect(streamErrorCall[1].config).toBeUndefined()
   })
+
+  it('treats ECONNABORTED timeouts as upstream errors instead of canceled streams', async () => {
+    const req = createReq({
+      body: { model: 'gpt-4.1', stream: true }
+    })
+    const res = createStreamRes()
+    const response = { data: new EventEmitter() }
+
+    await openaiResponsesRelayService._handleStreamResponse(
+      response,
+      res,
+      { id: 'resp-1', dailyQuota: '0' },
+      { id: 'key-1' },
+      'gpt-4.1',
+      jest.fn(),
+      req
+    )
+
+    const timeoutError = {
+      name: 'AxiosError',
+      code: 'ECONNABORTED',
+      message: 'timeout exceeded',
+      config: { huge: 'x'.repeat(20000) },
+      response: {
+        status: 504,
+        statusText: 'Gateway Timeout'
+      }
+    }
+    response.data.emit('error', timeoutError)
+
+    expect(logger.info).not.toHaveBeenCalledWith(
+      'OpenAI-Responses stream canceled',
+      expect.any(Object)
+    )
+
+    const streamErrorCall = logger.error.mock.calls.find((args) => args[0] === 'Stream error:')
+    expect(streamErrorCall).toBeDefined()
+    expect(streamErrorCall[1]).toMatchObject({
+      name: 'AxiosError',
+      code: 'ECONNABORTED',
+      message: 'timeout exceeded',
+      status: 504,
+      statusText: 'Gateway Timeout'
+    })
+    expect(streamErrorCall[1].config).toBeUndefined()
+    expect(res.status).toHaveBeenCalledWith(502)
+    expect(res.json).toHaveBeenCalledWith({ error: { message: 'Upstream stream error' } })
+  })
 })

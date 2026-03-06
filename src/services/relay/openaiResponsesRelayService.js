@@ -53,7 +53,6 @@ function isCanceledStreamError(error) {
 
   return (
     code === 'ERR_CANCELED' ||
-    code === 'ECONNABORTED' ||
     name === 'CanceledError' ||
     message === 'canceled'
   )
