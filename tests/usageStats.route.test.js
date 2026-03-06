@@ -38,7 +38,9 @@ jest.mock('../src/services/account/bedrockAccountService', () => ({
   getAccount: jest.fn()
 }))
 
-jest.mock('../src/services/apiKeyService', () => ({}))
+jest.mock('../src/services/apiKeyService', () => ({
+  getAllApiKeysFast: jest.fn()
+}))
 
 jest.mock('../src/models/redis', () => ({
   getApiKey: jest.fn(),
@@ -74,11 +76,22 @@ jest.mock('../src/services/pricingService', () => ({
 const redis = require('../src/models/redis')
 const CostCalculator = require('../src/utils/costCalculator')
 const gcpVertexAccountService = require('../src/services/account/gcpVertexAccountService')
+const apiKeyService = require('../src/services/apiKeyService')
 const router = require('../src/routes/admin/usageStats')
 
 describe('Usage Stats Admin Routes', () => {
   beforeEach(() => {
     jest.clearAllMocks()
+    CostCalculator.calculateCost.mockReturnValue({
+      costs: {
+        input: 0,
+        output: 0,
+        cacheWrite: 0,
+        cacheRead: 0,
+        total: 0
+      }
+    })
+    CostCalculator.formatCost.mockImplementation((value) => `$${Number(value).toFixed(6)}`)
   })
 
   const getApiKeyUsageRecordsHandler = () => {
@@ -97,6 +110,17 @@ describe('Usage Stats Admin Routes', () => {
       (layer) =>
         layer.route &&
         layer.route.path === '/accounts/:accountId/usage-history' &&
+        layer.route.methods.get
+    )
+
+    return routeLayer.route.stack[routeLayer.route.stack.length - 1].handle
+  }
+
+  const getAccountUsageRecordsHandler = () => {
+    const routeLayer = router.stack.find(
+      (layer) =>
+        layer.route &&
+        layer.route.path === '/accounts/:accountId/usage-records' &&
         layer.route.methods.get
     )
 
@@ -209,5 +233,109 @@ describe('Usage Stats Admin Routes', () => {
         })
       })
     )
+  })
+
+  it('returns real/rated/display costs for api key usage records in real mode', async () => {
+    const handler = getApiKeyUsageRecordsHandler()
+    const req = {
+      params: { keyId: 'key-1' },
+      query: { costMode: 'real' }
+    }
+    const res = createMockResponse()
+
+    redis.getApiKey.mockResolvedValue({ id: 'key-1', name: 'Test Key' })
+    redis.getUsageRecords.mockResolvedValue([
+      {
+        timestamp: '2026-02-14T10:00:00.000Z',
+        model: 'claude-3',
+        accountId: 'vertex-1',
+        accountType: 'claude-vertex',
+        inputTokens: 10,
+        outputTokens: 20,
+        cost: 0.2,
+        realCost: 0.6
+      }
+    ])
+    gcpVertexAccountService.getAccount.mockResolvedValue({
+      id: 'vertex-1',
+      name: 'Vertex Account',
+      status: 'active'
+    })
+
+    await handler(req, res)
+
+    const response = res.json.mock.calls[0][0]
+    expect(response.success).toBe(true)
+    expect(response.data.records).toHaveLength(1)
+    expect(response.data.records[0]).toMatchObject({
+      cost: 0.6,
+      ratedCost: 0.2,
+      realCost: 0.6,
+      displayCost: 0.6,
+      displayCostMode: 'real'
+    })
+    expect(response.data.summary).toMatchObject({
+      totalCost: 0.6,
+      totalDisplayCost: 0.6,
+      totalRatedCost: 0.2,
+      totalRealCost: 0.6,
+      avgCost: 0.6,
+      avgRatedCost: 0.2,
+      avgRealCost: 0.6,
+      displayCostMode: 'real'
+    })
+    expect(response.data.filters.costMode).toBe('real')
+  })
+
+  it('returns rated display costs for account usage records when costMode=rated', async () => {
+    const handler = getAccountUsageRecordsHandler()
+    const req = {
+      params: { accountId: 'vertex-1' },
+      query: { platform: 'claude-vertex', costMode: 'rated' }
+    }
+    const res = createMockResponse()
+
+    gcpVertexAccountService.getAccount.mockResolvedValue({
+      id: 'vertex-1',
+      name: 'Vertex Account',
+      status: 'active'
+    })
+    apiKeyService.getAllApiKeysFast.mockResolvedValue([{ id: 'key-1', name: 'Key 1' }])
+    redis.getUsageRecords.mockResolvedValue([
+      {
+        timestamp: '2026-02-14T10:00:00.000Z',
+        model: 'claude-3',
+        accountId: 'vertex-1',
+        accountType: 'claude-vertex',
+        inputTokens: 10,
+        outputTokens: 20,
+        cost: 0.2,
+        realCost: 0.6
+      }
+    ])
+
+    await handler(req, res)
+
+    const response = res.json.mock.calls[0][0]
+    expect(response.success).toBe(true)
+    expect(response.data.records).toHaveLength(1)
+    expect(response.data.records[0]).toMatchObject({
+      cost: 0.2,
+      ratedCost: 0.2,
+      realCost: 0.6,
+      displayCost: 0.2,
+      displayCostMode: 'rated'
+    })
+    expect(response.data.summary).toMatchObject({
+      totalCost: 0.2,
+      totalDisplayCost: 0.2,
+      totalRatedCost: 0.2,
+      totalRealCost: 0.6,
+      avgCost: 0.2,
+      avgRatedCost: 0.2,
+      avgRealCost: 0.6,
+      displayCostMode: 'rated'
+    })
+    expect(response.data.filters.costMode).toBe('rated')
   })
 })

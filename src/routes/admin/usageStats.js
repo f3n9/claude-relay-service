@@ -15,6 +15,8 @@ const { authenticateAdmin } = require('../../middleware/auth')
 const logger = require('../../utils/logger')
 const CostCalculator = require('../../utils/costCalculator')
 const pricingService = require('../../services/pricingService')
+const config = require('../../../config/config')
+const { resolveDisplayMode, buildCostView } = require('../../utils/billingCostModeHelper')
 
 const router = express.Router()
 
@@ -166,6 +168,25 @@ const getApiKeyName = async (keyId) => {
     logger.debug(`⚠️ Failed to get API key name for ${keyId}: ${error.message}`)
     return keyId
   }
+}
+
+const resolveUsageDisplayCostMode = (queryCostMode) => {
+  const hasExplicitMode = typeof queryCostMode === 'string' && queryCostMode.trim().length > 0
+  const preferredMode = hasExplicitMode ? queryCostMode : config.billing?.displayCostMode
+  return resolveDisplayMode(preferredMode)
+}
+
+const buildUsageRecordCostView = (record, fallbackCost, displayCostMode) => {
+  const normalizedFallbackCost = Number(fallbackCost)
+  const ratedCost =
+    typeof record.cost === 'number'
+      ? record.cost
+      : Number.isFinite(normalizedFallbackCost)
+        ? normalizedFallbackCost
+        : 0
+  const realCost = typeof record.realCost === 'number' ? record.realCost : ratedCost
+
+  return buildCostView({ realCost, ratedCost }, displayCostMode)
 }
 
 // 📊 账户使用统计
@@ -2711,12 +2732,14 @@ router.get('/api-keys/:keyId/usage-records', authenticateAdmin, async (req, res)
       endDate,
       model,
       accountId,
-      sortOrder = 'desc'
+      sortOrder = 'desc',
+      costMode
     } = req.query
 
     const pageNumber = Math.max(parseInt(page, 10) || 1, 1)
     const pageSizeNumber = Math.min(Math.max(parseInt(pageSize, 10) || 50, 1), 200)
     const normalizedSortOrder = sortOrder === 'asc' ? 'asc' : 'desc'
+    const displayCostMode = resolveUsageDisplayCostMode(costMode)
 
     const startTime = startDate ? new Date(startDate) : null
     const endTime = endDate ? new Date(endDate) : null
@@ -2863,7 +2886,9 @@ router.get('/api-keys/:keyId/usage-records', authenticateAdmin, async (req, res)
       cacheCreateTokens: 0,
       cacheReadTokens: 0,
       totalTokens: 0,
-      totalCost: 0
+      totalRatedCost: 0,
+      totalRealCost: 0,
+      totalDisplayCost: 0
     }
 
     const modelSet = new Set()
@@ -2874,8 +2899,7 @@ router.get('/api-keys/:keyId/usage-records', authenticateAdmin, async (req, res)
     for (const record of filteredRecords) {
       const usage = toUsageObject(record)
       const costData = CostCalculator.calculateCost(usage, record.model || 'unknown')
-      const computedCost =
-        typeof record.cost === 'number' ? record.cost : costData?.costs?.total || 0
+      const costView = buildUsageRecordCostView(record, costData?.costs?.total, displayCostMode)
       const totalTokens =
         record.totalTokens ||
         usage.input_tokens +
@@ -2889,7 +2913,9 @@ router.get('/api-keys/:keyId/usage-records', authenticateAdmin, async (req, res)
       summary.cacheCreateTokens += usage.cache_creation_input_tokens
       summary.cacheReadTokens += usage.cache_read_input_tokens
       summary.totalTokens += totalTokens
-      summary.totalCost += computedCost
+      summary.totalRatedCost += costView.ratedCost
+      summary.totalRealCost += costView.realCost
+      summary.totalDisplayCost += costView.displayCost
 
       if (record.model) {
         modelSet.add(record.model)
@@ -2931,10 +2957,7 @@ router.get('/api-keys/:keyId/usage-records', authenticateAdmin, async (req, res)
     for (const record of pageRecords) {
       const usage = toUsageObject(record)
       const costData = CostCalculator.calculateCost(usage, record.model || 'unknown')
-      const computedCost =
-        typeof record.cost === 'number' ? record.cost : costData?.costs?.total || 0
-      const realCost =
-        typeof record.realCost === 'number' ? record.realCost : costData?.costs?.total || 0
+      const costView = buildUsageRecordCostView(record, costData?.costs?.total, displayCostMode)
       const totalTokens =
         record.totalTokens ||
         usage.input_tokens +
@@ -2961,17 +2984,22 @@ router.get('/api-keys/:keyId/usage-records', authenticateAdmin, async (req, res)
         ephemeral1hTokens: record.ephemeral1hTokens || 0,
         totalTokens,
         isLongContextRequest: record.isLongContext || record.isLongContextRequest || false,
-        cost: Number(computedCost.toFixed(6)),
-        costFormatted: CostCalculator.formatCost(computedCost),
-        realCost: Number(realCost.toFixed(6)),
-        realCostFormatted: CostCalculator.formatCost(realCost),
+        cost: Number(costView.displayCost.toFixed(6)),
+        costFormatted: CostCalculator.formatCost(costView.displayCost),
+        ratedCost: Number(costView.ratedCost.toFixed(6)),
+        ratedCostFormatted: CostCalculator.formatCost(costView.ratedCost),
+        realCost: Number(costView.realCost.toFixed(6)),
+        realCostFormatted: CostCalculator.formatCost(costView.realCost),
+        displayCost: Number(costView.displayCost.toFixed(6)),
+        displayCostFormatted: CostCalculator.formatCost(costView.displayCost),
+        displayCostMode: costView.displayCostMode,
         costBreakdown: record.realCostBreakdown ||
           record.costBreakdown || {
             input: costData?.costs?.input || 0,
             output: costData?.costs?.output || 0,
             cacheCreate: costData?.costs?.cacheWrite || 0,
             cacheRead: costData?.costs?.cacheRead || 0,
-            total: costData?.costs?.total || computedCost
+            total: costData?.costs?.total || costView.ratedCost
           },
         responseTime: record.responseTime || null
       })
@@ -3026,7 +3054,8 @@ router.get('/api-keys/:keyId/usage-records', authenticateAdmin, async (req, res)
           endDate: endTime ? endTime.toISOString() : null,
           model: model || null,
           accountId: accountId || null,
-          sortOrder: normalizedSortOrder
+          sortOrder: normalizedSortOrder,
+          costMode: displayCostMode
         },
         apiKeyInfo: {
           id: keyId,
@@ -3034,10 +3063,26 @@ router.get('/api-keys/:keyId/usage-records', authenticateAdmin, async (req, res)
         },
         summary: {
           ...summary,
-          totalCost: Number(summary.totalCost.toFixed(6)),
+          totalCost: Number(summary.totalDisplayCost.toFixed(6)),
+          totalCostFormatted: CostCalculator.formatCost(summary.totalDisplayCost),
+          totalDisplayCost: Number(summary.totalDisplayCost.toFixed(6)),
+          totalDisplayCostFormatted: CostCalculator.formatCost(summary.totalDisplayCost),
+          totalRatedCost: Number(summary.totalRatedCost.toFixed(6)),
+          totalRatedCostFormatted: CostCalculator.formatCost(summary.totalRatedCost),
+          totalRealCost: Number(summary.totalRealCost.toFixed(6)),
+          totalRealCostFormatted: CostCalculator.formatCost(summary.totalRealCost),
+          displayCostMode,
           avgCost:
             summary.totalRequests > 0
-              ? Number((summary.totalCost / summary.totalRequests).toFixed(6))
+              ? Number((summary.totalDisplayCost / summary.totalRequests).toFixed(6))
+              : 0,
+          avgRatedCost:
+            summary.totalRequests > 0
+              ? Number((summary.totalRatedCost / summary.totalRequests).toFixed(6))
+              : 0,
+          avgRealCost:
+            summary.totalRequests > 0
+              ? Number((summary.totalRealCost / summary.totalRequests).toFixed(6))
               : 0
         },
         availableFilters: {
@@ -3070,12 +3115,14 @@ router.get('/accounts/:accountId/usage-records', authenticateAdmin, async (req, 
       endDate,
       model,
       apiKeyId,
-      sortOrder = 'desc'
+      sortOrder = 'desc',
+      costMode
     } = req.query
 
     const pageNumber = Math.max(parseInt(page, 10) || 1, 1)
     const pageSizeNumber = Math.min(Math.max(parseInt(pageSize, 10) || 50, 1), 200)
     const normalizedSortOrder = sortOrder === 'asc' ? 'asc' : 'desc'
+    const displayCostMode = resolveUsageDisplayCostMode(costMode)
 
     const startTime = startDate ? new Date(startDate) : null
     const endTime = endDate ? new Date(endDate) : null
@@ -3226,14 +3273,15 @@ router.get('/accounts/:accountId/usage-records', authenticateAdmin, async (req, 
       cacheCreateTokens: 0,
       cacheReadTokens: 0,
       totalTokens: 0,
-      totalCost: 0
+      totalRatedCost: 0,
+      totalRealCost: 0,
+      totalDisplayCost: 0
     }
 
     for (const record of filteredRecords) {
       const usage = toUsageObject(record)
       const costData = CostCalculator.calculateCost(usage, record.model || 'unknown')
-      const computedCost =
-        typeof record.cost === 'number' ? record.cost : costData?.costs?.total || 0
+      const costView = buildUsageRecordCostView(record, costData?.costs?.total, displayCostMode)
       const totalTokens =
         record.totalTokens ||
         usage.input_tokens +
@@ -3247,7 +3295,9 @@ router.get('/accounts/:accountId/usage-records', authenticateAdmin, async (req, 
       summary.cacheCreateTokens += usage.cache_creation_input_tokens
       summary.cacheReadTokens += usage.cache_read_input_tokens
       summary.totalTokens += totalTokens
-      summary.totalCost += computedCost
+      summary.totalRatedCost += costView.ratedCost
+      summary.totalRealCost += costView.realCost
+      summary.totalDisplayCost += costView.displayCost
     }
 
     const totalRecords = filteredRecords.length
@@ -3261,10 +3311,7 @@ router.get('/accounts/:accountId/usage-records', authenticateAdmin, async (req, 
     for (const record of pageRecords) {
       const usage = toUsageObject(record)
       const costData = CostCalculator.calculateCost(usage, record.model || 'unknown')
-      const computedCost =
-        typeof record.cost === 'number' ? record.cost : costData?.costs?.total || 0
-      const realCost =
-        typeof record.realCost === 'number' ? record.realCost : costData?.costs?.total || 0
+      const costView = buildUsageRecordCostView(record, costData?.costs?.total, displayCostMode)
       const totalTokens =
         record.totalTokens ||
         usage.input_tokens +
@@ -3289,17 +3336,22 @@ router.get('/accounts/:accountId/usage-records', authenticateAdmin, async (req, 
         ephemeral1hTokens: record.ephemeral1hTokens || 0,
         totalTokens,
         isLongContextRequest: record.isLongContext || record.isLongContextRequest || false,
-        cost: Number(computedCost.toFixed(6)),
-        costFormatted: CostCalculator.formatCost(computedCost),
-        realCost: Number(realCost.toFixed(6)),
-        realCostFormatted: CostCalculator.formatCost(realCost),
+        cost: Number(costView.displayCost.toFixed(6)),
+        costFormatted: CostCalculator.formatCost(costView.displayCost),
+        ratedCost: Number(costView.ratedCost.toFixed(6)),
+        ratedCostFormatted: CostCalculator.formatCost(costView.ratedCost),
+        realCost: Number(costView.realCost.toFixed(6)),
+        realCostFormatted: CostCalculator.formatCost(costView.realCost),
+        displayCost: Number(costView.displayCost.toFixed(6)),
+        displayCostFormatted: CostCalculator.formatCost(costView.displayCost),
+        displayCostMode: costView.displayCostMode,
         costBreakdown: record.realCostBreakdown ||
           record.costBreakdown || {
             input: costData?.costs?.input || 0,
             output: costData?.costs?.output || 0,
             cacheCreate: costData?.costs?.cacheWrite || 0,
             cacheRead: costData?.costs?.cacheRead || 0,
-            total: costData?.costs?.total || computedCost
+            total: costData?.costs?.total || costView.ratedCost
           },
         responseTime: record.responseTime || null
       })
@@ -3323,7 +3375,8 @@ router.get('/accounts/:accountId/usage-records', authenticateAdmin, async (req, 
           model: model || null,
           apiKeyId: apiKeyId || null,
           platform: accountInfo.platform,
-          sortOrder: normalizedSortOrder
+          sortOrder: normalizedSortOrder,
+          costMode: displayCostMode
         },
         accountInfo: {
           id: accountId,
@@ -3333,10 +3386,26 @@ router.get('/accounts/:accountId/usage-records', authenticateAdmin, async (req, 
         },
         summary: {
           ...summary,
-          totalCost: Number(summary.totalCost.toFixed(6)),
+          totalCost: Number(summary.totalDisplayCost.toFixed(6)),
+          totalCostFormatted: CostCalculator.formatCost(summary.totalDisplayCost),
+          totalDisplayCost: Number(summary.totalDisplayCost.toFixed(6)),
+          totalDisplayCostFormatted: CostCalculator.formatCost(summary.totalDisplayCost),
+          totalRatedCost: Number(summary.totalRatedCost.toFixed(6)),
+          totalRatedCostFormatted: CostCalculator.formatCost(summary.totalRatedCost),
+          totalRealCost: Number(summary.totalRealCost.toFixed(6)),
+          totalRealCostFormatted: CostCalculator.formatCost(summary.totalRealCost),
+          displayCostMode,
           avgCost:
             summary.totalRequests > 0
-              ? Number((summary.totalCost / summary.totalRequests).toFixed(6))
+              ? Number((summary.totalDisplayCost / summary.totalRequests).toFixed(6))
+              : 0,
+          avgRatedCost:
+            summary.totalRequests > 0
+              ? Number((summary.totalRatedCost / summary.totalRequests).toFixed(6))
+              : 0,
+          avgRealCost:
+            summary.totalRequests > 0
+              ? Number((summary.totalRealCost / summary.totalRequests).toFixed(6))
               : 0
         },
         availableFilters: {
