@@ -99,6 +99,33 @@
         class="rounded-lg border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-gray-900"
       >
         <h4 class="mb-3 text-sm font-semibold text-gray-800 dark:text-gray-200">费用详情</h4>
+        <div
+          class="mb-4 space-y-2 rounded-md border border-gray-200 bg-gray-50 px-3 py-3 dark:border-gray-800 dark:bg-gray-800"
+        >
+          <div class="flex items-center justify-between">
+            <span class="text-sm text-gray-500 dark:text-gray-400">
+              当前展示费用（{{ displayCostLabel }}）
+            </span>
+            <span class="text-sm font-semibold text-yellow-600 dark:text-yellow-400">
+              {{ displayCostText }}
+            </span>
+          </div>
+          <div class="flex items-center justify-between">
+            <span class="text-sm text-gray-500 dark:text-gray-400">真实费用（对账）</span>
+            <span class="text-sm font-semibold text-gray-900 dark:text-gray-100">
+              {{ realCostText }}
+            </span>
+          </div>
+          <div class="flex items-center justify-between">
+            <span class="text-sm text-gray-500 dark:text-gray-400">额度费用（倍率后）</span>
+            <span class="text-sm font-semibold text-gray-900 dark:text-gray-100">
+              {{ ratedCostText }}
+            </span>
+          </div>
+        </div>
+        <h5 class="mb-3 text-xs font-semibold text-gray-600 dark:text-gray-300">
+          分项费用（{{ breakdownModeLabel }}）
+        </h5>
         <div class="grid gap-3 sm:grid-cols-2">
           <div
             class="flex items-center justify-between rounded-md bg-gray-50 px-3 py-2 dark:bg-gray-800"
@@ -136,9 +163,9 @@
         <div
           class="mt-4 flex items-center justify-between rounded-md border border-gray-200 bg-gray-50 px-4 py-3 dark:border-gray-800 dark:bg-gray-800"
         >
-          <span class="text-sm font-semibold text-gray-700 dark:text-gray-200">总费用</span>
+          <span class="text-sm font-semibold text-gray-700 dark:text-gray-200">分项总计</span>
           <div class="text-base font-bold text-yellow-600 dark:text-yellow-400">
-            {{ record?.costFormatted || formattedCosts.total }}
+            {{ formattedCosts.total }}
           </div>
         </div>
       </div>
@@ -171,26 +198,73 @@ const props = defineProps({
 const emit = defineEmits(['close'])
 const emitClose = () => emit('close')
 
+const formatCost = (value) => {
+  const num = typeof value === 'number' ? value : 0
+  if (num >= 1) return `$${num.toFixed(2)}`
+  if (num >= 0.001) return `$${num.toFixed(4)}`
+  return `$${num.toFixed(6)}`
+}
+
+const normalizeCostValue = (value, fallback = 0) => {
+  if (typeof value === 'number') {
+    return value
+  }
+  const parsed = Number(value)
+  return Number.isFinite(parsed) ? parsed : fallback
+}
+
 const formattedTime = computed(() => {
   if (!props.record?.timestamp) return '未知时间'
   return dayjs(props.record.timestamp).format('YYYY-MM-DD HH:mm:ss')
 })
 
+const displayCostMode = computed(() => props.record?.displayCostMode || 'real')
+const realCost = computed(() => normalizeCostValue(props.record?.realCost, 0))
+const ratedCost = computed(() =>
+  normalizeCostValue(
+    props.record?.ratedCost,
+    normalizeCostValue(props.record?.cost, realCost.value)
+  )
+)
+const displayCost = computed(() =>
+  normalizeCostValue(
+    props.record?.displayCost,
+    displayCostMode.value === 'rated' ? ratedCost.value : realCost.value
+  )
+)
+
+const displayCostLabel = computed(() =>
+  displayCostMode.value === 'rated' ? '额度费用（倍率后）' : '真实费用（对账）'
+)
+const displayCostText = computed(
+  () =>
+    props.record?.displayCostFormatted ||
+    props.record?.costFormatted ||
+    formatCost(displayCost.value)
+)
+const realCostText = computed(() => props.record?.realCostFormatted || formatCost(realCost.value))
+const ratedCostText = computed(
+  () => props.record?.ratedCostFormatted || formatCost(ratedCost.value)
+)
+
+const breakdownModeLabel = computed(() =>
+  props.record?.realCostBreakdown ? '真实费用口径' : '当前记录口径'
+)
+
 const formattedCosts = computed(() => {
   const breakdown = props.record?.realCostBreakdown || props.record?.costBreakdown || {}
-  const formatValue = (value) => {
-    const num = typeof value === 'number' ? value : 0
-    if (num >= 1) return `$${num.toFixed(2)}`
-    if (num >= 0.001) return `$${num.toFixed(4)}`
-    return `$${num.toFixed(6)}`
-  }
 
   return {
-    input: formatValue(breakdown.input),
-    output: formatValue(breakdown.output),
-    cacheCreate: formatValue(breakdown.cacheCreate),
-    cacheRead: formatValue(breakdown.cacheRead),
-    total: formatValue(breakdown.total)
+    input: formatCost(normalizeCostValue(breakdown.input, 0)),
+    output: formatCost(normalizeCostValue(breakdown.output, 0)),
+    cacheCreate: formatCost(normalizeCostValue(breakdown.cacheCreate, 0)),
+    cacheRead: formatCost(normalizeCostValue(breakdown.cacheRead, 0)),
+    total: formatCost(
+      normalizeCostValue(
+        breakdown.total,
+        props.record?.realCostBreakdown ? realCost.value : displayCost.value
+      )
+    )
   }
 })
 </script>

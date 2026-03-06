@@ -22,6 +22,11 @@
         <i class="fas fa-clock text-blue-500" />
         <span v-if="dateRangeHint">{{ dateRangeHint }}</span>
         <span v-else>显示近 5000 条记录</span>
+        <span
+          class="rounded-full bg-blue-50 px-2 py-1 text-xs font-medium text-blue-700 dark:bg-blue-900/40 dark:text-blue-300"
+        >
+          {{ displayCostModeText }}
+        </span>
       </div>
     </div>
 
@@ -45,17 +50,27 @@
       <div
         class="rounded-xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900"
       >
-        <p class="text-xs uppercase text-gray-500 dark:text-gray-400">总费用</p>
+        <p class="text-xs uppercase text-gray-500 dark:text-gray-400">
+          总费用（{{ displayCostLabel }}）
+        </p>
         <p class="mt-1 text-2xl font-bold text-yellow-600 dark:text-yellow-400">
           {{ formatCost(summary.totalCost) }}
+        </p>
+        <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+          {{ secondaryCostLabel }}：{{ formatCost(totalSecondaryCost) }}
         </p>
       </div>
       <div
         class="rounded-xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900"
       >
-        <p class="text-xs uppercase text-gray-500 dark:text-gray-400">平均费用/次</p>
+        <p class="text-xs uppercase text-gray-500 dark:text-gray-400">
+          平均费用/次（{{ displayCostLabel }}）
+        </p>
         <p class="mt-1 text-2xl font-bold text-gray-900 dark:text-gray-100">
           {{ formatCost(summary.avgCost) }}
+        </p>
+        <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+          {{ secondaryCostLabel }}：{{ formatCost(avgSecondaryCost) }}
         </p>
       </div>
     </div>
@@ -225,7 +240,12 @@
                   <td
                     class="whitespace-nowrap px-4 py-3 text-sm text-yellow-600 dark:text-yellow-400"
                   >
-                    {{ record.costFormatted || formatCost(record.cost) }}
+                    <div class="flex flex-col">
+                      <span>{{ getDisplayCostText(record) }}</span>
+                      <span class="text-xs text-gray-500 dark:text-gray-400">
+                        {{ getSecondaryCostLabel(record) }}：{{ getSecondaryCostText(record) }}
+                      </span>
+                    </div>
                   </td>
                   <td class="whitespace-nowrap px-4 py-3 text-right text-sm">
                     <el-button size="small" @click="openDetail(record)">详情</el-button>
@@ -262,7 +282,10 @@
                   {{ formatNumber(record.cacheReadTokens) }}
                 </div>
                 <div class="text-yellow-600 dark:text-yellow-400">
-                  费用：{{ record.costFormatted || formatCost(record.cost) }}
+                  费用：{{ getDisplayCostText(record) }}
+                  <span class="block text-xs text-gray-500 dark:text-gray-400">
+                    {{ getSecondaryCostLabel(record) }}：{{ getSecondaryCostText(record) }}
+                  </span>
                 </div>
               </div>
             </div>
@@ -326,7 +349,12 @@ const summary = reactive({
   totalRequests: 0,
   totalTokens: 0,
   totalCost: 0,
-  avgCost: 0
+  avgCost: 0,
+  totalRatedCost: 0,
+  totalRealCost: 0,
+  avgRatedCost: 0,
+  avgRealCost: 0,
+  displayCostMode: 'real'
 })
 
 const apiKeyInfo = reactive({
@@ -351,11 +379,77 @@ const formatCost = (value) => {
   return `$${num.toFixed(6)}`
 }
 
+const normalizeCostValue = (value, fallback = 0) => {
+  if (typeof value === 'number') {
+    return value
+  }
+  const parsed = Number(value)
+  return Number.isFinite(parsed) ? parsed : fallback
+}
+
+const displayCostLabel = computed(() =>
+  summary.displayCostMode === 'rated' ? '额度费用' : '真实费用'
+)
+const secondaryCostLabel = computed(() =>
+  summary.displayCostMode === 'rated' ? '真实费用' : '额度费用'
+)
+const displayCostModeText = computed(() =>
+  summary.displayCostMode === 'rated'
+    ? '展示口径：额度费用（倍率后）'
+    : '展示口径：真实费用（对账）'
+)
+const totalSecondaryCost = computed(() =>
+  summary.displayCostMode === 'rated' ? summary.totalRealCost : summary.totalRatedCost
+)
+const avgSecondaryCost = computed(() =>
+  summary.displayCostMode === 'rated' ? summary.avgRealCost : summary.avgRatedCost
+)
+
+const normalizeRecordCost = (record = {}, fallbackMode = 'real') => {
+  const realCost = normalizeCostValue(record.realCost, 0)
+  const ratedCost = normalizeCostValue(record.ratedCost, normalizeCostValue(record.cost, realCost))
+  const displayMode = record.displayCostMode || fallbackMode
+  const displayCost = normalizeCostValue(
+    record.displayCost,
+    displayMode === 'rated' ? ratedCost : realCost
+  )
+
+  return {
+    ...record,
+    realCost,
+    ratedCost,
+    displayCost,
+    displayCostMode: displayMode,
+    realCostFormatted: record.realCostFormatted || formatCost(realCost),
+    ratedCostFormatted: record.ratedCostFormatted || formatCost(ratedCost),
+    displayCostFormatted: record.displayCostFormatted || formatCost(displayCost),
+    cost: normalizeCostValue(record.cost, displayCost),
+    costFormatted: record.costFormatted || formatCost(displayCost)
+  }
+}
+
+const getDisplayCostText = (record = {}) =>
+  record.displayCostFormatted ||
+  record.costFormatted ||
+  formatCost(record.displayCost || record.cost)
+
+const getSecondaryCostLabel = (record = {}) =>
+  (record.displayCostMode || summary.displayCostMode) === 'rated' ? '真实' : '额度'
+
+const getSecondaryCostText = (record = {}) => {
+  const mode = record.displayCostMode || summary.displayCostMode
+  if (mode === 'rated') {
+    return record.realCostFormatted || formatCost(record.realCost)
+  }
+  return record.ratedCostFormatted || formatCost(record.ratedCost)
+}
+
 const buildParams = (page) => {
   const params = {
     page,
     pageSize: pagination.pageSize,
-    sortOrder: filters.sortOrder
+    sortOrder: filters.sortOrder,
+    costMode: summary.displayCostMode || 'real'
   }
 
   if (filters.model) params.model = filters.model
@@ -369,14 +463,20 @@ const buildParams = (page) => {
 }
 
 const syncResponseState = (data) => {
-  records.value = data.records || []
-
   const pageInfo = data.pagination || {}
   pagination.currentPage = pageInfo.currentPage || 1
   pagination.pageSize = pageInfo.pageSize || pagination.pageSize
   pagination.totalRecords = pageInfo.totalRecords || 0
 
   const filterEcho = data.filters || {}
+  const summaryData = data.summary || {}
+  const resolvedDisplayMode =
+    summaryData.displayCostMode || filterEcho.costMode || summary.displayCostMode || 'real'
+
+  records.value = (data.records || []).map((record) =>
+    normalizeRecordCost(record, resolvedDisplayMode)
+  )
+
   if (filterEcho.model !== undefined) filters.model = filterEcho.model || ''
   if (filterEcho.accountId !== undefined) filters.accountId = filterEcho.accountId || ''
   if (filterEcho.sortOrder) filters.sortOrder = filterEcho.sortOrder
@@ -388,11 +488,27 @@ const syncResponseState = (data) => {
     }
   }
 
-  const summaryData = data.summary || {}
   summary.totalRequests = summaryData.totalRequests || 0
   summary.totalTokens = summaryData.totalTokens || 0
-  summary.totalCost = summaryData.totalCost || 0
-  summary.avgCost = summaryData.avgCost || 0
+  summary.totalCost = normalizeCostValue(summaryData.totalCost, 0)
+  summary.avgCost = normalizeCostValue(summaryData.avgCost, 0)
+  summary.totalRatedCost = normalizeCostValue(
+    summaryData.totalRatedCost,
+    resolvedDisplayMode === 'rated' ? summary.totalCost : 0
+  )
+  summary.totalRealCost = normalizeCostValue(
+    summaryData.totalRealCost,
+    resolvedDisplayMode === 'real' ? summary.totalCost : 0
+  )
+  summary.avgRatedCost = normalizeCostValue(
+    summaryData.avgRatedCost,
+    resolvedDisplayMode === 'rated' ? summary.avgCost : 0
+  )
+  summary.avgRealCost = normalizeCostValue(
+    summaryData.avgRealCost,
+    resolvedDisplayMode === 'real' ? summary.avgCost : 0
+  )
+  summary.displayCostMode = resolvedDisplayMode
 
   apiKeyInfo.id = data.apiKeyInfo?.id || keyId.value
   apiKeyInfo.name = data.apiKeyInfo?.name || ''
@@ -482,7 +598,9 @@ const exportCsv = async () => {
       '缓存创建Token',
       '缓存读取Token',
       '总Token',
-      '费用'
+      '展示费用',
+      '真实费用',
+      '额度费用'
     ]
 
     const csvRows = [headers.join(',')]
@@ -497,7 +615,9 @@ const exportCsv = async () => {
         record.cacheCreateTokens || 0,
         record.cacheReadTokens || 0,
         record.totalTokens || 0,
-        record.costFormatted || formatCost(record.cost)
+        getDisplayCostText(record),
+        record.realCostFormatted || formatCost(record.realCost),
+        record.ratedCostFormatted || formatCost(record.ratedCost)
       ]
       csvRows.push(row.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(','))
     })
