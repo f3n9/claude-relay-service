@@ -135,6 +135,17 @@ const config = {
     metricsWindow: parseInt(process.env.METRICS_WINDOW) || 5 // 实时指标统计窗口（分钟）
   },
 
+  // 💰 计费展示与采集配置
+  billing: {
+    // 管理端费用展示口径：real(真实云成本) / rated(倍率后成本)
+    displayCostMode:
+      (process.env.BILLING_DISPLAY_COST_MODE || 'real').toLowerCase() === 'rated'
+        ? 'rated'
+        : 'real',
+    // Vertex 流式在异常/断连时是否允许 partial usage 兜底记账
+    vertexPartialUsageEnabled: process.env.BILLING_VERTEX_PARTIAL_USAGE_ENABLED !== 'false'
+  },
+
   // 🎨 Web界面配置
   web: {
     title: process.env.WEB_TITLE || 'Claude Relay Service',
