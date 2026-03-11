@@ -437,6 +437,9 @@ const handleResponses = async (req, res) => {
     const codexCliPattern = /^(codex_vscode|codex_cli_rs|codex_exec)\/[\d.]+/i
     const isCodexCLI = codexCliPattern.test(userAgent)
 
+    // 提取 service_tier 用于后续费用计算（在字段被移除前保存）
+    req._serviceTier = req.body?.service_tier || null
+
     // 使用调度器选择账户
     ;({ accessToken, accountId, accountType, proxy, account } = await getOpenAIAuthToken(
       apiKeyData,
@@ -799,7 +802,8 @@ const handleResponses = async (req, res) => {
             cacheReadTokens,
             actualModel,
             accountId,
-            'openai'
+            'openai',
+            req._serviceTier
           )
 
           logger.info(
@@ -916,7 +920,8 @@ const handleResponses = async (req, res) => {
             cacheReadTokens,
             modelToRecord,
             accountId,
-            'openai'
+            'openai',
+            req._serviceTier
           )
 
           logger.info(
