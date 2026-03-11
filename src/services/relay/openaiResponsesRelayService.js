@@ -9,6 +9,7 @@ const config = require('../../../config/config')
 const crypto = require('crypto')
 const LRUCache = require('../../utils/lruCache')
 const upstreamErrorHelper = require('../../utils/upstreamErrorHelper')
+const { createSafeSSEError } = require('../../utils/errorSanitizer')
 
 const DEFAULT_OPENAI_RESPONSES_API_VERSION = '2025-04-01-preview'
 
@@ -51,11 +52,7 @@ function isCanceledStreamError(error) {
   const name = String(error.name || '')
   const message = String(error.message || '').toLowerCase()
 
-  return (
-    code === 'ERR_CANCELED' ||
-    name === 'CanceledError' ||
-    message === 'canceled'
-  )
+  return code === 'ERR_CANCELED' || name === 'CanceledError' || message === 'canceled'
 }
 
 function buildCompactErrorInfo(error) {
@@ -577,6 +574,9 @@ class OpenAIResponsesRelayService {
     let rateLimitResetsInSeconds = null
     let streamEnded = false
     let usageRecordPromise = null
+    let sawAnyParsedEvent = false
+    let sawTerminalEvent = false
+    let wroteToClient = false
 
     const recordUsageIfNeeded = async (reason) => {
       if (!usageData || usageRecordPromise) {
@@ -653,9 +653,11 @@ class OpenAIResponsesRelayService {
             }
 
             const eventData = JSON.parse(jsonStr)
+            sawAnyParsedEvent = true
 
             // 检查是否是 response.completed 事件（OpenAI-Responses 格式）
             if (eventData.type === 'response.completed' && eventData.response) {
+              sawTerminalEvent = true
               // 从响应中获取真实的 model
               if (eventData.response.model) {
                 actualModel = eventData.response.model
@@ -672,6 +674,10 @@ class OpenAIResponsesRelayService {
                 })
                 void recordUsageIfNeeded('response.completed')
               }
+            }
+
+            if (eventData.type === 'response.failed' || eventData.type === 'response.incomplete') {
+              sawTerminalEvent = true
             }
 
             // 检查是否有限流错误
@@ -706,6 +712,7 @@ class OpenAIResponsesRelayService {
         // 转发数据给客户端
         if (!res.destroyed && !streamEnded) {
           res.write(chunk)
+          wroteToClient = true
         }
 
         // 同时解析数据以捕获 usage 信息
@@ -760,6 +767,38 @@ class OpenAIResponsesRelayService {
       // 清理监听器
       req.removeListener('close', handleClientDisconnect)
       res.removeListener('close', handleClientDisconnect)
+
+      if (!sawTerminalEvent) {
+        logger.warn('OpenAI-Responses stream ended without terminal event', {
+          accountId: account.id,
+          requestedModel: requestedModel || 'unknown',
+          actualModel: actualModel || 'unknown',
+          sawAnyParsedEvent,
+          wroteToClient
+        })
+
+        const incompleteStreamError = {
+          message: 'Upstream stream ended before completion',
+          status: 502
+        }
+
+        if (!wroteToClient && !res.headersSent) {
+          return res.status(502).json({
+            error: { message: 'Upstream stream ended before completion' }
+          })
+        }
+
+        if (!res.destroyed && !res.writableEnded) {
+          res.write(
+            createSafeSSEError(incompleteStreamError, {
+              context: 'openai_responses_incomplete_stream'
+            })
+          )
+          res.end()
+        }
+
+        return
+      }
 
       if (!res.destroyed) {
         res.end()

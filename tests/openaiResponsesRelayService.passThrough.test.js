@@ -94,6 +94,10 @@ function getHeader(headers, name) {
   return undefined
 }
 
+async function flushAsyncEvents() {
+  await new Promise((resolve) => setImmediate(resolve))
+}
+
 describe('openaiResponsesRelayService passThrough behavior', () => {
   beforeEach(() => {
     jest.clearAllMocks()
@@ -191,9 +195,7 @@ describe('openaiResponsesRelayService _appendApiVersion', () => {
       '2026-01-01-preview'
     )
 
-    expect(result).toBe(
-      'https://example.com/v1/responses?API-Version=2026-01-01-preview&foo=bar'
-    )
+    expect(result).toBe('https://example.com/v1/responses?API-Version=2026-01-01-preview&foo=bar')
   })
 })
 
@@ -336,5 +338,66 @@ describe('openaiResponsesRelayService stream error logging', () => {
     expect(streamErrorCall[1].config).toBeUndefined()
     expect(res.status).toHaveBeenCalledWith(502)
     expect(res.json).toHaveBeenCalledWith({ error: { message: 'Upstream stream error' } })
+  })
+
+  it('returns 502 when the upstream stream ends before any terminal event is received', async () => {
+    const req = createReq({
+      body: { model: 'gpt-4.1', stream: true }
+    })
+    const res = createStreamRes()
+    const response = { data: new EventEmitter() }
+
+    await openaiResponsesRelayService._handleStreamResponse(
+      response,
+      res,
+      { id: 'resp-1', dailyQuota: '0' },
+      { id: 'key-1' },
+      'gpt-4.1',
+      jest.fn(),
+      req
+    )
+
+    response.data.emit('end')
+    await flushAsyncEvents()
+
+    expect(res.write).not.toHaveBeenCalled()
+    expect(res.status).toHaveBeenCalledWith(502)
+    expect(res.json).toHaveBeenCalledWith({
+      error: { message: 'Upstream stream ended before completion' }
+    })
+    expect(res.end).not.toHaveBeenCalled()
+  })
+
+  it('emits an SSE error when the upstream stream ends after partial output without a terminal event', async () => {
+    const req = createReq({
+      body: { model: 'gpt-4.1', stream: true }
+    })
+    const res = createStreamRes()
+    const response = { data: new EventEmitter() }
+
+    await openaiResponsesRelayService._handleStreamResponse(
+      response,
+      res,
+      { id: 'resp-1', dailyQuota: '0' },
+      { id: 'key-1' },
+      'gpt-4.1',
+      jest.fn(),
+      req
+    )
+
+    response.data.emit(
+      'data',
+      Buffer.from(
+        'event: response.output_text.delta\ndata: {"type":"response.output_text.delta","delta":"hi"}\n\n'
+      )
+    )
+    response.data.emit('end')
+    await flushAsyncEvents()
+
+    expect(res.write).toHaveBeenNthCalledWith(1, expect.any(Buffer))
+    expect(res.write).toHaveBeenNthCalledWith(2, expect.stringContaining('event: error\n'))
+    expect(res.write).toHaveBeenNthCalledWith(2, expect.stringContaining('"code":"E007"'))
+    expect(res.end).toHaveBeenCalledTimes(1)
+    expect(res.status).not.toHaveBeenCalledWith(502)
   })
 })
