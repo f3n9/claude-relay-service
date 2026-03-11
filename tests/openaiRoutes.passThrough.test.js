@@ -207,4 +207,199 @@ describe('openaiRoutes handleResponses passThrough behavior', () => {
     expect(config.headers.trailer).toBeUndefined()
     expect(config.headers.authorization).toBe('Bearer decrypted-openai-token')
   })
+
+  it('sanitizes replayed responses input items when previous_response_id is missing', async () => {
+    unifiedOpenAIScheduler.selectAccountForApiKey.mockResolvedValue({
+      accountId: 'resp-1',
+      accountType: 'openai-responses'
+    })
+
+    const openaiResponsesAccountService = require('../src/services/account/openaiResponsesAccountService')
+    openaiResponsesAccountService.getAccount.mockResolvedValue({
+      id: 'resp-1',
+      name: 'Responses Account',
+      apiKey: 'upstream-api-key',
+      passThrough: 'false'
+    })
+    openaiResponsesRelayService.handleRequest.mockResolvedValue(undefined)
+
+    const req = createBaseRequest()
+    req.body = {
+      model: 'gpt-5.4',
+      stream: false,
+      input: [
+        {
+          type: 'message',
+          id: 'msg_123',
+          status: 'completed',
+          role: 'assistant',
+          content: [
+            {
+              type: 'output_text',
+              id: 'out_123',
+              text: 'hello'
+            }
+          ]
+        },
+        {
+          type: 'reasoning',
+          id: 'rs_123',
+          encrypted_content: 'secret'
+        },
+        {
+          type: 'function_call',
+          id: 'fc_123',
+          status: 'completed',
+          call_id: 'call_123',
+          name: 'demo_tool',
+          arguments: '{}'
+        },
+        {
+          type: 'function_call_output',
+          call_id: 'call_123',
+          output: 'ok'
+        }
+      ]
+    }
+    const res = createMockResponse()
+
+    await handleResponses(req, res)
+
+    expect(openaiResponsesRelayService.handleRequest).toHaveBeenCalledTimes(1)
+    const forwardedReq = openaiResponsesRelayService.handleRequest.mock.calls[0][0]
+    expect(forwardedReq.body.input).toEqual([
+      {
+        type: 'message',
+        role: 'assistant',
+        content: [
+          {
+            type: 'output_text',
+            text: 'hello'
+          }
+        ]
+      },
+      {
+        type: 'function_call',
+        call_id: 'call_123',
+        name: 'demo_tool',
+        arguments: '{}'
+      },
+      {
+        type: 'function_call_output',
+        call_id: 'call_123',
+        output: 'ok'
+      }
+    ])
+  })
+
+  it('preserves replayed responses input items when previous_response_id is provided', async () => {
+    unifiedOpenAIScheduler.selectAccountForApiKey.mockResolvedValue({
+      accountId: 'resp-1',
+      accountType: 'openai-responses'
+    })
+
+    const openaiResponsesAccountService = require('../src/services/account/openaiResponsesAccountService')
+    openaiResponsesAccountService.getAccount.mockResolvedValue({
+      id: 'resp-1',
+      name: 'Responses Account',
+      apiKey: 'upstream-api-key',
+      passThrough: 'false'
+    })
+    openaiResponsesRelayService.handleRequest.mockResolvedValue(undefined)
+
+    const replayedInput = [
+      {
+        type: 'message',
+        id: 'msg_123',
+        status: 'completed',
+        role: 'assistant',
+        content: [{ type: 'output_text', id: 'out_123', text: 'hello' }]
+      },
+      {
+        type: 'reasoning',
+        id: 'rs_123',
+        encrypted_content: 'secret'
+      }
+    ]
+
+    const req = createBaseRequest()
+    req.body = {
+      model: 'gpt-5.4',
+      stream: false,
+      previous_response_id: 'resp_prev_123',
+      input: replayedInput
+    }
+    const res = createMockResponse()
+
+    await handleResponses(req, res)
+
+    expect(openaiResponsesRelayService.handleRequest).toHaveBeenCalledTimes(1)
+    const forwardedReq = openaiResponsesRelayService.handleRequest.mock.calls[0][0]
+    expect(forwardedReq.body.input).toEqual(replayedInput)
+  })
+
+  it('does not strip nested tool output payload fields while sanitizing replayed input items', async () => {
+    unifiedOpenAIScheduler.selectAccountForApiKey.mockResolvedValue({
+      accountId: 'resp-1',
+      accountType: 'openai-responses'
+    })
+
+    const openaiResponsesAccountService = require('../src/services/account/openaiResponsesAccountService')
+    openaiResponsesAccountService.getAccount.mockResolvedValue({
+      id: 'resp-1',
+      name: 'Responses Account',
+      apiKey: 'upstream-api-key',
+      passThrough: 'false'
+    })
+    openaiResponsesRelayService.handleRequest.mockResolvedValue(undefined)
+
+    const req = createBaseRequest()
+    req.body = {
+      model: 'gpt-5.4',
+      stream: false,
+      input: [
+        {
+          type: 'message',
+          id: 'msg_123',
+          status: 'completed',
+          role: 'assistant',
+          content: [{ type: 'output_text', id: 'out_123', text: 'hello' }]
+        },
+        {
+          type: 'function_call_output',
+          call_id: 'call_123',
+          output: {
+            id: 'business-id',
+            status: 'ok',
+            nested: {
+              id: 'nested-id'
+            }
+          }
+        }
+      ]
+    }
+    const res = createMockResponse()
+
+    await handleResponses(req, res)
+
+    const forwardedReq = openaiResponsesRelayService.handleRequest.mock.calls[0][0]
+    expect(forwardedReq.body.input).toEqual([
+      {
+        type: 'message',
+        role: 'assistant',
+        content: [{ type: 'output_text', text: 'hello' }]
+      },
+      {
+        type: 'function_call_output',
+        call_id: 'call_123',
+        output: {
+          id: 'business-id',
+          status: 'ok',
+          nested: {
+            id: 'nested-id'
+          }
+        }
+      }
+    ])
+  })
 })

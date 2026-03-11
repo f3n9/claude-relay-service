@@ -76,6 +76,119 @@ function sanitizePassThroughHeaders(headers = {}) {
   return sanitized
 }
 
+const REPLAYED_RESPONSE_METADATA_KEYS = new Set([
+  'id',
+  'status',
+  'output_index',
+  'encrypted_content'
+])
+
+function hasPreviousResponseId(body) {
+  return typeof body?.previous_response_id === 'string' && body.previous_response_id.trim() !== ''
+}
+
+function isReplayedResponseId(value) {
+  return typeof value === 'string' && /^(msg|rs|fc|ctc|out)_[a-z0-9_-]+$/i.test(value)
+}
+
+function containsReplayedResponsesMetadata(value) {
+  if (Array.isArray(value)) {
+    return value.some((item) => containsReplayedResponsesMetadata(item))
+  }
+
+  if (!value || typeof value !== 'object') {
+    return false
+  }
+
+  if (value.type === 'reasoning') {
+    return true
+  }
+
+  if (
+    isReplayedResponseId(value.id) ||
+    value.status !== undefined ||
+    value.output_index !== undefined ||
+    value.encrypted_content !== undefined
+  ) {
+    return true
+  }
+
+  if (value.type === 'message' && Array.isArray(value.content)) {
+    return value.content.some((item) => containsReplayedResponsesMetadata(item))
+  }
+
+  return false
+}
+
+function stripResponseItemMetadata(value, stats) {
+  const sanitized = {}
+  for (const [key, nestedValue] of Object.entries(value)) {
+    if (REPLAYED_RESPONSE_METADATA_KEYS.has(key)) {
+      stats.strippedMetadataFields++
+      continue
+    }
+    sanitized[key] = nestedValue
+  }
+
+  return sanitized
+}
+
+function sanitizeInputItem(item, stats) {
+  if (!item || typeof item !== 'object') {
+    return item
+  }
+
+  const sanitized = stripResponseItemMetadata(item, stats)
+  if (sanitized.type === 'message' && Array.isArray(sanitized.content)) {
+    sanitized.content = sanitized.content.map((contentBlock) => {
+      if (!contentBlock || typeof contentBlock !== 'object') {
+        return contentBlock
+      }
+      return stripResponseItemMetadata(contentBlock, stats)
+    })
+  }
+
+  return sanitized
+}
+
+function sanitizeReplayedResponsesRequestBody(body) {
+  if (
+    !body ||
+    typeof body !== 'object' ||
+    hasPreviousResponseId(body) ||
+    !Array.isArray(body.input)
+  ) {
+    return { body, sanitized: false, removedReasoningItems: 0, strippedMetadataFields: 0 }
+  }
+
+  if (!containsReplayedResponsesMetadata(body.input)) {
+    return { body, sanitized: false, removedReasoningItems: 0, strippedMetadataFields: 0 }
+  }
+
+  const stats = {
+    removedReasoningItems: 0,
+    strippedMetadataFields: 0
+  }
+
+  const sanitizedInput = []
+  for (const item of body.input) {
+    if (item && typeof item === 'object' && item.type === 'reasoning') {
+      stats.removedReasoningItems++
+      continue
+    }
+    sanitizedInput.push(sanitizeInputItem(item, stats))
+  }
+
+  return {
+    body: {
+      ...body,
+      input: sanitizedInput
+    },
+    sanitized: stats.removedReasoningItems > 0 || stats.strippedMetadataFields > 0,
+    ...stats
+  }
+}
+
 function toNumberSafe(value) {
   if (value === undefined || value === null || value === '') {
     return null
@@ -280,6 +393,15 @@ const handleResponses = async (req, res) => {
           type: 'permission_denied',
           code: 'permission_denied'
         }
+      })
+    }
+
+    const replaySanitization = sanitizeReplayedResponsesRequestBody(req.body)
+    if (replaySanitization.sanitized) {
+      req.body = replaySanitization.body
+      logger.info('🧹 Sanitized replayed Responses API input without previous_response_id', {
+        removedReasoningItems: replaySanitization.removedReasoningItems,
+        strippedMetadataFields: replaySanitization.strippedMetadataFields
       })
     }
 
