@@ -49,7 +49,15 @@ jest.mock('../src/models/redis', () => ({
   getDateInTimezone: jest.fn(),
   getDateStringInTimezone: jest.fn(),
   getClientSafe: jest.fn(),
-  scanAndGetAllChunked: jest.fn()
+  scanAndGetAllChunked: jest.fn(),
+  batchHgetallChunked: jest.fn(),
+  scanKeys: jest.fn(),
+  client: {
+    smembers: jest.fn(),
+    get: jest.fn(),
+    setex: jest.fn(),
+    sadd: jest.fn()
+  }
 }))
 
 jest.mock('../src/middleware/auth', () => ({
@@ -122,6 +130,14 @@ describe('Usage Stats Admin Routes', () => {
         layer.route &&
         layer.route.path === '/accounts/:accountId/usage-records' &&
         layer.route.methods.get
+    )
+
+    return routeLayer.route.stack[routeLayer.route.stack.length - 1].handle
+  }
+
+  const getUsageCostsHandler = () => {
+    const routeLayer = router.stack.find(
+      (layer) => layer.route && layer.route.path === '/usage-costs' && layer.route.methods.get
     )
 
     return routeLayer.route.stack[routeLayer.route.stack.length - 1].handle
@@ -337,5 +353,286 @@ describe('Usage Stats Admin Routes', () => {
       displayCostMode: 'rated'
     })
     expect(response.data.filters.costMode).toBe('rated')
+  })
+
+  it('filters api key usage records by claude-vertex reconciliation fields', async () => {
+    const handler = getApiKeyUsageRecordsHandler()
+    const req = {
+      params: { keyId: 'key-1' },
+      query: {
+        accountType: 'claude-vertex',
+        usageCaptureState: 'partial',
+        requestRegion: 'us-east5'
+      }
+    }
+    const res = createMockResponse()
+
+    redis.getApiKey.mockResolvedValue({ id: 'key-1', name: 'Test Key' })
+    redis.getUsageRecords.mockResolvedValue([
+      {
+        timestamp: '2026-02-14T10:00:00.000Z',
+        model: 'claude-opus-4-6',
+        accountId: 'vertex-1',
+        accountType: 'claude-vertex',
+        inputTokens: 10,
+        outputTokens: 0,
+        usageCaptureState: 'partial',
+        requestRegion: 'us-east5',
+        cost: 0.2,
+        realCost: 0.6
+      },
+      {
+        timestamp: '2026-02-14T11:00:00.000Z',
+        model: 'claude-opus-4-6',
+        accountId: 'vertex-1',
+        accountType: 'claude-vertex',
+        inputTokens: 10,
+        outputTokens: 5,
+        usageCaptureState: 'complete',
+        requestRegion: 'global',
+        cost: 0.2,
+        realCost: 0.6
+      }
+    ])
+    gcpVertexAccountService.getAccount.mockResolvedValue({
+      id: 'vertex-1',
+      name: 'Vertex Account',
+      status: 'active'
+    })
+
+    await handler(req, res)
+
+    const response = res.json.mock.calls[0][0]
+    expect(response.success).toBe(true)
+    expect(response.data.records).toHaveLength(1)
+    expect(response.data.records[0]).toMatchObject({
+      accountType: 'claude-vertex',
+      usageCaptureState: 'partial',
+      requestRegion: 'us-east5'
+    })
+    expect(response.data.filters).toMatchObject({
+      accountType: 'claude-vertex',
+      usageCaptureState: 'partial',
+      requestRegion: 'us-east5'
+    })
+    expect(response.data.availableFilters).toMatchObject({
+      accountTypes: expect.arrayContaining(['claude-vertex']),
+      usageCaptureStates: expect.arrayContaining(['partial', 'complete']),
+      requestRegions: expect.arrayContaining(['us-east5', 'global'])
+    })
+  })
+
+  it('filters account usage records by claude-vertex reconciliation fields', async () => {
+    const handler = getAccountUsageRecordsHandler()
+    const req = {
+      params: { accountId: 'vertex-1' },
+      query: {
+        platform: 'claude-vertex',
+        usageCaptureState: 'partial',
+        requestRegion: 'us-central1'
+      }
+    }
+    const res = createMockResponse()
+
+    gcpVertexAccountService.getAccount.mockResolvedValue({
+      id: 'vertex-1',
+      name: 'Vertex Account',
+      status: 'active'
+    })
+    apiKeyService.getAllApiKeysFast.mockResolvedValue([{ id: 'key-1', name: 'Key 1' }])
+    redis.getUsageRecords.mockResolvedValue([
+      {
+        timestamp: '2026-02-14T10:00:00.000Z',
+        model: 'claude-opus-4-6',
+        accountId: 'vertex-1',
+        accountType: 'claude-vertex',
+        inputTokens: 10,
+        outputTokens: 0,
+        usageCaptureState: 'partial',
+        requestRegion: 'us-central1',
+        cost: 0.2,
+        realCost: 0.6
+      },
+      {
+        timestamp: '2026-02-14T11:00:00.000Z',
+        model: 'claude-opus-4-6',
+        accountId: 'vertex-1',
+        accountType: 'claude-vertex',
+        inputTokens: 10,
+        outputTokens: 5,
+        usageCaptureState: 'complete',
+        requestRegion: 'global',
+        cost: 0.2,
+        realCost: 0.6
+      }
+    ])
+
+    await handler(req, res)
+
+    const response = res.json.mock.calls[0][0]
+    expect(response.success).toBe(true)
+    expect(response.data.records).toHaveLength(1)
+    expect(response.data.records[0]).toMatchObject({
+      accountType: 'claude-vertex',
+      usageCaptureState: 'partial',
+      requestRegion: 'us-central1'
+    })
+    expect(response.data.filters).toMatchObject({
+      usageCaptureState: 'partial',
+      requestRegion: 'us-central1'
+    })
+    expect(response.data.availableFilters).toMatchObject({
+      accountTypes: expect.arrayContaining(['claude-vertex']),
+      usageCaptureStates: expect.arrayContaining(['partial', 'complete']),
+      requestRegions: expect.arrayContaining(['us-central1', 'global'])
+    })
+  })
+
+  it('prefers stored micro-costs for 7days usage-costs summary', async () => {
+    const handler = getUsageCostsHandler()
+    const req = {
+      query: { period: '7days' }
+    }
+    const res = createMockResponse()
+
+    redis.getClientSafe.mockReturnValue({})
+    redis.getDateStringInTimezone.mockReturnValue('2026-03-12')
+    redis.getDateInTimezone.mockImplementation(
+      (date = new Date('2026-03-12T00:00:00.000Z')) => date
+    )
+    let dailyIndexHitCount = 0
+    redis.client.smembers.mockImplementation(async (key) => {
+      if (key.startsWith('usage:model:daily:index:')) {
+        dailyIndexHitCount += 1
+        if (dailyIndexHitCount === 1) {
+          return ['claude-opus-4-6']
+        }
+        return []
+      }
+      return []
+    })
+    redis.client.get.mockResolvedValue(null)
+    redis.scanKeys.mockResolvedValue([])
+    let dailyDataHitCount = 0
+    redis.batchHgetallChunked.mockImplementation(async (keys) =>
+      keys.map((key) => {
+        if (key.startsWith('usage:model:daily:claude-opus-4-6:')) {
+          dailyDataHitCount += 1
+          if (dailyDataHitCount === 1) {
+            return {
+              inputTokens: '100',
+              outputTokens: '50',
+              cacheCreateTokens: '10',
+              cacheReadTokens: '5',
+              ratedCostMicro: '2500000',
+              realCostMicro: '3100000'
+            }
+          }
+        }
+        return {}
+      })
+    )
+    CostCalculator.calculateCost.mockReturnValue({
+      costs: {
+        input: 9,
+        output: 9,
+        cacheWrite: 9,
+        cacheRead: 9,
+        total: 36
+      },
+      formatted: {
+        total: '$36.000000'
+      },
+      usingDynamicPricing: true
+    })
+
+    await handler(req, res)
+
+    const response = res.json.mock.calls[0][0]
+    expect(CostCalculator.calculateCost).not.toHaveBeenCalled()
+    expect(response.success).toBe(true)
+    expect(response.data.totalCosts.totalCost).toBe(2.5)
+    expect(response.data.modelCosts).toEqual([
+      expect.objectContaining({
+        model: 'claude-opus-4-6',
+        costs: expect.objectContaining({
+          total: 2.5,
+          real: 3.1
+        }),
+        usingDynamicPricing: false,
+        usingStoredCost: true
+      })
+    ])
+  })
+
+  it('prefers stored micro-costs for all-period usage-costs summary', async () => {
+    const handler = getUsageCostsHandler()
+    const req = {
+      query: { period: 'all' }
+    }
+    const res = createMockResponse()
+
+    redis.getClientSafe.mockReturnValue({})
+    redis.getDateStringInTimezone.mockReturnValue('2026-03-12')
+    redis.getDateInTimezone.mockImplementation(
+      (date = new Date('2026-03-12T00:00:00.000Z')) => date
+    )
+    redis.client.smembers.mockImplementation(async (key) => {
+      if (key === 'usage:model:monthly:months') {
+        return ['2026-03']
+      }
+      if (key === 'usage:model:monthly:index:2026-03') {
+        return ['claude-sonnet-4-6']
+      }
+      return []
+    })
+    redis.client.get.mockResolvedValue(null)
+    redis.scanKeys.mockResolvedValue([])
+    redis.batchHgetallChunked.mockImplementation(async (keys) =>
+      keys.map((key) => {
+        if (key === 'usage:model:monthly:claude-sonnet-4-6:2026-03') {
+          return {
+            inputTokens: '1000',
+            outputTokens: '500',
+            cacheCreateTokens: '20',
+            cacheReadTokens: '10',
+            ratedCostMicro: '1500000',
+            realCostMicro: '1900000'
+          }
+        }
+        return {}
+      })
+    )
+    CostCalculator.calculateCost.mockReturnValue({
+      costs: {
+        input: 5,
+        output: 5,
+        cacheWrite: 5,
+        cacheRead: 5,
+        total: 20
+      },
+      formatted: {
+        total: '$20.000000'
+      },
+      usingDynamicPricing: true
+    })
+
+    await handler(req, res)
+
+    const response = res.json.mock.calls[0][0]
+    expect(CostCalculator.calculateCost).not.toHaveBeenCalled()
+    expect(response.success).toBe(true)
+    expect(response.data.totalCosts.totalCost).toBe(1.5)
+    expect(response.data.modelCosts).toEqual([
+      expect.objectContaining({
+        model: 'claude-sonnet-4-6',
+        costs: expect.objectContaining({
+          total: 1.5,
+          real: 1.9
+        }),
+        usingDynamicPricing: false,
+        usingStoredCost: true
+      })
+    ])
   })
 })

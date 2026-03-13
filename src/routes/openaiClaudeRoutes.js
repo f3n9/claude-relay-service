@@ -14,6 +14,7 @@ const openaiToClaude = require('../services/openaiToClaude')
 const apiKeyService = require('../services/apiKeyService')
 const unifiedClaudeScheduler = require('../services/scheduler/unifiedClaudeScheduler')
 const claudeCodeHeadersService = require('../services/claudeCodeHeadersService')
+const gcpVertexAccountService = require('../services/account/gcpVertexAccountService')
 const { getSafeMessage } = require('../utils/errorSanitizer')
 const sessionHelper = require('../utils/sessionHelper')
 const { updateRateLimitCounters } = require('../utils/rateLimitHelper')
@@ -52,6 +53,20 @@ function queueRateLimitUpdate(
     .catch((error) => {
       logger.error(`❌ Failed to update rate limit counters${label}:`, error)
     })
+}
+
+async function getVertexRequestRegion(accountType, accountId) {
+  if (accountType !== 'claude-vertex' || !accountId) {
+    return ''
+  }
+
+  try {
+    const account = await gcpVertexAccountService.getAccount(accountId)
+    return account?.location || 'global'
+  } catch (error) {
+    logger.warn(`⚠️ Failed to resolve Vertex account region for ${accountId}:`, error.message)
+    return 'global'
+  }
 }
 
 // 📋 OpenAI 兼容的模型列表端点
@@ -246,6 +261,7 @@ async function handleChatCompletion(req, res, apiKeyData) {
       throw error
     }
     const { accountId, accountType } = accountSelection
+    const vertexRequestRegion = await getVertexRequestRegion(accountType, accountId)
 
     // 获取该账号存储的 Claude Code headers
     const claudeCodeHeaders = await claudeCodeHeadersService.getAccountHeaders(accountId)
@@ -300,7 +316,13 @@ async function handleChatCompletion(req, res, apiKeyData) {
             usageWithRequestMeta.request_speed = claudeRequest.speed.trim().toLowerCase()
           }
           if (typeof usage.usage_capture_state === 'string' && usage.usage_capture_state.trim()) {
-            usageWithRequestMeta.usage_capture_state = usage.usage_capture_state.trim().toLowerCase()
+            usageWithRequestMeta.usage_capture_state = usage.usage_capture_state
+              .trim()
+              .toLowerCase()
+          }
+          if (accountType === 'claude-vertex') {
+            usageWithRequestMeta.request_provider = 'vertex'
+            usageWithRequestMeta.request_region = vertexRequestRegion || 'global'
           }
 
           // 使用新的 recordUsageWithDetails 方法来支持详细的缓存数据
@@ -474,6 +496,10 @@ async function handleChatCompletion(req, res, apiKeyData) {
         }
         if (typeof claudeRequest?.speed === 'string' && claudeRequest.speed.trim()) {
           usageWithRequestMeta.request_speed = claudeRequest.speed.trim().toLowerCase()
+        }
+        if (accountType === 'claude-vertex') {
+          usageWithRequestMeta.request_provider = 'vertex'
+          usageWithRequestMeta.request_region = vertexRequestRegion || 'global'
         }
         // 使用新的 recordUsageWithDetails 方法来支持详细的缓存数据
         apiKeyService

@@ -106,6 +106,32 @@ async function getUsageDataByIndex(indexKey, keyPattern, scanPattern) {
   return result
 }
 
+function buildStoredModelCost(data) {
+  const ratedCost = (parseInt(data.ratedCostMicro) || 0) / 1000000
+  const realCost = (parseInt(data.realCostMicro) || 0) / 1000000
+
+  return {
+    costs: {
+      input: 0,
+      output: 0,
+      cacheWrite: 0,
+      cacheRead: 0,
+      total: ratedCost,
+      real: realCost
+    },
+    formatted: {
+      input: CostCalculator.formatCost(0),
+      output: CostCalculator.formatCost(0),
+      cacheWrite: CostCalculator.formatCost(0),
+      cacheRead: CostCalculator.formatCost(0),
+      total: CostCalculator.formatCost(ratedCost),
+      real: CostCalculator.formatCost(realCost)
+    },
+    usingDynamicPricing: false,
+    usingStoredCost: true
+  }
+}
+
 const accountTypeNames = {
   claude: 'Claude官方',
   'claude-official': 'Claude官方',
@@ -2398,7 +2424,10 @@ router.get('/usage-costs', authenticateAdmin, async (req, res) => {
             cacheCreateTokens: 0,
             cacheReadTokens: 0,
             ephemeral5mTokens: 0,
-            ephemeral1hTokens: 0
+            ephemeral1hTokens: 0,
+            ratedCostMicro: 0,
+            realCostMicro: 0,
+            hasStoredCost: false
           })
         }
 
@@ -2409,6 +2438,11 @@ router.get('/usage-costs', authenticateAdmin, async (req, res) => {
         modelUsage.cacheReadTokens += parseInt(data.cacheReadTokens) || 0
         modelUsage.ephemeral5mTokens += parseInt(data.ephemeral5mTokens) || 0
         modelUsage.ephemeral1hTokens += parseInt(data.ephemeral1hTokens) || 0
+        if ('realCostMicro' in data || 'ratedCostMicro' in data) {
+          modelUsage.ratedCostMicro += parseInt(data.ratedCostMicro) || 0
+          modelUsage.realCostMicro += parseInt(data.realCostMicro) || 0
+          modelUsage.hasStoredCost = true
+        }
       }
 
       // 计算7天统计的费用
@@ -2421,8 +2455,6 @@ router.get('/usage-costs', authenticateAdmin, async (req, res) => {
           cache_creation_input_tokens: usage.cacheCreateTokens,
           cache_read_input_tokens: usage.cacheReadTokens
         }
-
-        // 如果有 ephemeral 5m/1h 拆分数据，添加 cache_creation 子对象以实现精确计费
         if (usage.ephemeral5mTokens > 0 || usage.ephemeral1hTokens > 0) {
           usageData.cache_creation = {
             ephemeral_5m_input_tokens: usage.ephemeral5mTokens,
@@ -2430,7 +2462,9 @@ router.get('/usage-costs', authenticateAdmin, async (req, res) => {
           }
         }
 
-        const costResult = CostCalculator.calculateCost(usageData, model)
+        const costResult = usage.hasStoredCost
+          ? buildStoredModelCost(usage)
+          : CostCalculator.calculateCost(usageData, model)
         totalCosts.inputCost += costResult.costs.input
         totalCosts.outputCost += costResult.costs.output
         totalCosts.cacheCreateCost += costResult.costs.cacheWrite
@@ -2450,7 +2484,8 @@ router.get('/usage-costs', authenticateAdmin, async (req, res) => {
           usage: usageData,
           costs: costResult.costs,
           formatted: costResult.formatted,
-          usingDynamicPricing: costResult.usingDynamicPricing
+          usingDynamicPricing: costResult.usingDynamicPricing,
+          usingStoredCost: costResult.usingStoredCost === true
         }
       }
 
@@ -2511,7 +2546,10 @@ router.get('/usage-costs', authenticateAdmin, async (req, res) => {
               cacheCreateTokens: 0,
               cacheReadTokens: 0,
               ephemeral5mTokens: 0,
-              ephemeral1hTokens: 0
+              ephemeral1hTokens: 0,
+              ratedCostMicro: 0,
+              realCostMicro: 0,
+              hasStoredCost: false
             })
           }
 
@@ -2522,6 +2560,11 @@ router.get('/usage-costs', authenticateAdmin, async (req, res) => {
           modelUsage.cacheReadTokens += parseInt(data.cacheReadTokens) || 0
           modelUsage.ephemeral5mTokens += parseInt(data.ephemeral5mTokens) || 0
           modelUsage.ephemeral1hTokens += parseInt(data.ephemeral1hTokens) || 0
+          if ('realCostMicro' in data || 'ratedCostMicro' in data) {
+            modelUsage.ratedCostMicro += parseInt(data.ratedCostMicro) || 0
+            modelUsage.realCostMicro += parseInt(data.realCostMicro) || 0
+            modelUsage.hasStoredCost = true
+          }
         }
 
         // 使用模型级别的数据计算费用
@@ -2534,8 +2577,6 @@ router.get('/usage-costs', authenticateAdmin, async (req, res) => {
             cache_creation_input_tokens: usage.cacheCreateTokens,
             cache_read_input_tokens: usage.cacheReadTokens
           }
-
-          // 如果有 ephemeral 5m/1h 拆分数据，添加 cache_creation 子对象以实现精确计费
           if (usage.ephemeral5mTokens > 0 || usage.ephemeral1hTokens > 0) {
             usageData.cache_creation = {
               ephemeral_5m_input_tokens: usage.ephemeral5mTokens,
@@ -2543,7 +2584,9 @@ router.get('/usage-costs', authenticateAdmin, async (req, res) => {
             }
           }
 
-          const costResult = CostCalculator.calculateCost(usageData, model)
+          const costResult = usage.hasStoredCost
+            ? buildStoredModelCost(usage)
+            : CostCalculator.calculateCost(usageData, model)
           totalCosts.inputCost += costResult.costs.input
           totalCosts.outputCost += costResult.costs.output
           totalCosts.cacheCreateCost += costResult.costs.cacheWrite
@@ -2566,7 +2609,8 @@ router.get('/usage-costs', authenticateAdmin, async (req, res) => {
             usage: usageData,
             costs: costResult.costs,
             formatted: costResult.formatted,
-            usingDynamicPricing: costResult.usingDynamicPricing
+            usingDynamicPricing: costResult.usingDynamicPricing,
+            usingStoredCost: costResult.usingStoredCost === true
           }
         }
       } else {
@@ -2732,6 +2776,9 @@ router.get('/api-keys/:keyId/usage-records', authenticateAdmin, async (req, res)
       endDate,
       model,
       accountId,
+      accountType,
+      usageCaptureState,
+      requestRegion,
       sortOrder = 'desc',
       costMode
     } = req.query
@@ -2857,7 +2904,7 @@ router.get('/api-keys/:keyId/usage-records', authenticateAdmin, async (req, res)
       return true
     }
 
-    const filteredRecords = rawRecords.filter((record) => {
+    const baseFilteredRecords = rawRecords.filter((record) => {
       if (!withinRange(record)) {
         return false
       }
@@ -2865,6 +2912,22 @@ router.get('/api-keys/:keyId/usage-records', authenticateAdmin, async (req, res)
         return false
       }
       if (accountId && record.accountId !== accountId) {
+        return false
+      }
+      return true
+    })
+
+    const filteredRecords = baseFilteredRecords.filter((record) => {
+      if (accountType && (record.accountType || 'unknown') !== accountType) {
+        return false
+      }
+      if (
+        usageCaptureState &&
+        (record.usageCaptureState || record.usage_capture_state || '') !== usageCaptureState
+      ) {
+        return false
+      }
+      if (requestRegion && (record.requestRegion || record.request_region || '') !== requestRegion) {
         return false
       }
       return true
@@ -2893,10 +2956,59 @@ router.get('/api-keys/:keyId/usage-records', authenticateAdmin, async (req, res)
 
     const modelSet = new Set()
     const accountOptionMap = new Map()
+    const accountTypeSet = new Set()
+    const usageCaptureStateSet = new Set()
+    const requestRegionSet = new Set()
     let earliestTimestamp = null
     let latestTimestamp = null
 
+    for (const record of baseFilteredRecords) {
+      const normalizedAccountType = record.accountType || 'unknown'
+      const normalizedUsageCaptureState = record.usageCaptureState || record.usage_capture_state || ''
+      const normalizedRequestRegion = record.requestRegion || record.request_region || ''
+
+      if (record.model) {
+        modelSet.add(record.model)
+      }
+      if (normalizedAccountType) {
+        accountTypeSet.add(normalizedAccountType)
+      }
+      if (normalizedUsageCaptureState) {
+        usageCaptureStateSet.add(normalizedUsageCaptureState)
+      }
+      if (normalizedRequestRegion) {
+        requestRegionSet.add(normalizedRequestRegion)
+      }
+
+      if (record.accountId) {
+        if (!accountOptionMap.has(record.accountId)) {
+          accountOptionMap.set(record.accountId, {
+            id: record.accountId,
+            accountTypes: new Set([normalizedAccountType])
+          })
+        } else {
+          accountOptionMap.get(record.accountId).accountTypes.add(normalizedAccountType)
+        }
+      }
+
+      if (record.timestamp) {
+        const ts = new Date(record.timestamp)
+        if (!Number.isNaN(ts.getTime())) {
+          if (!earliestTimestamp || ts < earliestTimestamp) {
+            earliestTimestamp = ts
+          }
+          if (!latestTimestamp || ts > latestTimestamp) {
+            latestTimestamp = ts
+          }
+        }
+      }
+    }
+
     for (const record of filteredRecords) {
+      const normalizedAccountType = record.accountType || 'unknown'
+      const normalizedUsageCaptureState =
+        record.usageCaptureState || record.usage_capture_state || ''
+      const normalizedRequestRegion = record.requestRegion || record.request_region || ''
       const usage = toUsageObject(record)
       const costData = CostCalculator.calculateCost(usage, record.model || 'unknown')
       const costView = buildUsageRecordCostView(record, costData?.costs?.total, displayCostMode)
@@ -2917,33 +3029,6 @@ router.get('/api-keys/:keyId/usage-records', authenticateAdmin, async (req, res)
       summary.totalRealCost += costView.realCost
       summary.totalDisplayCost += costView.displayCost
 
-      if (record.model) {
-        modelSet.add(record.model)
-      }
-
-      if (record.accountId) {
-        const normalizedType = record.accountType || 'unknown'
-        if (!accountOptionMap.has(record.accountId)) {
-          accountOptionMap.set(record.accountId, {
-            id: record.accountId,
-            accountTypes: new Set([normalizedType])
-          })
-        } else {
-          accountOptionMap.get(record.accountId).accountTypes.add(normalizedType)
-        }
-      }
-
-      if (record.timestamp) {
-        const ts = new Date(record.timestamp)
-        if (!Number.isNaN(ts.getTime())) {
-          if (!earliestTimestamp || ts < earliestTimestamp) {
-            earliestTimestamp = ts
-          }
-          if (!latestTimestamp || ts > latestTimestamp) {
-            latestTimestamp = ts
-          }
-        }
-      }
     }
 
     const totalRecords = filteredRecords.length
@@ -2976,6 +3061,8 @@ router.get('/api-keys/:keyId/usage-records', authenticateAdmin, async (req, res)
         accountStatus: accountInfo?.status ?? null,
         accountType: resolvedAccountType,
         accountTypeName: accountTypeNames[resolvedAccountType] || '未知渠道',
+        usageCaptureState: record.usageCaptureState || record.usage_capture_state || null,
+        requestRegion: record.requestRegion || record.request_region || null,
         inputTokens: usage.input_tokens,
         outputTokens: usage.output_tokens,
         cacheCreateTokens: usage.cache_creation_input_tokens,
@@ -3054,6 +3141,9 @@ router.get('/api-keys/:keyId/usage-records', authenticateAdmin, async (req, res)
           endDate: endTime ? endTime.toISOString() : null,
           model: model || null,
           accountId: accountId || null,
+          accountType: accountType || null,
+          usageCaptureState: usageCaptureState || null,
+          requestRegion: requestRegion || null,
           sortOrder: normalizedSortOrder,
           costMode: displayCostMode
         },
@@ -3088,6 +3178,9 @@ router.get('/api-keys/:keyId/usage-records', authenticateAdmin, async (req, res)
         availableFilters: {
           models: Array.from(modelSet),
           accounts: accountOptions,
+          accountTypes: Array.from(accountTypeSet),
+          usageCaptureStates: Array.from(usageCaptureStateSet),
+          requestRegions: Array.from(requestRegionSet),
           dateRange: {
             earliest: earliestTimestamp ? earliestTimestamp.toISOString() : null,
             latest: latestTimestamp ? latestTimestamp.toISOString() : null
@@ -3115,6 +3208,9 @@ router.get('/accounts/:accountId/usage-records', authenticateAdmin, async (req, 
       endDate,
       model,
       apiKeyId,
+      accountType,
+      usageCaptureState,
+      requestRegion,
       sortOrder = 'desc',
       costMode
     } = req.query
@@ -3194,9 +3290,12 @@ router.get('/accounts/:accountId/usage-records', authenticateAdmin, async (req, 
       return true
     }
 
-    const filteredRecords = []
+    const baseFilteredRecords = []
     const modelSet = new Set()
     const apiKeyOptionMap = new Map()
+    const accountTypeSet = new Set()
+    const usageCaptureStateSet = new Set()
+    const requestRegionSet = new Set()
     let earliestTimestamp = null
     let latestTimestamp = null
 
@@ -3228,34 +3327,71 @@ router.get('/accounts/:accountId/usage-records', authenticateAdmin, async (req, 
             continue
           }
 
-          const accountType = record.accountType || accountInfo.platform || 'unknown'
+          const normalizedAccountType = record.accountType || accountInfo.platform || 'unknown'
+          const normalizedUsageCaptureState =
+            record.usageCaptureState || record.usage_capture_state || ''
+          const normalizedRequestRegion = record.requestRegion || record.request_region || ''
+
           const normalizedModel = record.model || 'unknown'
 
-          modelSet.add(normalizedModel)
-          apiKeyOptionMap.set(keyId, { id: keyId, name: apiKeyName })
-
-          if (record.timestamp) {
-            const ts = new Date(record.timestamp)
-            if (!Number.isNaN(ts.getTime())) {
-              if (!earliestTimestamp || ts < earliestTimestamp) {
-                earliestTimestamp = ts
-              }
-              if (!latestTimestamp || ts > latestTimestamp) {
-                latestTimestamp = ts
-              }
-            }
-          }
-
-          filteredRecords.push({
+          baseFilteredRecords.push({
             ...record,
             model: normalizedModel,
-            accountType,
+            accountType: normalizedAccountType,
             apiKeyId: keyId,
             apiKeyName
           })
         }
       }
     }
+
+    for (const record of baseFilteredRecords) {
+      const normalizedAccountType = record.accountType || 'unknown'
+      const normalizedUsageCaptureState = record.usageCaptureState || record.usage_capture_state || ''
+      const normalizedRequestRegion = record.requestRegion || record.request_region || ''
+
+      if (record.model) {
+        modelSet.add(record.model)
+      }
+      if (normalizedAccountType) {
+        accountTypeSet.add(normalizedAccountType)
+      }
+      if (normalizedUsageCaptureState) {
+        usageCaptureStateSet.add(normalizedUsageCaptureState)
+      }
+      if (normalizedRequestRegion) {
+        requestRegionSet.add(normalizedRequestRegion)
+      }
+      apiKeyOptionMap.set(record.apiKeyId, { id: record.apiKeyId, name: record.apiKeyName })
+
+      if (record.timestamp) {
+        const ts = new Date(record.timestamp)
+        if (!Number.isNaN(ts.getTime())) {
+          if (!earliestTimestamp || ts < earliestTimestamp) {
+            earliestTimestamp = ts
+          }
+          if (!latestTimestamp || ts > latestTimestamp) {
+            latestTimestamp = ts
+          }
+        }
+      }
+    }
+
+    const filteredRecords = baseFilteredRecords.filter((record) => {
+      if (accountType && (record.accountType || 'unknown') !== accountType) {
+        return false
+      }
+      if (
+        usageCaptureState &&
+        (record.usageCaptureState || record.usage_capture_state || '') !== usageCaptureState
+      ) {
+        return false
+      }
+      if (requestRegion && (record.requestRegion || record.request_region || '') !== requestRegion) {
+        return false
+      }
+      return true
+    })
 
     filteredRecords.sort((a, b) => {
       const aTime = new Date(a.timestamp).getTime()
@@ -3328,6 +3464,8 @@ router.get('/accounts/:accountId/usage-records', authenticateAdmin, async (req, 
         accountName: accountInfo.name || accountInfo.email || accountId,
         accountType: record.accountType,
         accountTypeName: accountTypeNames[record.accountType] || '未知渠道',
+        usageCaptureState: record.usageCaptureState || record.usage_capture_state || null,
+        requestRegion: record.requestRegion || record.request_region || null,
         inputTokens: usage.input_tokens,
         outputTokens: usage.output_tokens,
         cacheCreateTokens: usage.cache_creation_input_tokens,
@@ -3375,6 +3513,9 @@ router.get('/accounts/:accountId/usage-records', authenticateAdmin, async (req, 
           model: model || null,
           apiKeyId: apiKeyId || null,
           platform: accountInfo.platform,
+          accountType: accountType || null,
+          usageCaptureState: usageCaptureState || null,
+          requestRegion: requestRegion || null,
           sortOrder: normalizedSortOrder,
           costMode: displayCostMode
         },
@@ -3411,6 +3552,9 @@ router.get('/accounts/:accountId/usage-records', authenticateAdmin, async (req, 
         availableFilters: {
           models: Array.from(modelSet),
           apiKeys: Array.from(apiKeyOptionMap.values()),
+          accountTypes: Array.from(accountTypeSet),
+          usageCaptureStates: Array.from(usageCaptureStateSet),
+          requestRegions: Array.from(requestRegionSet),
           dateRange: {
             earliest: earliestTimestamp ? earliestTimestamp.toISOString() : null,
             latest: latestTimestamp ? latestTimestamp.toISOString() : null

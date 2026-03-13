@@ -15,6 +15,7 @@ const { updateRateLimitCounters } = require('../utils/rateLimitHelper')
 const claudeRelayConfigService = require('../services/claudeRelayConfigService')
 const claudeAccountService = require('../services/account/claudeAccountService')
 const claudeConsoleAccountService = require('../services/account/claudeConsoleAccountService')
+const gcpVertexAccountService = require('../services/account/gcpVertexAccountService')
 const {
   isWarmupRequest,
   buildMockWarmupResponse,
@@ -71,6 +72,48 @@ function queueRateLimitUpdate(
       logger.error(`❌ Failed to update rate limit counters${label}:`, error)
       return { totalTokens: 0, totalCost: 0 }
     })
+}
+
+function logVertexUsageReconciliation({
+  mode,
+  requestId,
+  accountId,
+  model,
+  requestRegion,
+  usageCaptureState,
+  inputTokens,
+  outputTokens,
+  cacheCreateTokens,
+  cacheReadTokens
+}) {
+  logger.info('📊 Vertex usage reconciliation', {
+    mode,
+    requestId: requestId || null,
+    accountId: accountId || null,
+    model: model || 'unknown',
+    request_region: requestRegion || 'global',
+    usage_capture_state: usageCaptureState || 'complete',
+    input_tokens: inputTokens || 0,
+    output_tokens: outputTokens || 0,
+    cache_creation_input_tokens: cacheCreateTokens || 0,
+    cache_read_input_tokens: cacheReadTokens || 0,
+    total_tokens:
+      (inputTokens || 0) + (outputTokens || 0) + (cacheCreateTokens || 0) + (cacheReadTokens || 0)
+  })
+}
+
+async function getVertexRequestRegion(accountType, accountId) {
+  if (accountType !== 'claude-vertex' || !accountId) {
+    return ''
+  }
+
+  try {
+    const account = await gcpVertexAccountService.getAccount(accountId)
+    return account?.location || 'global'
+  } catch (error) {
+    logger.warn(`⚠️ Failed to resolve Vertex account region for ${accountId}:`, error.message)
+    return 'global'
+  }
 }
 
 /**
@@ -404,6 +447,8 @@ async function handleMessagesRequest(req, res) {
         )
       }
 
+      const vertexRequestRegion = await getVertexRequestRegion(accountType, accountId)
+
       // 🔗 在成功调度后建立会话绑定（仅 claude-official 类型）
       // claude-official 只接受：1) 新会话 2) 已绑定的会话
       if (
@@ -723,10 +768,7 @@ async function handleMessagesRequest(req, res) {
               JSON.stringify(usageData, null, 2)
             )
 
-            if (
-              usageData &&
-              usageData.input_tokens !== undefined
-            ) {
+            if (usageData && usageData.input_tokens !== undefined) {
               const inputTokens = usageData.input_tokens || 0
               const outputTokens = usageData.output_tokens ?? 0
               let cacheCreateTokens = usageData.cache_creation_input_tokens || 0
@@ -741,89 +783,104 @@ async function handleMessagesRequest(req, res) {
 
               const cacheReadTokens = usageData.cache_read_input_tokens || 0
               const model = usageData.model || 'unknown'
-              const usageAccountId = usageData.accountId
+              const usageAccountId = usageData.accountId || accountId
 
-	              const usageObject = {
-	                input_tokens: inputTokens,
-	                output_tokens: outputTokens,
-	                cache_creation_input_tokens: cacheCreateTokens,
-	                cache_read_input_tokens: cacheReadTokens
-	              }
-	              const requestBetaHeader =
-	                _headersVertex['anthropic-beta'] ||
-	                _headersVertex['Anthropic-Beta'] ||
-	                _headersVertex['ANTHROPIC-BETA']
-	              if (requestBetaHeader) {
-	                usageObject.request_anthropic_beta = requestBetaHeader
-	              }
-	              if (
-	                typeof _requestBodyVertex?.speed === 'string' &&
-	                _requestBodyVertex.speed.trim()
-	              ) {
-	                usageObject.request_speed = _requestBodyVertex.speed.trim().toLowerCase()
-	              }
-	              if (typeof usageData.speed === 'string' && usageData.speed.trim()) {
-	                usageObject.speed = usageData.speed.trim().toLowerCase()
-	              }
-	              if (
-	                typeof usageData.usage_capture_state === 'string' &&
-	                usageData.usage_capture_state.trim()
-	              ) {
-	                usageObject.usage_capture_state = usageData.usage_capture_state.trim().toLowerCase()
-	              }
+              const usageObject = {
+                input_tokens: inputTokens,
+                output_tokens: outputTokens,
+                cache_creation_input_tokens: cacheCreateTokens,
+                cache_read_input_tokens: cacheReadTokens
+              }
+              const requestBetaHeader =
+                _headersVertex['anthropic-beta'] ||
+                _headersVertex['Anthropic-Beta'] ||
+                _headersVertex['ANTHROPIC-BETA']
+              if (requestBetaHeader) {
+                usageObject.request_anthropic_beta = requestBetaHeader
+              }
+              if (
+                typeof _requestBodyVertex?.speed === 'string' &&
+                _requestBodyVertex.speed.trim()
+              ) {
+                usageObject.request_speed = _requestBodyVertex.speed.trim().toLowerCase()
+              }
+              if (typeof usageData.speed === 'string' && usageData.speed.trim()) {
+                usageObject.speed = usageData.speed.trim().toLowerCase()
+              }
+              if (
+                typeof usageData.usage_capture_state === 'string' &&
+                usageData.usage_capture_state.trim()
+              ) {
+                usageObject.usage_capture_state = usageData.usage_capture_state.trim().toLowerCase()
+              }
+              usageObject.request_provider = 'vertex'
+              usageObject.request_region = vertexRequestRegion || 'global'
 
-	              if (ephemeral5mTokens > 0 || ephemeral1hTokens > 0) {
-	                usageObject.cache_creation = {
-	                  ephemeral_5m_input_tokens: ephemeral5mTokens,
-	                  ephemeral_1h_input_tokens: ephemeral1hTokens
+              logVertexUsageReconciliation({
+                mode: 'stream',
+                requestId: req.requestId || null,
+                accountId: usageAccountId,
+                model,
+                requestRegion: vertexRequestRegion || 'global',
+                usageCaptureState: usageObject.usage_capture_state || 'complete',
+                inputTokens,
+                outputTokens,
+                cacheCreateTokens,
+                cacheReadTokens
+              })
+
+              if (ephemeral5mTokens > 0 || ephemeral1hTokens > 0) {
+                usageObject.cache_creation = {
+                  ephemeral_5m_input_tokens: ephemeral5mTokens,
+                  ephemeral_1h_input_tokens: ephemeral1hTokens
                 }
               }
 
-	              apiKeyService
-	                .recordUsageWithDetails(
-	                  _apiKeyIdVertex,
-	                  usageObject,
-	                  model,
-	                  usageAccountId,
-	                  accountType
-	                )
-	                .then((costs) => {
-	                  queueRateLimitUpdate(
-	                    _rateLimitInfoVertex,
-	                    {
-	                      inputTokens,
-	                      outputTokens,
-	                      cacheCreateTokens,
-	                      cacheReadTokens
-	                    },
-	                    model,
-	                    'claude-vertex-stream',
-	                    _apiKeyIdVertex,
-	                    accountType,
-	                    costs
-	                  )
-	                })
-	                .catch((error) => {
-	                  logger.error('❌ Failed to record stream usage:', error)
-	                  queueRateLimitUpdate(
-	                    _rateLimitInfoVertex,
-	                    {
-	                      inputTokens,
-	                      outputTokens,
-	                      cacheCreateTokens,
-	                      cacheReadTokens
-	                    },
-	                    model,
-	                    'claude-vertex-stream',
-	                    _apiKeyIdVertex,
-	                    accountType
-	                  )
-	                })
+              apiKeyService
+                .recordUsageWithDetails(
+                  _apiKeyIdVertex,
+                  usageObject,
+                  model,
+                  usageAccountId,
+                  accountType
+                )
+                .then((costs) => {
+                  queueRateLimitUpdate(
+                    _rateLimitInfoVertex,
+                    {
+                      inputTokens,
+                      outputTokens,
+                      cacheCreateTokens,
+                      cacheReadTokens
+                    },
+                    model,
+                    'claude-vertex-stream',
+                    _apiKeyIdVertex,
+                    accountType,
+                    costs
+                  )
+                })
+                .catch((error) => {
+                  logger.error('❌ Failed to record stream usage:', error)
+                  queueRateLimitUpdate(
+                    _rateLimitInfoVertex,
+                    {
+                      inputTokens,
+                      outputTokens,
+                      cacheCreateTokens,
+                      cacheReadTokens
+                    },
+                    model,
+                    'claude-vertex-stream',
+                    _apiKeyIdVertex,
+                    accountType
+                  )
+                })
 
-	              usageDataCaptured = true
-	              logger.api(
-	                `📊 Stream usage recorded (real) - Model: ${model}, Input: ${inputTokens}, Output: ${outputTokens}, Cache Create: ${cacheCreateTokens}, Cache Read: ${cacheReadTokens}, Total: ${inputTokens + outputTokens + cacheCreateTokens + cacheReadTokens} tokens`
-	              )
+              usageDataCaptured = true
+              logger.api(
+                `📊 Stream usage recorded (real) - Model: ${model}, Input: ${inputTokens}, Output: ${outputTokens}, Cache Create: ${cacheCreateTokens}, Cache Read: ${cacheReadTokens}, Total: ${inputTokens + outputTokens + cacheCreateTokens + cacheReadTokens} tokens`
+              )
             } else {
               logger.warn(
                 '⚠️ Usage callback triggered but data is incomplete:',
@@ -1196,6 +1253,8 @@ async function handleMessagesRequest(req, res) {
         throw error
       }
 
+      const vertexRequestRegion = await getVertexRequestRegion(accountType, accountId)
+
       // 🔗 在成功调度后建立会话绑定（非流式，仅 claude-official 类型）
       // claude-official 只接受：1) 新会话 2) 已绑定的会话
       if (
@@ -1359,14 +1418,11 @@ async function handleMessagesRequest(req, res) {
 
         logger.info('📊 Parsed Claude API response:', JSON.stringify(jsonData, null, 2))
 
-        // 从Claude API响应中提取usage信息（完整的token分类体系）
-        if (
-          jsonData.usage &&
-          jsonData.usage.input_tokens !== undefined &&
-          jsonData.usage.output_tokens !== undefined
-        ) {
+        // 从Claude API响应中提取usage信息（支持完整/部分 usage）
+        if (jsonData.usage && jsonData.usage.input_tokens !== undefined) {
           const inputTokens = jsonData.usage.input_tokens || 0
-          const outputTokens = jsonData.usage.output_tokens || 0
+          const hasOutputTokens = jsonData.usage.output_tokens !== undefined
+          const outputTokens = hasOutputTokens ? jsonData.usage.output_tokens || 0 : 0
           let cacheCreateTokens = jsonData.usage.cache_creation_input_tokens || 0
           let ephemeral5mTokens = 0
           let ephemeral1hTokens = 0
@@ -1407,6 +1463,27 @@ async function handleMessagesRequest(req, res) {
           }
           if (typeof jsonData.usage.speed === 'string' && jsonData.usage.speed.trim()) {
             usageObject.speed = jsonData.usage.speed.trim().toLowerCase()
+          }
+          if (accountType === 'claude-vertex' && !hasOutputTokens) {
+            usageObject.usage_capture_state = 'partial'
+            logger.warn(
+              `⚠️ Vertex non-stream usage missing output_tokens, recording partial usage for account ${response.accountId || accountId || 'unknown'}`
+            )
+          }
+
+          if (accountType === 'claude-vertex') {
+            logVertexUsageReconciliation({
+              mode: 'non-stream',
+              requestId: req.requestId || null,
+              accountId: response.accountId || accountId || null,
+              model,
+              requestRegion: vertexRequestRegion || 'global',
+              usageCaptureState: usageObject.usage_capture_state || 'complete',
+              inputTokens,
+              outputTokens,
+              cacheCreateTokens,
+              cacheReadTokens
+            })
           }
 
           // 添加 cache_creation 子对象

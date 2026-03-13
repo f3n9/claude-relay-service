@@ -256,6 +256,23 @@ describe('PricingService - 200K+ Long Context Pricing', () => {
       expect(result.pricing.output).toBe(0.0000225)
     })
 
+    it('Vertex Claude Sonnet 4.6 超过 200K 时即使没有 1m beta 也应触发长上下文计费', () => {
+      const usage = {
+        input_tokens: 210000,
+        output_tokens: 1000,
+        cache_creation_input_tokens: 0,
+        cache_read_input_tokens: 0,
+        request_provider: 'vertex',
+        request_region: 'global'
+      }
+
+      const result = pricingService.calculateCost(usage, 'claude-sonnet-4-6')
+
+      expect(result.isLongContextRequest).toBe(true)
+      expect(result.pricing.input).toBe(0.000006)
+      expect(result.pricing.output).toBe(0.0000225)
+    })
+
     it('Opus 4.6 在 fast-mode beta + speed=fast 时应用 Fast Mode 6x', () => {
       const usage = {
         input_tokens: 100000,
@@ -295,6 +312,24 @@ describe('PricingService - 200K+ Long Context Pricing', () => {
       expect(result.pricing.input).toBeCloseTo(0.00006, 12)
       // output: 0.000025 -> long context 0.0000375 -> fast 6x => 0.000225 (即标准 9x)
       expect(result.pricing.output).toBeCloseTo(0.000225, 12)
+    })
+
+    it('Vertex regional endpoint 应应用 provider specific regional premium', () => {
+      const usage = {
+        input_tokens: 100000,
+        output_tokens: 20000,
+        cache_creation_input_tokens: 10000,
+        cache_read_input_tokens: 5000,
+        request_provider: 'vertex',
+        request_region: 'us-east5'
+      }
+
+      const result = pricingService.calculateCost(usage, 'claude-opus-4-6')
+
+      expect(result.pricing.input).toBeCloseTo(0.0000055, 12)
+      expect(result.pricing.output).toBeCloseTo(0.0000275, 12)
+      expect(result.pricing.cacheCreate).toBeCloseTo(0.000006875, 12)
+      expect(result.pricing.cacheRead).toBeCloseTo(0.00000055, 12)
     })
   })
 

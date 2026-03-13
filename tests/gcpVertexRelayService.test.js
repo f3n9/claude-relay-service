@@ -44,6 +44,7 @@ const axios = require('axios')
 const gcpVertexAccountService = require('../src/services/account/gcpVertexAccountService')
 const userMessageQueueService = require('../src/services/userMessageQueueService')
 const gcpVertexRelayService = require('../src/services/relay/gcpVertexRelayService')
+const logger = require('../src/utils/logger')
 
 describe('gcpVertexRelayService', () => {
   beforeEach(() => {
@@ -403,6 +404,90 @@ describe('gcpVertexRelayService', () => {
         usage_capture_state: 'complete',
         accountId: 'vertex-account-1'
       })
+    )
+  })
+
+  it('captures usage from message_start.delta payloads before stream closes', async () => {
+    const upstreamStream = new EventEmitter()
+    upstreamStream.destroy = jest.fn()
+
+    axios.post.mockImplementation(async () => {
+      setImmediate(() => {
+        upstreamStream.emit(
+          'data',
+          Buffer.from(
+            'data: {"type":"message_start","message":{"model":"claude-opus-4-1"}}\n\ndata: {"type":"message_start_delta","usage":{"input_tokens":21,"cache_creation_input_tokens":3,"cache_read_input_tokens":2}}\n\n'
+          )
+        )
+        upstreamStream.emit(
+          'data',
+          Buffer.from('data: {"type":"message_delta","usage":{"output_tokens":8}}\n\n')
+        )
+        upstreamStream.emit('close')
+      })
+      return {
+        status: 200,
+        headers: {},
+        data: upstreamStream
+      }
+    })
+
+    const usageCallback = jest.fn()
+    await gcpVertexRelayService.relayStreamRequestWithUsageCapture(
+      { model: 'claude-opus-4-1', stream: true },
+      { id: 'key-1', name: 'key-1' },
+      createMockResponse(),
+      {},
+      usageCallback,
+      'vertex-account-1'
+    )
+
+    expect(usageCallback).toHaveBeenCalledTimes(1)
+    expect(usageCallback).toHaveBeenCalledWith(
+      expect.objectContaining({
+        input_tokens: 21,
+        cache_creation_input_tokens: 3,
+        cache_read_input_tokens: 2,
+        output_tokens: 8,
+        usage_capture_state: 'complete',
+        model: 'claude-opus-4-1',
+        accountId: 'vertex-account-1'
+      })
+    )
+    expect(logger.debug).toHaveBeenCalledWith(
+      expect.stringContaining('Parsed Vertex stream usage from message_start_delta')
+    )
+  })
+
+  it('logs missing stream usage when stream closes without parsable usage', async () => {
+    const upstreamStream = new EventEmitter()
+    upstreamStream.destroy = jest.fn()
+
+    axios.post.mockImplementation(async () => {
+      setImmediate(() => {
+        upstreamStream.emit('data', Buffer.from('data: {"type":"ping"}\n\n'))
+        upstreamStream.emit('close')
+      })
+      return {
+        status: 200,
+        headers: {},
+        data: upstreamStream
+      }
+    })
+
+    const usageCallback = jest.fn()
+    await gcpVertexRelayService.relayStreamRequestWithUsageCapture(
+      { model: 'claude-opus-4-1', stream: true },
+      { id: 'key-1', name: 'key-1' },
+      createMockResponse(),
+      {},
+      usageCallback,
+      'vertex-account-1'
+    )
+
+    expect(usageCallback).not.toHaveBeenCalled()
+    expect(logger.warn).toHaveBeenCalledWith(
+      expect.stringContaining('No Vertex stream usage captured')
     )
   })
 

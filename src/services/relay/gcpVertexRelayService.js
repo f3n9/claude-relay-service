@@ -497,6 +497,24 @@ class GcpVertexRelayService {
               collectedUsage.model = data.message.model
             }
           }
+          if (data.type === 'message_start_delta' && data.usage) {
+            if (data.usage.input_tokens !== undefined) {
+              collectedUsage.input_tokens = data.usage.input_tokens || 0
+            }
+            if (data.usage.cache_creation_input_tokens !== undefined) {
+              collectedUsage.cache_creation_input_tokens =
+                data.usage.cache_creation_input_tokens || 0
+            }
+            if (data.usage.cache_read_input_tokens !== undefined) {
+              collectedUsage.cache_read_input_tokens = data.usage.cache_read_input_tokens || 0
+            }
+            if (data.usage.cache_creation && typeof data.usage.cache_creation === 'object') {
+              collectedUsage.cache_creation = data.usage.cache_creation
+            }
+            logger.debug(
+              `📊 Parsed Vertex stream usage from message_start_delta for account ${accountId}`
+            )
+          }
           if (data.type === 'message_delta' && data.usage) {
             collectedUsage.output_tokens = data.usage.output_tokens || 0
           }
@@ -587,6 +605,9 @@ class GcpVertexRelayService {
             streamFinished = true
             cleanupClientListeners()
             emitUsageIfAvailable('close')
+            if (!usageEmitted) {
+              logger.warn(`⚠️ No Vertex stream usage captured for account ${accountId}, request: ${requestId}`)
+            }
             if (isStreamWritable(clientResponse)) {
               clientResponse.end()
             }

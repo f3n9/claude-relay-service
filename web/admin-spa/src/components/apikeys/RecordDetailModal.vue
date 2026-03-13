@@ -53,6 +53,14 @@
               <span class="text-gray-500 dark:text-gray-400">渠道</span>
               <span class="font-medium">{{ record?.accountTypeName || '未知渠道' }}</span>
             </li>
+            <li class="flex items-center justify-between">
+              <span class="text-gray-500 dark:text-gray-400">使用状态</span>
+              <span class="font-medium">{{ record?.usageCaptureState || 'unknown' }}</span>
+            </li>
+            <li class="flex items-center justify-between">
+              <span class="text-gray-500 dark:text-gray-400">请求区域</span>
+              <span class="font-medium">{{ record?.requestRegion || 'global' }}</span>
+            </li>
           </ul>
         </div>
 

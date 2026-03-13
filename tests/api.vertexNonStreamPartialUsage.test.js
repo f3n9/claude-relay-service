@@ -1,5 +1,5 @@
 jest.mock('../src/services/relay/gcpVertexRelayService', () => ({
-  relayStreamRequestWithUsageCapture: jest.fn()
+  relayRequest: jest.fn()
 }))
 
 jest.mock('../src/services/scheduler/unifiedClaudeScheduler', () => ({
@@ -29,7 +29,7 @@ jest.mock('../src/utils/sessionHelper', () => ({
 
 jest.mock('../src/utils/modelHelper', () => ({
   getEffectiveModel: jest.fn((model) => model),
-  parseVendorPrefixedModel: jest.fn((model) => ({ model, vendor: null }))
+  parseVendorPrefixedModel: jest.fn((model) => ({ baseModel: model, vendor: null }))
 }))
 
 jest.mock('../src/services/claudeRelayConfigService', () => ({
@@ -94,7 +94,7 @@ const apiKeyService = require('../src/services/apiKeyService')
 const { updateRateLimitCounters } = require('../src/utils/rateLimitHelper')
 const logger = require('../src/utils/logger')
 
-describe('API /v1/messages Vertex streaming rate limit costs', () => {
+describe('API /v1/messages Vertex non-stream partial usage', () => {
   beforeEach(() => {
     jest.clearAllMocks()
   })
@@ -107,7 +107,7 @@ describe('API /v1/messages Vertex streaming rate limit costs', () => {
     return routeLayer.route.stack[routeLayer.route.stack.length - 1].handle
   }
 
-  it('passes recordUsageWithDetails costs into updateRateLimitCounters for claude-vertex streaming', async () => {
+  it('records partial non-stream vertex usage when output_tokens is missing', async () => {
     apiKeyService.hasPermission.mockReturnValue(true)
     unifiedClaudeScheduler.selectAccountForApiKey.mockResolvedValue({
       accountId: 'vertex-account-1',
@@ -115,155 +115,73 @@ describe('API /v1/messages Vertex streaming rate limit costs', () => {
     })
     gcpVertexAccountService.getAccount.mockResolvedValue({
       id: 'vertex-account-1',
-      location: 'us-east5'
+      location: 'us-central1'
     })
 
-    const costs = { realCost: 1.23, ratedCost: 4.56 }
+    const costs = { realCost: 0.21, ratedCost: 0.43 }
     apiKeyService.recordUsageWithDetails.mockResolvedValue(costs)
     updateRateLimitCounters.mockResolvedValue({ totalTokens: 0, totalCost: 0, ratedCost: 0 })
 
-    gcpVertexRelayService.relayStreamRequestWithUsageCapture.mockImplementation(
-      async (_body, _apiKey, _res, _headers, usageCallback) => {
-        usageCallback({
-          input_tokens: 100,
-          output_tokens: 50,
-          cache_creation: { ephemeral_1h_input_tokens: 10 },
-          cache_read_input_tokens: 5,
-          model: 'claude-opus-4-6'
-        })
-      }
-    )
-
-    const handler = getMessagesHandler()
-    const req = {
-      body: {
-        stream: true,
+    gcpVertexRelayService.relayRequest.mockResolvedValue({
+      statusCode: 200,
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
         model: 'claude-opus-4-6',
-        messages: [{ role: 'user', content: 'hi' }],
-        speed: 'fast'
-      },
-      headers: {
-        'anthropic-beta': 'fast-mode-2026-02-01'
-      },
-      requestId: 'req-vertex-stream-1',
-      apiKey: { id: 'key-1', permissions: [], enableModelRestriction: false },
-      rateLimitInfo: { tokenCountKey: 't', costCountKey: 'c' }
-    }
-    const res = {
-      status: jest.fn().mockReturnThis(),
-      json: jest.fn().mockReturnThis(),
-      setHeader: jest.fn(),
-      getHeader: jest.fn(),
-      headersSent: false,
-      destroyed: false,
-      finished: false,
-      write: jest.fn(),
-      end: jest.fn()
-    }
-
-    await handler(req, res)
-    await new Promise((resolve) => setImmediate(resolve))
-
-    expect(res.status).not.toHaveBeenCalled()
-    expect(unifiedClaudeScheduler.selectAccountForApiKey).toHaveBeenCalled()
-    expect(gcpVertexRelayService.relayStreamRequestWithUsageCapture).toHaveBeenCalled()
-    expect(apiKeyService.recordUsageWithDetails).toHaveBeenCalledWith(
-      'key-1',
-      expect.objectContaining({
-        request_provider: 'vertex',
-        request_region: 'us-east5',
-        request_anthropic_beta: 'fast-mode-2026-02-01',
-        request_speed: 'fast'
+        usage: {
+          input_tokens: 123,
+          cache_creation_input_tokens: 9,
+          cache_read_input_tokens: 4
+        }
       }),
-      'claude-opus-4-6',
-      'vertex-account-1',
-      'claude-vertex'
-    )
-    expect(updateRateLimitCounters).toHaveBeenCalled()
-    expect(updateRateLimitCounters.mock.calls[0][5]).toEqual(costs)
-    expect(logger.info).toHaveBeenCalledWith(
-      '📊 Vertex usage reconciliation',
-      expect.objectContaining({
-        mode: 'stream',
-        accountId: 'vertex-account-1',
-        model: 'claude-opus-4-6',
-        request_region: 'us-east5',
-        requestId: 'req-vertex-stream-1',
-        usage_capture_state: 'complete',
-        input_tokens: 100,
-        output_tokens: 50,
-        cache_creation_input_tokens: 10,
-        cache_read_input_tokens: 5,
-        total_tokens: 165
-      })
-    )
-  })
-
-  it('records partial vertex usage when output_tokens is missing', async () => {
-    apiKeyService.hasPermission.mockReturnValue(true)
-    unifiedClaudeScheduler.selectAccountForApiKey.mockResolvedValue({
-      accountId: 'vertex-account-1',
-      accountType: 'claude-vertex'
+      accountId: 'vertex-account-1'
     })
-    gcpVertexAccountService.getAccount.mockResolvedValue({
-      id: 'vertex-account-1',
-      location: 'global'
-    })
-
-    const costs = { realCost: 0.12, ratedCost: 0.34 }
-    apiKeyService.recordUsageWithDetails.mockResolvedValue(costs)
-    updateRateLimitCounters.mockResolvedValue({ totalTokens: 0, totalCost: 0, ratedCost: 0 })
-
-    gcpVertexRelayService.relayStreamRequestWithUsageCapture.mockImplementation(
-      async (_body, _apiKey, _res, _headers, usageCallback) => {
-        usageCallback({
-          input_tokens: 88,
-          cache_creation_input_tokens: 5,
-          cache_read_input_tokens: 3,
-          usage_capture_state: 'partial',
-          model: 'claude-opus-4-6',
-          accountId: 'vertex-account-1'
-        })
-      }
-    )
 
     const handler = getMessagesHandler()
     const req = {
       body: {
-        stream: true,
+        stream: false,
         model: 'claude-opus-4-6',
         messages: [{ role: 'user', content: 'hi' }]
       },
-      headers: {},
-      requestId: 'req-vertex-stream-2',
-      apiKey: { id: 'key-2', permissions: [], enableModelRestriction: false },
-      rateLimitInfo: { tokenCountKey: 't2', costCountKey: 'c2' }
+      headers: {
+        'anthropic-beta': 'vertex-beta-1'
+      },
+      query: {},
+      url: '/v1/messages',
+      path: '/v1/messages',
+      requestId: 'req-vertex-nonstream-1',
+      apiKey: { id: 'key-3', name: 'key-3', permissions: [], enableModelRestriction: false },
+      rateLimitInfo: { tokenCountKey: 't3', costCountKey: 'c3' }
     }
     const res = {
       status: jest.fn().mockReturnThis(),
       json: jest.fn().mockReturnThis(),
+      send: jest.fn().mockReturnThis(),
       setHeader: jest.fn(),
-      getHeader: jest.fn(),
       headersSent: false,
       destroyed: false,
       finished: false,
-      write: jest.fn(),
-      end: jest.fn()
+      writableEnded: false,
+      socket: {
+        destroyed: false,
+        once: jest.fn(),
+        removeListener: jest.fn()
+      },
+      once: jest.fn()
     }
 
     await handler(req, res)
-    await new Promise((resolve) => setImmediate(resolve))
 
+    expect(gcpVertexRelayService.relayRequest).toHaveBeenCalledTimes(1)
     expect(apiKeyService.recordUsageWithDetails).toHaveBeenCalledWith(
-      'key-2',
+      'key-3',
       expect.objectContaining({
-        input_tokens: 88,
+        input_tokens: 123,
         output_tokens: 0,
-        cache_creation_input_tokens: 5,
-        cache_read_input_tokens: 3,
+        cache_creation_input_tokens: 9,
+        cache_read_input_tokens: 4,
         usage_capture_state: 'partial',
-        request_provider: 'vertex',
-        request_region: 'global'
+        request_anthropic_beta: 'vertex-beta-1'
       }),
       'claude-opus-4-6',
       'vertex-account-1',
@@ -271,20 +189,23 @@ describe('API /v1/messages Vertex streaming rate limit costs', () => {
     )
     expect(updateRateLimitCounters).toHaveBeenCalled()
     expect(updateRateLimitCounters.mock.calls[0][5]).toEqual(costs)
+    expect(logger.warn).toHaveBeenCalledWith(
+      expect.stringContaining('Vertex non-stream usage missing output_tokens')
+    )
     expect(logger.info).toHaveBeenCalledWith(
       '📊 Vertex usage reconciliation',
       expect.objectContaining({
-        mode: 'stream',
+        mode: 'non-stream',
         accountId: 'vertex-account-1',
         model: 'claude-opus-4-6',
-        request_region: 'global',
-        requestId: 'req-vertex-stream-2',
+        request_region: 'us-central1',
+        requestId: 'req-vertex-nonstream-1',
         usage_capture_state: 'partial',
-        input_tokens: 88,
+        input_tokens: 123,
         output_tokens: 0,
-        cache_creation_input_tokens: 5,
-        cache_read_input_tokens: 3,
-        total_tokens: 96
+        cache_creation_input_tokens: 9,
+        cache_read_input_tokens: 4,
+        total_tokens: 136
       })
     )
   })

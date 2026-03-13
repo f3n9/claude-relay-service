@@ -122,6 +122,44 @@
           />
         </el-select>
 
+        <el-select v-model="filters.accountType" class="w-[180px]" clearable placeholder="所有渠道">
+          <el-option
+            v-for="accountTypeOption in availableAccountTypes"
+            :key="accountTypeOption.value"
+            :label="accountTypeOption.label"
+            :value="accountTypeOption.value"
+          />
+        </el-select>
+
+        <el-select
+          v-model="filters.usageCaptureState"
+          class="w-[180px]"
+          clearable
+          placeholder="所有状态"
+        >
+          <el-option
+            v-for="state in availableUsageCaptureStates"
+            :key="state"
+            :label="state"
+            :value="state"
+          />
+        </el-select>
+
+        <el-select
+          v-model="filters.requestRegion"
+          class="w-[180px]"
+          clearable
+          filterable
+          placeholder="所有区域"
+        >
+          <el-option
+            v-for="region in availableRequestRegions"
+            :key="region"
+            :label="region"
+            :value="region"
+          />
+        </el-select>
+
         <el-select v-model="filters.sortOrder" class="w-[140px]" placeholder="排序">
           <el-option label="时间降序" value="desc" />
           <el-option label="时间升序" value="asc" />
@@ -338,6 +376,9 @@ const exporting = ref(false)
 const records = ref([])
 const availableModels = ref([])
 const availableApiKeys = ref([])
+const availableAccountTypeValues = ref([])
+const availableUsageCaptureStates = ref([])
+const availableRequestRegions = ref([])
 
 const pagination = reactive({
   currentPage: 1,
@@ -349,6 +390,9 @@ const filters = reactive({
   dateRange: null,
   model: '',
   apiKeyId: '',
+  accountType: '',
+  usageCaptureState: '',
+  requestRegion: '',
   sortOrder: 'desc'
 })
 
@@ -429,6 +473,28 @@ const avgSecondaryCost = computed(() =>
   summary.displayCostMode === 'rated' ? summary.avgRealCost : summary.avgRatedCost
 )
 
+const accountTypeLabelMap = {
+  claude: 'Claude官方',
+  'claude-official': 'Claude官方',
+  'claude-console': 'Claude Console',
+  'claude-vertex': 'GCP Vertex Claude',
+  ccr: 'Claude Console Relay',
+  openai: 'OpenAI',
+  'openai-responses': 'OpenAI Responses',
+  gemini: 'Gemini',
+  'gemini-api': 'Gemini API',
+  droid: 'Droid',
+  bedrock: 'AWS Bedrock',
+  unknown: '未知渠道'
+}
+
+const availableAccountTypes = computed(() =>
+  availableAccountTypeValues.value.map((value) => ({
+    value,
+    label: accountTypeLabelMap[value] || value
+  }))
+)
+
 const normalizeRecordCost = (record = {}, fallbackMode = 'real') => {
   const realCost = normalizeCostValue(record.realCost, 0)
   const ratedCost = normalizeCostValue(record.ratedCost, normalizeCostValue(record.cost, realCost))
@@ -478,6 +544,9 @@ const buildParams = (page) => {
 
   if (filters.model) params.model = filters.model
   if (filters.apiKeyId) params.apiKeyId = filters.apiKeyId
+  if (filters.accountType) params.accountType = filters.accountType
+  if (filters.usageCaptureState) params.usageCaptureState = filters.usageCaptureState
+  if (filters.requestRegion) params.requestRegion = filters.requestRegion
   if (filters.dateRange && filters.dateRange.length === 2) {
     params.startDate = dayjs(filters.dateRange[0]).toISOString()
     params.endDate = dayjs(filters.dateRange[1]).toISOString()
@@ -506,6 +575,11 @@ const syncResponseState = (data) => {
 
   if (filterEcho.model !== undefined) filters.model = filterEcho.model || ''
   if (filterEcho.apiKeyId !== undefined) filters.apiKeyId = filterEcho.apiKeyId || ''
+  if (filterEcho.accountType !== undefined) filters.accountType = filterEcho.accountType || ''
+  if (filterEcho.usageCaptureState !== undefined) {
+    filters.usageCaptureState = filterEcho.usageCaptureState || ''
+  }
+  if (filterEcho.requestRegion !== undefined) filters.requestRegion = filterEcho.requestRegion || ''
   if (filterEcho.sortOrder) filters.sortOrder = filterEcho.sortOrder
   if (filterEcho.startDate && filterEcho.endDate) {
     const nextRange = [filterEcho.startDate, filterEcho.endDate]
@@ -543,6 +617,9 @@ const syncResponseState = (data) => {
 
   availableModels.value = data.availableFilters?.models || []
   availableApiKeys.value = data.availableFilters?.apiKeys || []
+  availableAccountTypeValues.value = data.availableFilters?.accountTypes || []
+  availableUsageCaptureStates.value = data.availableFilters?.usageCaptureStates || []
+  availableRequestRegions.value = data.availableFilters?.requestRegions || []
 }
 
 const fetchRecords = async (page = pagination.currentPage) => {
@@ -571,6 +648,9 @@ const handleSizeChange = (size) => {
 const resetFilters = () => {
   filters.model = ''
   filters.apiKeyId = ''
+  filters.accountType = ''
+  filters.usageCaptureState = ''
+  filters.requestRegion = ''
   filters.dateRange = null
   filters.sortOrder = 'desc'
   pagination.currentPage = 1
@@ -619,6 +699,9 @@ const exportCsv = async () => {
     const headers = [
       '时间',
       'API Key',
+      '渠道',
+      '使用状态',
+      '请求区域',
       '模型',
       '输入Token',
       '输出Token',
@@ -635,6 +718,9 @@ const exportCsv = async () => {
       const row = [
         formatDate(record.timestamp),
         record.apiKeyName || record.apiKeyId || '',
+        record.accountTypeName || '',
+        record.usageCaptureState || '',
+        record.requestRegion || '',
         record.model || '',
         record.inputTokens || 0,
         record.outputTokens || 0,
@@ -666,7 +752,14 @@ const exportCsv = async () => {
 }
 
 watch(
-  () => [filters.model, filters.apiKeyId, filters.sortOrder],
+  () => [
+    filters.model,
+    filters.apiKeyId,
+    filters.accountType,
+    filters.usageCaptureState,
+    filters.requestRegion,
+    filters.sortOrder
+  ],
   () => {
     pagination.currentPage = 1
     fetchRecords(1)

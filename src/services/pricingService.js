@@ -505,6 +505,40 @@ class PricingService {
     }
   }
 
+  extractRequestProvider(usage) {
+    if (!usage || typeof usage !== 'object') {
+      return ''
+    }
+
+    const candidate =
+      usage.request_provider || usage.requestProvider || usage.provider || usage.request_platform
+
+    return typeof candidate === 'string' && candidate.trim() ? candidate.trim().toLowerCase() : ''
+  }
+
+  extractRequestRegion(usage) {
+    if (!usage || typeof usage !== 'object') {
+      return ''
+    }
+
+    const candidate =
+      usage.request_region || usage.requestRegion || usage.region || usage.request_location
+
+    return typeof candidate === 'string' && candidate.trim() ? candidate.trim().toLowerCase() : ''
+  }
+
+  shouldUseVertexLongContextPricing({ provider, pricing, isClaudeModel, totalInputTokens }) {
+    if (provider !== 'vertex' || !pricing || !isClaudeModel || totalInputTokens <= 200000) {
+      return false
+    }
+
+    const has200kTierFields =
+      pricing.input_cost_per_token_above_200k_tokens !== null &&
+      pricing.input_cost_per_token_above_200k_tokens !== undefined
+
+    return has200kTierFields || Number(pricing.max_input_tokens || 0) > 200000
+  }
+
   // 去掉模型名中的 [1m] 后缀，便于价格查找
   stripLongContextSuffix(modelName) {
     if (typeof modelName !== 'string') {
@@ -533,13 +567,26 @@ class PricingService {
     const hasContext1mBeta = betaFeatures.has(this.claudeFeatureFlags.context1mBeta)
     const hasFastModeBeta = betaFeatures.has(this.claudeFeatureFlags.fastModeBeta)
     const { responseSpeed, requestSpeed } = this.extractSpeedSignal(usage)
+    const requestProvider = this.extractRequestProvider(usage)
+    const requestRegion = this.extractRequestRegion(usage)
     const hasFastSpeedSignal =
       responseSpeed === this.claudeFeatureFlags.fastModeSpeed ||
       requestSpeed === this.claudeFeatureFlags.fastModeSpeed
     const isFastModeRequest = hasFastModeBeta && hasFastSpeedSignal
     const standardPricing = this.getModelPricing(normalizedModelName)
     const pricing = standardPricing
-    const isLongContextModeEnabled = isLongContextModel || hasContext1mBeta
+    const isClaudeModel =
+      (modelName && modelName.toLowerCase().includes('claude')) ||
+      (typeof pricing?.litellm_provider === 'string' &&
+        pricing.litellm_provider.toLowerCase().includes('anthropic'))
+    const hasVertexLongContextSignal = this.shouldUseVertexLongContextPricing({
+      provider: requestProvider,
+      pricing,
+      isClaudeModel,
+      totalInputTokens
+    })
+    const isLongContextModeEnabled =
+      isLongContextModel || hasContext1mBeta || hasVertexLongContextSignal
 
     // Fast Mode 倍率：优先从 provider_specific_entry.fast 读取，默认 6 倍
     const fastMultiplier = isFastModeRequest ? pricing?.provider_specific_entry?.fast || 6 : 1
@@ -567,11 +614,6 @@ class PricingService {
         isLongContextRequest: false
       }
     }
-
-    const isClaudeModel =
-      (modelName && modelName.toLowerCase().includes('claude')) ||
-      (typeof pricing?.litellm_provider === 'string' &&
-        pricing.litellm_provider.toLowerCase().includes('anthropic'))
 
     if (isFastModeRequest && fastMultiplier > 1) {
       logger.info(
@@ -660,6 +702,19 @@ class PricingService {
       actualCacheCreatePrice *= fastMultiplier
       actualCacheReadPrice *= fastMultiplier
       actualEphemeral1hPrice *= fastMultiplier
+    }
+
+    const vertexRegionalPremium =
+      requestProvider === 'vertex' && requestRegion && requestRegion !== 'global'
+        ? pricing.provider_specific_entry?.us || 1
+        : 1
+
+    if (vertexRegionalPremium > 1) {
+      effectiveInputPrice *= vertexRegionalPremium
+      effectiveOutputPrice *= vertexRegionalPremium
+      actualCacheCreatePrice *= vertexRegionalPremium
+      actualCacheReadPrice *= vertexRegionalPremium
+      actualEphemeral1hPrice *= vertexRegionalPremium
     }
 
     // 计算各项费用

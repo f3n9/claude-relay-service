@@ -43,6 +43,10 @@ jest.mock('../src/services/scheduler/unifiedClaudeScheduler', () => ({
   selectAccountForApiKey: jest.fn()
 }))
 
+jest.mock('../src/services/account/gcpVertexAccountService', () => ({
+  getAccount: jest.fn()
+}))
+
 jest.mock('../src/services/claudeCodeHeadersService', () => ({
   getAccountHeaders: jest.fn()
 }))
@@ -72,6 +76,7 @@ const gcpVertexRelayService = require('../src/services/relay/gcpVertexRelayServi
 const openaiToClaude = require('../src/services/openaiToClaude')
 const apiKeyService = require('../src/services/apiKeyService')
 const unifiedClaudeScheduler = require('../src/services/scheduler/unifiedClaudeScheduler')
+const gcpVertexAccountService = require('../src/services/account/gcpVertexAccountService')
 const claudeCodeHeadersService = require('../src/services/claudeCodeHeadersService')
 const { updateRateLimitCounters } = require('../src/utils/rateLimitHelper')
 
@@ -109,6 +114,10 @@ describe('openaiClaudeRoutes vertex partial usage', () => {
     unifiedClaudeScheduler.selectAccountForApiKey.mockResolvedValue({
       accountId: 'vertex-acc-1',
       accountType: 'claude-vertex'
+    })
+    gcpVertexAccountService.getAccount.mockResolvedValue({
+      id: 'vertex-acc-1',
+      location: 'asia-east1'
     })
 
     claudeCodeHeadersService.getAccountHeaders.mockResolvedValue({
@@ -167,7 +176,9 @@ describe('openaiClaudeRoutes vertex partial usage', () => {
         cache_creation_input_tokens: 4,
         cache_read_input_tokens: 2,
         usage_capture_state: 'partial',
-        request_anthropic_beta: 'test-beta'
+        request_anthropic_beta: 'test-beta',
+        request_provider: 'vertex',
+        request_region: 'asia-east1'
       }),
       'claude-opus-4-6',
       'vertex-acc-1',

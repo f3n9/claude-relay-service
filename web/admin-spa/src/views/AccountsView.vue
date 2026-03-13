@@ -2405,6 +2405,7 @@ const accountUsageGeneratedAt = ref('')
 const supportedUsagePlatforms = [
   'claude',
   'claude-console',
+  'claude-vertex',
   'openai',
   'openai-responses',
   'gemini',
