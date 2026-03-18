@@ -448,7 +448,6 @@ async function handleMessagesRequest(req, res) {
       }
 
       const vertexRequestRegion = await getVertexRequestRegion(accountType, accountId)
-
       // 🔗 在成功调度后建立会话绑定（仅 claude-official 类型）
       // claude-official 只接受：1) 新会话 2) 已绑定的会话
       if (
