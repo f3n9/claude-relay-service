@@ -2056,6 +2056,26 @@
               </label>
             </div>
 
+            <!-- 直通模式开关（仅 Claude Console） -->
+            <div v-if="form.platform === 'claude-console'" class="mt-4">
+              <label class="flex items-start">
+                <input
+                  v-model="form.passThrough"
+                  class="mt-1 text-blue-600 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-700"
+                  type="checkbox"
+                />
+                <div class="ml-3">
+                  <span class="text-sm font-medium text-gray-700 dark:text-gray-300">
+                    直通模式
+                  </span>
+                  <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                    启用后，客户端请求将原样转发至上游
+                    API（仅替换认证信息），响应也原样返回。仍会提取用量统计信息
+                  </p>
+                </div>
+              </label>
+            </div>
+
             <!-- Claude User-Agent 版本配置 -->
             <div v-if="form.platform === 'claude'" class="mt-4">
               <label class="flex items-start">
@@ -5837,6 +5857,7 @@ const createAccount = async () => {
       data.rateLimitDuration = form.value.enableRateLimit ? form.value.rateLimitDuration || 60 : 0
       if (form.value.platform === 'claude-console') {
         data.interceptWarmup = !!form.value.interceptWarmup
+        data.passThrough = !!form.value.passThrough
       }
       // 额度管理字段
       data.dailyQuota = form.value.dailyQuota || 0
@@ -6207,6 +6228,8 @@ const updateAccount = async () => {
       data.rateLimitDuration = form.value.enableRateLimit ? form.value.rateLimitDuration || 60 : 0
       // 拦截预热请求
       data.interceptWarmup = !!form.value.interceptWarmup
+      // 直通模式
+      data.passThrough = !!form.value.passThrough
       // 额度管理字段
       data.dailyQuota = form.value.dailyQuota || 0
       data.quotaResetTime = form.value.quotaResetTime || '00:00'

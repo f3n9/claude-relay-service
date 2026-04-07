@@ -133,7 +133,8 @@ router.post('/claude-console-accounts', authenticateAdmin, async (req, res) => {
       quotaResetTime,
       maxConcurrentTasks,
       disableAutoProtection,
-      interceptWarmup
+      interceptWarmup,
+      passThrough
     } = req.body
 
     if (!name || !apiUrl || !apiKey) {
@@ -188,7 +189,8 @@ router.post('/claude-console-accounts', authenticateAdmin, async (req, res) => {
           ? Number(maxConcurrentTasks)
           : 0,
       disableAutoProtection: normalizedDisableAutoProtection,
-      interceptWarmup: interceptWarmup === true || interceptWarmup === 'true'
+      interceptWarmup: interceptWarmup === true || interceptWarmup === 'true',
+      passThrough: passThrough === true || passThrough === 'true'
     })
 
     // 如果是分组类型，将账户添加到分组（CCR 归属 Claude 平台分组）
@@ -263,6 +265,12 @@ router.put('/claude-console-accounts/:accountId', authenticateAdmin, async (req,
       mappedUpdates.disableAutoProtection =
         mappedUpdates.disableAutoProtection === true ||
         mappedUpdates.disableAutoProtection === 'true'
+    }
+
+    // 规范化直通模式开关
+    if (mappedUpdates.passThrough !== undefined) {
+      mappedUpdates.passThrough =
+        mappedUpdates.passThrough === true || mappedUpdates.passThrough === 'true'
     }
 
     // 处理分组的变更

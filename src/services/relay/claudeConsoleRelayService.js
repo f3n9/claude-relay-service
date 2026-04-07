@@ -12,11 +12,42 @@ const {
 const upstreamErrorHelper = require('../../utils/upstreamErrorHelper')
 const userMessageQueueService = require('../userMessageQueueService')
 const { isStreamWritable } = require('../../utils/streamHelper')
-const { filterForClaude } = require('../../utils/headerFilter')
+const { filterForClaude, cdnHeaders } = require('../../utils/headerFilter')
 
 class ClaudeConsoleRelayService {
   constructor() {
     this.defaultUserAgent = 'claude-cli/2.0.52 (external, cli)'
+  }
+
+  _isPassThroughEnabled(account) {
+    return account?.passThrough === true || account?.passThrough === 'true'
+  }
+
+  _buildPassThroughHeaders(headers = {}) {
+    const skipHeaders = new Set(
+      [
+        'host',
+        'content-length',
+        'authorization',
+        'x-api-key',
+        'x-cr-api-key',
+        'connection',
+        'upgrade',
+        'sec-websocket-key',
+        'sec-websocket-version',
+        'sec-websocket-extensions',
+        ...cdnHeaders
+      ].map((key) => key.toLowerCase())
+    )
+
+    const forwardedHeaders = {}
+    for (const [key, value] of Object.entries(headers || {})) {
+      if (!skipHeaders.has(key.toLowerCase())) {
+        forwardedHeaders[key] = value
+      }
+    }
+
+    return forwardedHeaders
   }
 
   // 🚀 转发请求到Claude Console API
@@ -102,6 +133,7 @@ class ClaudeConsoleRelayService {
       }
 
       const autoProtectionDisabled = account.disableAutoProtection === true
+      const passThroughEnabled = this._isPassThroughEnabled(account)
 
       logger.info(
         `📤 Processing Claude Console API request for key: ${apiKeyData.name || apiKeyData.id}, account: ${account.name} (${accountId}), request: ${requestId}`
@@ -140,9 +172,10 @@ class ClaudeConsoleRelayService {
       logger.debug(`🔑 Account has apiKey: ${!!account.apiKey}`)
       logger.debug(`📝 Request model: ${requestBody.model}`)
 
-      // 处理模型映射
+      // 处理模型映射（直通模式跳过）
       let mappedModel = requestBody.model
       if (
+        !passThroughEnabled &&
         account.supportedModels &&
         typeof account.supportedModels === 'object' &&
         !Array.isArray(account.supportedModels)
@@ -157,11 +190,13 @@ class ClaudeConsoleRelayService {
         }
       }
 
-      // 创建修改后的请求体
-      const modifiedRequestBody = {
-        ...requestBody,
-        model: mappedModel
-      }
+      // 创建修改后的请求体（直通模式使用原始请求体）
+      const modifiedRequestBody = passThroughEnabled
+        ? requestBody
+        : {
+            ...requestBody,
+            model: mappedModel
+          }
 
       // 模型兼容性检查已经在调度器中完成，这里不需要再检查
 
@@ -204,28 +239,37 @@ class ClaudeConsoleRelayService {
       logger.debug(`[DEBUG] Options passed to relayRequest: ${JSON.stringify(options)}`)
       logger.debug(`[DEBUG] Client headers received: ${JSON.stringify(clientHeaders)}`)
 
-      // 过滤客户端请求头
-      const filteredHeaders = this._filterClientHeaders(clientHeaders)
-      logger.debug(`[DEBUG] Filtered client headers: ${JSON.stringify(filteredHeaders)}`)
+      // 构建请求头（直通模式：透传客户端头；普通模式：白名单过滤）
+      let requestHeaders
+      if (passThroughEnabled) {
+        requestHeaders = this._buildPassThroughHeaders(clientHeaders)
+        logger.debug('🚀 Pass-through mode enabled, preserving client request headers')
+      } else {
+        // 过滤客户端请求头
+        const filteredHeaders = this._filterClientHeaders(clientHeaders)
+        logger.debug(`[DEBUG] Filtered client headers: ${JSON.stringify(filteredHeaders)}`)
 
-      // 决定使用的 User-Agent：优先使用账户自定义的，否则透传客户端的，最后才使用默认值
-      const userAgent =
-        account.userAgent ||
-        clientHeaders?.['user-agent'] ||
-        clientHeaders?.['User-Agent'] ||
-        this.defaultUserAgent
+        // 决定使用的 User-Agent：优先使用账户自定义的，否则透传客户端的，最后才使用默认值
+        const userAgent =
+          account.userAgent ||
+          clientHeaders?.['user-agent'] ||
+          clientHeaders?.['User-Agent'] ||
+          this.defaultUserAgent
+
+        requestHeaders = {
+          'Content-Type': 'application/json',
+          'anthropic-version': '2023-06-01',
+          'User-Agent': userAgent,
+          ...filteredHeaders
+        }
+      }
 
       // 准备请求配置
       const requestConfig = {
         method: 'POST',
         url: apiEndpoint,
         data: modifiedRequestBody,
-        headers: {
-          'Content-Type': 'application/json',
-          'anthropic-version': '2023-06-01',
-          'User-Agent': userAgent,
-          ...filteredHeaders
-        },
+        headers: requestHeaders,
         timeout: config.requestTimeout || 600000,
         signal: abortController.signal,
         validateStatus: () => true // 接受所有状态码
@@ -252,8 +296,8 @@ class ClaudeConsoleRelayService {
         `[DEBUG] Initial headers before beta: ${JSON.stringify(requestConfig.headers, null, 2)}`
       )
 
-      // 添加beta header如果需要
-      if (options.betaHeader) {
+      // 添加beta header如果需要（直通模式跳过）
+      if (!passThroughEnabled && options.betaHeader) {
         logger.debug(`[DEBUG] Adding beta header: ${options.betaHeader}`)
         requestConfig.headers['anthropic-beta'] = options.betaHeader
       } else {
@@ -403,9 +447,13 @@ class ClaudeConsoleRelayService {
       // 更新最后使用时间
       await this._updateLastUsedTime(accountId)
 
-      // 准备响应体并清理错误信息（如果是错误响应）
+      // 准备响应体（直通模式：不清理错误信息；普通模式：清理供应商信息）
       let responseBody
-      if (response.status < 200 || response.status >= 300) {
+      if (passThroughEnabled) {
+        // 直通模式：原样返回响应体
+        responseBody =
+          typeof response.data === 'string' ? response.data : JSON.stringify(response.data)
+      } else if (response.status < 200 || response.status >= 300) {
         // 错误响应，清理供应商信息
         try {
           const responseData =
@@ -626,9 +674,12 @@ class ClaudeConsoleRelayService {
 
       logger.debug(`🌐 Account API URL: ${account.apiUrl}`)
 
-      // 处理模型映射
+      const passThroughEnabled = this._isPassThroughEnabled(account)
+
+      // 处理模型映射（直通模式跳过）
       let mappedModel = requestBody.model
       if (
+        !passThroughEnabled &&
         account.supportedModels &&
         typeof account.supportedModels === 'object' &&
         !Array.isArray(account.supportedModels)
@@ -643,11 +694,13 @@ class ClaudeConsoleRelayService {
         }
       }
 
-      // 创建修改后的请求体
-      const modifiedRequestBody = {
-        ...requestBody,
-        model: mappedModel
-      }
+      // 创建修改后的请求体（直通模式使用原始请求体）
+      const modifiedRequestBody = passThroughEnabled
+        ? requestBody
+        : {
+            ...requestBody,
+            model: mappedModel
+          }
 
       // 模型兼容性检查已经在调度器中完成，这里不需要再检查
 
@@ -762,28 +815,39 @@ class ClaudeConsoleRelayService {
 
       logger.debug(`🎯 Final API endpoint for stream: ${apiEndpoint}`)
 
-      // 过滤客户端请求头
-      const filteredHeaders = this._filterClientHeaders(clientHeaders)
-      logger.debug(`[DEBUG] Filtered client headers: ${JSON.stringify(filteredHeaders)}`)
+      const passThroughEnabled = this._isPassThroughEnabled(account)
 
-      // 决定使用的 User-Agent：优先使用账户自定义的，否则透传客户端的，最后才使用默认值
-      const userAgent =
-        account.userAgent ||
-        clientHeaders?.['user-agent'] ||
-        clientHeaders?.['User-Agent'] ||
-        this.defaultUserAgent
+      // 构建请求头（直通模式：透传客户端头；普通模式：白名单过滤）
+      let requestHeaders
+      if (passThroughEnabled) {
+        requestHeaders = this._buildPassThroughHeaders(clientHeaders)
+        logger.debug('🚀 [Stream] Pass-through mode enabled, preserving client request headers')
+      } else {
+        // 过滤客户端请求头
+        const filteredHeaders = this._filterClientHeaders(clientHeaders)
+        logger.debug(`[DEBUG] Filtered client headers: ${JSON.stringify(filteredHeaders)}`)
+
+        // 决定使用的 User-Agent：优先使用账户自定义的，否则透传客户端的，最后才使用默认值
+        const userAgent =
+          account.userAgent ||
+          clientHeaders?.['user-agent'] ||
+          clientHeaders?.['User-Agent'] ||
+          this.defaultUserAgent
+
+        requestHeaders = {
+          'Content-Type': 'application/json',
+          'anthropic-version': '2023-06-01',
+          'User-Agent': userAgent,
+          ...filteredHeaders
+        }
+      }
 
       // 准备请求配置
       const requestConfig = {
         method: 'POST',
         url: apiEndpoint,
         data: body,
-        headers: {
-          'Content-Type': 'application/json',
-          'anthropic-version': '2023-06-01',
-          'User-Agent': userAgent,
-          ...filteredHeaders
-        },
+        headers: requestHeaders,
         timeout: config.requestTimeout || 600000,
         responseType: 'stream',
         validateStatus: () => true // 接受所有状态码
@@ -806,8 +870,8 @@ class ClaudeConsoleRelayService {
         logger.debug('[DEBUG] Using Authorization Bearer authentication')
       }
 
-      // 添加beta header如果需要
-      if (requestOptions.betaHeader) {
+      // 添加beta header如果需要（直通模式跳过）
+      if (!passThroughEnabled && requestOptions.betaHeader) {
         requestConfig.headers['anthropic-beta'] = requestOptions.betaHeader
       }
 
@@ -917,28 +981,38 @@ class ClaudeConsoleRelayService {
                 })
               }
 
-              // 清理并发送错误响应
-              try {
+              // 发送错误响应（直通模式：原样返回；普通模式：清理供应商信息）
+              if (passThroughEnabled) {
                 const fullErrorData = Buffer.concat(errorChunks).toString()
-                const errorJson = JSON.parse(fullErrorData)
-                const sanitizedError = sanitizeUpstreamError(errorJson)
-
-                // 记录清理后的错误消息（发送给客户端的，完整记录）
-                logger.error(
-                  `🧹 [Stream] [SANITIZED] Error response to client: ${JSON.stringify(sanitizedError)}`
-                )
-
                 if (isStreamWritable(responseStream)) {
-                  responseStream.write(JSON.stringify(sanitizedError))
+                  responseStream.write(fullErrorData)
                   responseStream.end()
                 }
-              } catch (parseError) {
-                const sanitizedText = sanitizeErrorMessage(errorDataForCheck)
-                logger.error(`🧹 [Stream] [SANITIZED] Error response to client: ${sanitizedText}`)
+              } else {
+                try {
+                  const fullErrorData = Buffer.concat(errorChunks).toString()
+                  const errorJson = JSON.parse(fullErrorData)
+                  const sanitizedError = sanitizeUpstreamError(errorJson)
 
-                if (isStreamWritable(responseStream)) {
-                  responseStream.write(sanitizedText)
-                  responseStream.end()
+                  // 记录清理后的错误消息（发送给客户端的，完整记录）
+                  logger.error(
+                    `🧹 [Stream] [SANITIZED] Error response to client: ${JSON.stringify(sanitizedError)}`
+                  )
+
+                  if (isStreamWritable(responseStream)) {
+                    responseStream.write(JSON.stringify(sanitizedError))
+                    responseStream.end()
+                  }
+                } catch (parseError) {
+                  const sanitizedText = sanitizeErrorMessage(errorDataForCheck)
+                  logger.error(
+                    `🧹 [Stream] [SANITIZED] Error response to client: ${sanitizedText}`
+                  )
+
+                  if (isStreamWritable(responseStream)) {
+                    responseStream.write(sanitizedText)
+                    responseStream.end()
+                  }
                 }
               }
               resolve() // 不抛出异常，正常完成流处理
