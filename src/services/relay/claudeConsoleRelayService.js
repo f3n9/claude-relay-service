@@ -1306,12 +1306,15 @@ class ClaudeConsoleRelayService {
                 }
 
                 // 等待数据完全 flush 到客户端后再 resolve
-                responseStream.end(() => {
+                // 注意：不能将回调直接传给 res.end()，因为 compression 中间件
+                // 会将第一个参数当作数据处理，导致 ERR_INVALID_ARG_TYPE 错误
+                responseStream.on('finish', () => {
                   logger.info(
                     `✅ [STREAM] Response ended and flushed | socketBytesWritten: ${responseStream.socket?.bytesWritten || 'unknown'}`
                   )
                   resolve()
                 })
+                responseStream.end()
               } else {
                 // 连接已断开，记录警告
                 logger.warn(
