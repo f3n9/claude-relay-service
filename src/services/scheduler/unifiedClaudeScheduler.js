@@ -6,7 +6,11 @@ const ccrAccountService = require('../account/ccrAccountService')
 const accountGroupService = require('../accountGroupService')
 const redis = require('../../models/redis')
 const logger = require('../../utils/logger')
-const { parseVendorPrefixedModel, isOpus45OrNewer, isClaudeFamilyModel } = require('../../utils/modelHelper')
+const {
+  parseVendorPrefixedModel,
+  isOpus45OrNewer,
+  isClaudeFamilyModel
+} = require('../../utils/modelHelper')
 const { isSchedulable, sortAccountsByPriority } = require('../../utils/commonHelper')
 const upstreamErrorHelper = require('../../utils/upstreamErrorHelper')
 
@@ -287,9 +291,8 @@ class UnifiedClaudeScheduler {
                 `⏱️ Bound GCP Vertex account ${vertexAccountId} is temporarily unavailable, falling back to pool`
               )
             } else {
-              const isRateLimited = await gcpVertexAccountService.isAccountRateLimited(
-                vertexAccountId
-              )
+              const isRateLimited =
+                await gcpVertexAccountService.isAccountRateLimited(vertexAccountId)
               if (isRateLimited) {
                 logger.warn(
                   `⏱️ Bound GCP Vertex account ${vertexAccountId} is rate limited, falling back to pool`
@@ -345,7 +348,8 @@ class UnifiedClaudeScheduler {
                 const error = new Error('Dedicated Claude account is rate limited')
                 error.code = 'CLAUDE_DEDICATED_RATE_LIMITED'
                 error.accountId = boundAccount.id
-                error.rateLimitEndAt = rateInfo?.rateLimitEndAt || boundAccount.rateLimitEndAt || null
+                error.rateLimitEndAt =
+                  rateInfo?.rateLimitEndAt || boundAccount.rateLimitEndAt || null
                 throw error
               }
 
@@ -618,9 +622,7 @@ class UnifiedClaudeScheduler {
           'claude-vertex'
         )
         if (isTempUnavailable) {
-          logger.warn(
-            `⏱️ Bound GCP Vertex account ${vertexAccountId} is temporarily unavailable`
-          )
+          logger.warn(`⏱️ Bound GCP Vertex account ${vertexAccountId} is temporarily unavailable`)
         } else {
           const isRateLimited = await gcpVertexAccountService.isAccountRateLimited(vertexAccountId)
           if (isRateLimited) {
@@ -1419,7 +1421,12 @@ class UnifiedClaudeScheduler {
           return false
         }
         if (
-          !this._isModelSupportedByAccount(account, 'claude-vertex', requestedModel, 'in session check')
+          !this._isModelSupportedByAccount(
+            account,
+            'claude-vertex',
+            requestedModel,
+            'in session check'
+          )
         ) {
           return false
         }

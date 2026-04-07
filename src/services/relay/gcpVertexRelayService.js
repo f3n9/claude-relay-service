@@ -465,7 +465,9 @@ class GcpVertexRelayService {
         ? clientResponse.getHeader('Connection')
         : null
       if (existingConnection) {
-        logger.debug(`🔌 [Vertex Stream] Preserving existing Connection header: ${existingConnection}`)
+        logger.debug(
+          `🔌 [Vertex Stream] Preserving existing Connection header: ${existingConnection}`
+        )
       } else {
         clientResponse.setHeader('Connection', 'keep-alive')
       }
@@ -488,8 +490,7 @@ class GcpVertexRelayService {
             collectedUsage.input_tokens = data.message.usage.input_tokens || 0
             collectedUsage.cache_creation_input_tokens =
               data.message.usage.cache_creation_input_tokens || 0
-            collectedUsage.cache_read_input_tokens =
-              data.message.usage.cache_read_input_tokens || 0
+            collectedUsage.cache_read_input_tokens = data.message.usage.cache_read_input_tokens || 0
             if (data.message?.usage?.cache_creation) {
               collectedUsage.cache_creation = data.message.usage.cache_creation
             }
@@ -606,7 +607,9 @@ class GcpVertexRelayService {
             cleanupClientListeners()
             emitUsageIfAvailable('close')
             if (!usageEmitted) {
-              logger.warn(`⚠️ No Vertex stream usage captured for account ${accountId}, request: ${requestId}`)
+              logger.warn(
+                `⚠️ No Vertex stream usage captured for account ${accountId}, request: ${requestId}`
+              )
             }
             if (isStreamWritable(clientResponse)) {
               clientResponse.end()

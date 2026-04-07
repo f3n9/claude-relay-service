@@ -323,7 +323,9 @@ class GcpVertexAccountService {
       next.proxy = updates.proxy ? JSON.stringify(updates.proxy) : ''
     }
     const normalizedSubscriptionExpiresAt = this._normalizeSubscriptionExpiresAt(
-      updates.subscriptionExpiresAt !== undefined ? updates.subscriptionExpiresAt : updates.expiresAt
+      updates.subscriptionExpiresAt !== undefined
+        ? updates.subscriptionExpiresAt
+        : updates.expiresAt
     )
     if (normalizedSubscriptionExpiresAt !== undefined) {
       next.subscriptionExpiresAt = normalizedSubscriptionExpiresAt

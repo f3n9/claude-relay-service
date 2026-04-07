@@ -117,15 +117,7 @@ const safeStringify = (obj, maxDepth = Infinity) => {
 }
 
 // 控制台不显示的 metadata 字段（已在 message 中或低价值）
-const CONSOLE_SKIP_KEYS = new Set([
-  'type',
-  'level',
-  'message',
-  'timestamp',
-  'stack',
-  'req',
-  'body'
-])
+const CONSOLE_SKIP_KEYS = new Set(['type', 'level', 'message', 'timestamp', 'stack', 'req', 'body'])
 
 // 控制台格式: 树形展示 metadata
 const createConsoleFormat = () =>

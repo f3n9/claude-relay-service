@@ -1005,9 +1005,7 @@ class ClaudeConsoleRelayService {
                   }
                 } catch (parseError) {
                   const sanitizedText = sanitizeErrorMessage(errorDataForCheck)
-                  logger.error(
-                    `🧹 [Stream] [SANITIZED] Error response to client: ${sanitizedText}`
-                  )
+                  logger.error(`🧹 [Stream] [SANITIZED] Error response to client: ${sanitizedText}`)
 
                   if (isStreamWritable(responseStream)) {
                     responseStream.write(sanitizedText)

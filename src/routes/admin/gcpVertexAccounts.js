@@ -185,7 +185,10 @@ router.post('/', authenticateAdmin, async (req, res) => {
           await accountGroupService.addAccountToGroup(result.data.id, groupId.trim(), 'claude')
         }
       } catch (groupError) {
-        logger.error(`❌ Failed to bind GCP Vertex account ${result.data.id} to groups:`, groupError)
+        logger.error(
+          `❌ Failed to bind GCP Vertex account ${result.data.id} to groups:`,
+          groupError
+        )
         const createdAccountId = result?.data?.id
         if (createdAccountId) {
           try {
@@ -214,7 +217,10 @@ router.post('/', authenticateAdmin, async (req, res) => {
         }
         return res
           .status(500)
-          .json({ error: 'Failed to bind GCP Vertex account to groups', message: groupError.message })
+          .json({
+            error: 'Failed to bind GCP Vertex account to groups',
+            message: groupError.message
+          })
       }
     }
 

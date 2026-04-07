@@ -2927,7 +2927,10 @@ router.get('/api-keys/:keyId/usage-records', authenticateAdmin, async (req, res)
       ) {
         return false
       }
-      if (requestRegion && (record.requestRegion || record.request_region || '') !== requestRegion) {
+      if (
+        requestRegion &&
+        (record.requestRegion || record.request_region || '') !== requestRegion
+      ) {
         return false
       }
       return true
@@ -2964,7 +2967,8 @@ router.get('/api-keys/:keyId/usage-records', authenticateAdmin, async (req, res)
 
     for (const record of baseFilteredRecords) {
       const normalizedAccountType = record.accountType || 'unknown'
-      const normalizedUsageCaptureState = record.usageCaptureState || record.usage_capture_state || ''
+      const normalizedUsageCaptureState =
+        record.usageCaptureState || record.usage_capture_state || ''
       const normalizedRequestRegion = record.requestRegion || record.request_region || ''
 
       if (record.model) {
@@ -3028,7 +3032,6 @@ router.get('/api-keys/:keyId/usage-records', authenticateAdmin, async (req, res)
       summary.totalRatedCost += costView.ratedCost
       summary.totalRealCost += costView.realCost
       summary.totalDisplayCost += costView.displayCost
-
     }
 
     const totalRecords = filteredRecords.length
@@ -3347,7 +3350,8 @@ router.get('/accounts/:accountId/usage-records', authenticateAdmin, async (req, 
 
     for (const record of baseFilteredRecords) {
       const normalizedAccountType = record.accountType || 'unknown'
-      const normalizedUsageCaptureState = record.usageCaptureState || record.usage_capture_state || ''
+      const normalizedUsageCaptureState =
+        record.usageCaptureState || record.usage_capture_state || ''
       const normalizedRequestRegion = record.requestRegion || record.request_region || ''
 
       if (record.model) {
@@ -3387,7 +3391,10 @@ router.get('/accounts/:accountId/usage-records', authenticateAdmin, async (req, 
       ) {
         return false
       }
-      if (requestRegion && (record.requestRegion || record.request_region || '') !== requestRegion) {
+      if (
+        requestRegion &&
+        (record.requestRegion || record.request_region || '') !== requestRegion
+      ) {
         return false
       }
       return true

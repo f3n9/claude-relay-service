@@ -2899,9 +2899,15 @@
             </p>
           </div>
 
-          <div v-if="form.platform === 'openai' || form.platform === 'openai-responses'">
+          <div
+            v-if="
+              form.platform === 'openai' ||
+              form.platform === 'openai-responses' ||
+              form.platform === 'claude-console'
+            "
+          >
             <label class="mb-3 block text-sm font-semibold text-gray-700 dark:text-gray-300">
-              Pass-Through 模式
+              {{ form.platform === 'claude-console' ? '直通模式' : 'Pass-Through 模式' }}
             </label>
             <label class="inline-flex cursor-pointer items-center">
               <input
@@ -2910,11 +2916,19 @@
                 type="checkbox"
               />
               <span class="text-sm text-gray-700 dark:text-gray-300">
-                透传 headers / prompts / instructions
+                {{
+                  form.platform === 'claude-console'
+                    ? '客户端请求将原样转发至上游 API（仅替换认证信息），响应也原样返回'
+                    : '透传 headers / prompts / instructions'
+                }}
               </span>
             </label>
             <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
-              启用后不再注入或改写请求内容，仅保留鉴权相关头部和必要的模型名称标准化
+              {{
+                form.platform === 'claude-console'
+                  ? '启用后，仍会提取用量统计信息'
+                  : '启用后不再注入或改写请求内容，仅保留鉴权相关头部和必要的模型名称标准化'
+              }}
             </p>
           </div>
 
