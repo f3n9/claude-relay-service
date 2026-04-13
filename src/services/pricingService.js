@@ -587,8 +587,14 @@ class PricingService {
     })
     const isLongContextModeEnabled =
       isLongContextModel || hasContext1mBeta || hasVertexLongContextSignal
+    // Anthropic direct Claude pricing is flat across context tiers, but Vertex-specific
+    // long-context pricing should still apply when the request metadata indicates Vertex.
     const ignores200kLongContextPricing =
-      typeof normalizedModelName === 'string' && normalizedModelName.startsWith('claude-opus-4-6')
+      !hasVertexLongContextSignal &&
+      ((typeof normalizedModelName === 'string' &&
+        normalizedModelName.toLowerCase().includes('claude')) ||
+        (typeof standardPricing?.litellm_provider === 'string' &&
+          standardPricing.litellm_provider.toLowerCase().includes('anthropic')))
 
     // Fast Mode 倍率：优先从 provider_specific_entry.fast 读取，默认 6 倍
     const fastMultiplier = isFastModeRequest ? pricing?.provider_specific_entry?.fast || 6 : 1
@@ -598,7 +604,7 @@ class PricingService {
     if (isLongContextModeEnabled && totalInputTokens > 200000) {
       if (ignores200kLongContextPricing) {
         logger.info(
-          `💰 Skipping 200K+ pricing for ${modelName}: Opus 4.6 uses flat pricing across 1M context`
+          `💰 Skipping 200K+ pricing for ${modelName}: Claude models use flat pricing regardless of context length`
         )
       } else {
         isLongContextRequest = true
