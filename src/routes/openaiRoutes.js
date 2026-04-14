@@ -20,6 +20,7 @@ const {
   createRequestDetailMeta,
   extractOpenAICacheReadTokens
 } = require('../utils/requestDetailHelper')
+const requestBodyRuleService = require('../services/requestBodyRuleService')
 
 // Codex CLI 系统提示词（非 Codex CLI 客户端请求时注入，统一端点也使用）
 const CODEX_CLI_INSTRUCTIONS =
@@ -223,6 +224,76 @@ function extractCodexUsageHeaders(headers) {
   return hasData ? snapshot : null
 }
 
+function isCompactResponsesRoute(req) {
+  return (
+    req.path === '/responses/compact' ||
+    req.path === '/v1/responses/compact' ||
+    (req.originalUrl && req.originalUrl.includes('/responses/compact'))
+  )
+}
+
+function isStandardResponsesRoute(req) {
+  if (req._fromUnifiedEndpoint) {
+    return false
+  }
+
+  return req.path === '/responses' || req.path === '/v1/responses'
+}
+
+function getCodexCompatibleModel(requestedModel = null) {
+  const isCodexModel =
+    typeof requestedModel === 'string' && requestedModel.toLowerCase().includes('codex')
+
+  if (requestedModel && requestedModel.startsWith('gpt-5-') && !isCodexModel) {
+    return 'gpt-5'
+  }
+
+  return requestedModel
+}
+
+function normalizeGpt5ModelForCodex(body = {}) {
+  const requestedModel = body?.model || null
+  const compatibleModel = getCodexCompatibleModel(requestedModel)
+
+  if (compatibleModel !== requestedModel) {
+    logger.info(`📝 Model ${requestedModel} detected, normalizing to gpt-5 for Codex API`)
+    body.model = compatibleModel
+  }
+
+  return compatibleModel
+}
+
+function applyCodexCliAdaptation(body = {}) {
+  const fieldsToRemove = [
+    'temperature',
+    'top_p',
+    'max_output_tokens',
+    'user',
+    'text_formatting',
+    'truncation',
+    'text',
+    'service_tier',
+    'prompt_cache_retention',
+    'safety_identifier'
+  ]
+
+  fieldsToRemove.forEach((field) => {
+    delete body[field]
+  })
+
+  body.instructions = CODEX_CLI_INSTRUCTIONS
+}
+
+function cloneRequestBody(body) {
+  if (!body || typeof body !== 'object' || Array.isArray(body)) {
+    return body
+  }
+
+  return typeof structuredClone === 'function'
+    ? structuredClone(body)
+    : JSON.parse(JSON.stringify(body))
+}
+
 async function applyRateLimitTracking(
   req,
   usageSummary,
@@ -409,84 +480,126 @@ const handleResponses = async (req, res) => {
       })
     }
 
-    // 从请求头或请求体中提取会话 ID
-    // NOTE: For some clients, prompt_cache_key is the only stable per-session key.
-    const sessionId =
-      req.headers['session_id'] ||
-      req.headers['x-session-id'] ||
-      req.body?.session_id ||
-      req.body?.conversation_id ||
-      req.body?.prompt_cache_key ||
-      null
-
-    sessionHash = sessionId ? crypto.createHash('sha256').update(sessionId).digest('hex') : null
-
-    // 从请求体中提取模型和流式标志
-    let requestedModel = req.body?.model || null
-    const isCodexModel =
-      typeof requestedModel === 'string' && requestedModel.toLowerCase().includes('codex')
-
-    // 如果模型是 gpt-5 开头且后面还有内容（如 gpt-5-2025-08-07），并且不是 Codex 系列，则覆盖为 gpt-5
-    if (requestedModel && requestedModel.startsWith('gpt-5-') && !isCodexModel) {
-      logger.info(`📝 Model ${requestedModel} detected, normalizing to gpt-5 for Codex API`)
-      requestedModel = 'gpt-5'
-      req.body.model = 'gpt-5' // 同时更新请求体中的模型
-    }
-
-    const isStream = req.body?.stream !== false // 默认为流式（兼容现有行为）
-
     // 判断是否为 Codex CLI 的请求（基于 User-Agent）
     // 支持: codex_vscode, codex_cli_rs, codex_exec (非交互式/脚本模式)
     const userAgent = req.headers['user-agent'] || ''
     const codexCliPattern = /^(codex_vscode|codex_cli_rs|codex_exec)\/[\d.]+/i
     const isCodexCLI = codexCliPattern.test(userAgent)
 
-    // 提取 service_tier 用于后续费用计算（在字段被移除前保存）
-    req._serviceTier = req.body?.service_tier || null
+    const standardResponsesRoute = isStandardResponsesRoute(req)
+    const compactRoute = isCompactResponsesRoute(req)
+    const shouldUseToggleControlledFlow = standardResponsesRoute && !compactRoute
+    const shouldApplyToggleControlledCodexAdaptation =
+      shouldUseToggleControlledFlow &&
+      apiKeyData.enableOpenAIResponsesCodexAdaptation === true &&
+      !isCodexCLI
+    const shouldApplyToggleControlledPayloadRules =
+      shouldUseToggleControlledFlow && apiKeyData.enableOpenAIResponsesPayloadRules === true
+    const baseRequestBody = req.body
+    let routingBody = cloneRequestBody(req.body)
+
+    if (shouldUseToggleControlledFlow) {
+      if (shouldApplyToggleControlledCodexAdaptation) {
+        normalizeGpt5ModelForCodex(routingBody)
+        applyCodexCliAdaptation(routingBody)
+      }
+
+      if (shouldApplyToggleControlledPayloadRules) {
+        routingBody = requestBodyRuleService.applyRules(
+          routingBody,
+          apiKeyData.openaiResponsesPayloadRules
+        )
+      }
+    } else {
+      normalizeGpt5ModelForCodex(routingBody)
+
+      if (!isCodexCLI && !req._fromUnifiedEndpoint) {
+        applyCodexCliAdaptation(routingBody)
+      }
+    }
+
+    // NOTE: For some clients, prompt_cache_key is the only stable per-session key.
+    const selectionSessionId =
+      req.headers['session_id'] ||
+      req.headers['x-session-id'] ||
+      routingBody?.session_id ||
+      routingBody?.conversation_id ||
+      routingBody?.prompt_cache_key ||
+      null
+
+    sessionHash = selectionSessionId
+      ? crypto.createHash('sha256').update(selectionSessionId).digest('hex')
+      : null
+
+    const selectionRequestedModel = routingBody?.model || null
+    const selectionSchedulerModel = getCodexCompatibleModel(selectionRequestedModel)
+
+    if (selectionSchedulerModel !== selectionRequestedModel) {
+      logger.info(
+        `🧭 Using Codex-compatible model ${selectionSchedulerModel} for account selection (requested: ${selectionRequestedModel})`
+      )
+    }
 
     // 使用调度器选择账户
     ;({ accessToken, accountId, accountType, proxy, account } = await getOpenAIAuthToken(
       apiKeyData,
-      sessionId,
-      requestedModel
+      selectionSessionId,
+      selectionSchedulerModel
     ))
-
     const passThroughEnabled = isPassThroughEnabled(account)
 
-    // 如果不是 Codex CLI 请求且不是来自 unified 端点（已完成格式转换），则进行适配
-    if (!isCodexCLI && !req._fromUnifiedEndpoint && !passThroughEnabled) {
-      // 移除不需要的请求体字段
-      const fieldsToRemove = [
-        'temperature',
-        'top_p',
-        'max_output_tokens',
-        'user',
-        'text_formatting',
-        'truncation',
-        'text',
-        'service_tier',
-        'prompt_cache_retention',
-        'safety_identifier'
-      ]
-      fieldsToRemove.forEach((field) => {
-        delete req.body[field]
-      })
+    if (shouldUseToggleControlledFlow) {
+      if (passThroughEnabled) {
+        req.body = baseRequestBody
+        logger.info('🚀 Pass-through mode enabled, skipping standard Responses payload mutations')
+      } else {
+        req.body = routingBody
 
-      // 设置固定的 Codex CLI instructions
-      req.body.instructions = CODEX_CLI_INSTRUCTIONS
+        if (shouldApplyToggleControlledCodexAdaptation) {
+          logger.info('📝 Standard Responses request applied Codex CLI adaptation')
+        } else if (isCodexCLI) {
+          logger.info('✅ Codex CLI request detected, forwarding current payload')
+        } else {
+          logger.info('📦 Standard Responses request is passing through without Codex adaptation')
+        }
 
-      logger.info('📝 Non-Codex CLI request detected, applying Codex CLI adaptation')
-    } else if (passThroughEnabled) {
-      logger.info('🚀 Pass-through mode enabled, forwarding request body as-is')
+        if (shouldApplyToggleControlledPayloadRules) {
+          logger.info('🧩 Standard Responses request applied API key payload rules')
+        }
+      }
     } else {
-      logger.info('✅ Codex CLI request detected, forwarding as-is')
+      req.body = passThroughEnabled ? baseRequestBody : routingBody
+
+      if (!passThroughEnabled && !isCodexCLI && !req._fromUnifiedEndpoint) {
+        logger.info('📝 Non-Codex CLI request detected, applying Codex CLI adaptation')
+      } else if (passThroughEnabled) {
+        logger.info('🚀 Pass-through mode enabled, forwarding request body as-is')
+      } else {
+        logger.info('✅ Codex CLI request detected, forwarding as-is')
+      }
     }
+
+    // 从最终请求体中提取 service_tier，用于后续费用计算
+    req._serviceTier = req.body?.service_tier || null
 
     // 如果是 OpenAI-Responses 账户，使用专门的中继服务处理
     if (accountType === 'openai-responses') {
       logger.info(`🔀 Using OpenAI-Responses relay service for account: ${account.name}`)
       return await openaiResponsesRelayService.handleRequest(req, res, account, apiKeyData)
     }
+
+    const finalRequestedModel = req.body?.model || selectionRequestedModel
+    const upstreamModel = getCodexCompatibleModel(finalRequestedModel)
+    if (upstreamModel !== finalRequestedModel) {
+      logger.info(
+        `📝 Standard Responses request normalized model ${finalRequestedModel} -> ${upstreamModel} for OpenAI Codex backend`
+      )
+      req.body.model = upstreamModel
+    }
+
+    const upstreamRequestedModel = req.body?.model || finalRequestedModel || selectionRequestedModel
+    const isStream = req.body?.stream !== false // 默认为流式（兼容现有行为）
+
     // 基于白名单构造上游所需的请求头，确保键为小写且值受控
     const incoming = req.headers || {}
     const headers = passThroughEnabled
@@ -502,12 +615,6 @@ const handleResponses = async (req, res) => {
           return whitelistedHeaders
         })()
 
-    // 判断是否访问 compact 端点
-    const isCompactRoute =
-      req.path === '/responses/compact' ||
-      req.path === '/v1/responses/compact' ||
-      (req.originalUrl && req.originalUrl.includes('/responses/compact'))
-
     // 覆盖或新增必要头部
     headers['authorization'] = `Bearer ${accessToken}`
     headers['chatgpt-account-id'] = account.accountId || account.chatgptUserId || accountId
@@ -519,7 +626,7 @@ const handleResponses = async (req, res) => {
     }
 
     if (!passThroughEnabled) {
-      if (!isCompactRoute) {
+      if (!compactRoute) {
         req.body['store'] = false
       } else if (req.body && Object.prototype.hasOwnProperty.call(req.body, 'store')) {
         delete req.body['store']
@@ -546,7 +653,7 @@ const handleResponses = async (req, res) => {
       logger.debug('🌐 No proxy configured for OpenAI request')
     }
 
-    const codexEndpoint = isCompactRoute
+    const codexEndpoint = compactRoute
       ? 'https://chatgpt.com/backend-api/codex/responses/compact'
       : 'https://chatgpt.com/backend-api/codex/responses'
 
@@ -779,13 +886,13 @@ const handleResponses = async (req, res) => {
     if (!isStream) {
       // 非流式响应处理
       try {
-        logger.info(`📄 Processing OpenAI non-stream response for model: ${requestedModel}`)
+        logger.info(`📄 Processing OpenAI non-stream response for model: ${upstreamRequestedModel}`)
 
         // 直接获取完整响应
         const responseData = upstream.data
 
         // 从响应中获取实际的 model 和 usage
-        actualModel = responseData.model || requestedModel || 'gpt-4'
+        actualModel = responseData.model || upstreamRequestedModel || 'gpt-4'
         usageData = responseData.usage
 
         logger.debug(`📊 Non-stream response - Model: ${actualModel}, Usage:`, usageData)
@@ -919,7 +1026,7 @@ const handleResponses = async (req, res) => {
           const actualInputTokens = Math.max(0, totalInputTokens - cacheReadTokens)
 
           // 使用响应中的真实 model，如果没有则使用请求中的 model，最后回退到默认值
-          const modelToRecord = actualModel || requestedModel || 'gpt-4'
+          const modelToRecord = actualModel || upstreamRequestedModel || 'gpt-4'
 
           const streamCosts = await apiKeyService.recordUsage(
             apiKeyData.id,
@@ -939,7 +1046,7 @@ const handleResponses = async (req, res) => {
           )
 
           logger.info(
-            `📊 Recorded OpenAI usage - Input: ${totalInputTokens}(actual:${actualInputTokens}+cached:${cacheReadTokens}), Output: ${outputTokens}, Total: ${usageData.total_tokens || totalInputTokens + outputTokens}, Model: ${modelToRecord} (actual: ${actualModel}, requested: ${requestedModel})`
+            `📊 Recorded OpenAI usage - Input: ${totalInputTokens}(actual:${actualInputTokens}+cached:${cacheReadTokens}), Output: ${outputTokens}, Total: ${usageData.total_tokens || totalInputTokens + outputTokens}, Model: ${modelToRecord} (actual: ${actualModel}, requested: ${upstreamRequestedModel})`
           )
           usageReported = true
 
