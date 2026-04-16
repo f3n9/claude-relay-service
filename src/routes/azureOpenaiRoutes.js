@@ -26,6 +26,7 @@ const ALLOWED_MODELS = {
 }
 
 const ALL_ALLOWED_MODELS = [...ALLOWED_MODELS.CHAT_MODELS, ...ALLOWED_MODELS.EMBEDDING_MODELS]
+const DEFAULT_EMBEDDINGS_MODEL = 'text-embedding-3-small'
 
 // Azure OpenAI 稳定 API 版本
 // const AZURE_API_VERSION = '2024-02-01' // 当前未使用，保留以备后用
@@ -127,6 +128,29 @@ class AtomicUsageReporter {
 }
 
 const usageReporter = new AtomicUsageReporter()
+
+function normalizeEmbeddingsRequestBody(requestBody = {}) {
+  const normalizedBody =
+    requestBody && typeof requestBody === 'object' && !Array.isArray(requestBody)
+      ? { ...requestBody }
+      : {}
+
+  if (typeof normalizedBody.model === 'string') {
+    const trimmedModel = normalizedBody.model.trim()
+    normalizedBody.model = trimmedModel || DEFAULT_EMBEDDINGS_MODEL
+    return normalizedBody
+  }
+
+  if (
+    normalizedBody.model === undefined ||
+    normalizedBody.model === null ||
+    normalizedBody.model === ''
+  ) {
+    normalizedBody.model = DEFAULT_EMBEDDINGS_MODEL
+  }
+
+  return normalizedBody
+}
 
 // 健康检查
 router.get('/health', (req, res) => {
@@ -420,15 +444,16 @@ router.post('/responses', authenticateApiKey, async (req, res) => {
 })
 
 // 处理嵌入请求
-router.post('/embeddings', authenticateApiKey, async (req, res) => {
+async function handleEmbeddingsRequest(req, res) {
   const requestId = `azure_embed_${Date.now()}_${crypto.randomBytes(8).toString('hex')}`
   const sessionId = req.sessionId || req.headers['x-session-id'] || null
+  const requestBody = normalizeEmbeddingsRequestBody(req.body)
 
   logger.info(`🚀 Azure OpenAI Embeddings Request ${requestId}`, {
     apiKeyId: req.apiKey?.id,
     sessionId,
-    model: req.body.model,
-    input: Array.isArray(req.body.input) ? req.body.input.length : 1
+    model: requestBody.model,
+    input: Array.isArray(requestBody.input) ? requestBody.input.length : 1
   })
 
   try {
@@ -459,7 +484,7 @@ router.post('/embeddings', authenticateApiKey, async (req, res) => {
     // 发送请求到 Azure OpenAI
     const response = await azureOpenaiRelayService.handleAzureOpenAIRequest({
       account,
-      requestBody: req.body,
+      requestBody,
       headers: req.headers,
       isStream: false,
       endpoint: 'embeddings'
@@ -490,7 +515,7 @@ router.post('/embeddings', authenticateApiKey, async (req, res) => {
     )
 
     if (usageData) {
-      const modelToRecord = actualModel || req.body.model || 'unknown'
+      const modelToRecord = actualModel || requestBody.model || 'unknown'
       await usageReporter.reportOnce(
         requestId,
         usageData,
@@ -498,7 +523,7 @@ router.post('/embeddings', authenticateApiKey, async (req, res) => {
         modelToRecord,
         account.id,
         createRequestDetailMeta(req, {
-          requestBody: req.body,
+          requestBody,
           stream: false,
           statusCode: response.status
         })
@@ -521,7 +546,9 @@ router.post('/embeddings', authenticateApiKey, async (req, res) => {
       })
     }
   }
-})
+}
+
+router.post('/embeddings', authenticateApiKey, handleEmbeddingsRequest)
 
 // 获取使用统计
 router.get('/usage', authenticateApiKey, async (req, res) => {
@@ -540,3 +567,4 @@ router.get('/usage', authenticateApiKey, async (req, res) => {
 })
 
 module.exports = router
+module.exports.handleEmbeddingsRequest = handleEmbeddingsRequest

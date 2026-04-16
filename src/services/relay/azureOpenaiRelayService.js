@@ -4,6 +4,8 @@ const logger = require('../../utils/logger')
 const config = require('../../../config/config')
 const upstreamErrorHelper = require('../../utils/upstreamErrorHelper')
 
+const DEFAULT_AZURE_EMBEDDINGS_MODEL = 'text-embedding-3-small'
+
 // 转换模型名称（去掉 azure/ 前缀）
 function normalizeModelName(model) {
   if (model && model.startsWith('azure/')) {
@@ -55,10 +57,17 @@ async function handleAzureOpenAIRequest({
     const processedBody = { ...requestBody }
 
     // 标准化模型名称
+    const normalizedRequestedModel =
+      typeof processedBody.model === 'string'
+        ? normalizeModelName(processedBody.model.trim())
+        : processedBody.model
+
     if (endpoint === 'responses') {
       processedBody.model = deploymentName
-    } else if (processedBody.model) {
-      processedBody.model = normalizeModelName(processedBody.model)
+    } else if (normalizedRequestedModel) {
+      processedBody.model = normalizedRequestedModel
+    } else if (endpoint === 'embeddings') {
+      processedBody.model = DEFAULT_AZURE_EMBEDDINGS_MODEL
     } else {
       processedBody.model = 'gpt-4'
     }

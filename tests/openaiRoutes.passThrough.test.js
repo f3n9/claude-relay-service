@@ -1,3 +1,6 @@
+const express = require('express')
+const request = require('supertest')
+
 jest.mock('axios', () => ({
   post: jest.fn()
 }))
@@ -59,13 +62,27 @@ jest.mock('../config/config', () => ({
   requestTimeout: 60000
 }))
 
+jest.mock('../src/routes/azureOpenaiRoutes', () => {
+  const express = require('express')
+  const router = express.Router()
+  router.handleEmbeddingsRequest = jest.fn(async (req, res) => {
+    res.status(200).json({
+      object: 'list',
+      model: req.body.model || 'text-embedding-3-small'
+    })
+  })
+  return router
+})
+
 const axios = require('axios')
 const unifiedOpenAIScheduler = require('../src/services/scheduler/unifiedOpenAIScheduler')
 const openaiAccountService = require('../src/services/account/openaiAccountService')
 const openaiResponsesRelayService = require('../src/services/relay/openaiResponsesRelayService')
 const apiKeyService = require('../src/services/apiKeyService')
 const ProxyHelper = require('../src/utils/proxyHelper')
-const { handleResponses, CODEX_CLI_INSTRUCTIONS } = require('../src/routes/openaiRoutes')
+const azureOpenaiRoutes = require('../src/routes/azureOpenaiRoutes')
+const openaiRoutes = require('../src/routes/openaiRoutes')
+const { handleResponses, CODEX_CLI_INSTRUCTIONS } = openaiRoutes
 
 function createMockResponse() {
   const res = {}
@@ -147,6 +164,7 @@ describe('openaiRoutes handleResponses passThrough behavior', () => {
     })
 
     const req = createBaseRequest()
+    req.apiKey.enableOpenAIResponsesCodexAdaptation = true
     const res = createMockResponse()
 
     await handleResponses(req, res)
@@ -401,5 +419,91 @@ describe('openaiRoutes handleResponses passThrough behavior', () => {
         }
       }
     ])
+  })
+})
+
+describe('openaiRoutes embeddings aliases', () => {
+  function buildApp(permissions = ['openai']) {
+    const app = express()
+    app.use(express.json())
+    app.use((req, res, next) => {
+      req.apiKey = {
+        id: 'key-1',
+        permissions
+      }
+      next()
+    })
+    app.use('/openai', openaiRoutes)
+    return app
+  }
+
+  beforeEach(() => {
+    jest.clearAllMocks()
+    apiKeyService.hasPermission.mockReturnValue(true)
+    azureOpenaiRoutes.handleEmbeddingsRequest.mockImplementation(async (req, res) => {
+      res.status(200).json({
+        object: 'list',
+        model: req.body.model || 'text-embedding-3-small'
+      })
+    })
+  })
+
+  it('forwards /openai/embeddings to the Azure embeddings handler', async () => {
+    const app = buildApp()
+
+    const response = await request(app).post('/openai/embeddings').send({
+      input: 'hello embeddings'
+    })
+
+    expect(response.status).toBe(200)
+    expect(response.body).toEqual({
+      object: 'list',
+      model: 'text-embedding-3-small'
+    })
+    expect(azureOpenaiRoutes.handleEmbeddingsRequest).toHaveBeenCalledTimes(1)
+    expect(azureOpenaiRoutes.handleEmbeddingsRequest.mock.calls[0][0].body).toEqual({
+      input: 'hello embeddings'
+    })
+  })
+
+  it('forwards /openai/v1/embeddings to the Azure embeddings handler', async () => {
+    const app = buildApp()
+
+    const response = await request(app)
+      .post('/openai/v1/embeddings')
+      .send({
+        model: 'text-embedding-3-large',
+        input: ['hello', 'world']
+      })
+
+    expect(response.status).toBe(200)
+    expect(response.body).toEqual({
+      object: 'list',
+      model: 'text-embedding-3-large'
+    })
+    expect(azureOpenaiRoutes.handleEmbeddingsRequest).toHaveBeenCalledTimes(1)
+    expect(azureOpenaiRoutes.handleEmbeddingsRequest.mock.calls[0][0].body).toEqual({
+      model: 'text-embedding-3-large',
+      input: ['hello', 'world']
+    })
+  })
+
+  it('rejects embeddings requests when the API key lacks openai permission', async () => {
+    apiKeyService.hasPermission.mockReturnValue(false)
+    const app = buildApp(['claude'])
+
+    const response = await request(app).post('/openai/embeddings').send({
+      input: 'hello embeddings'
+    })
+
+    expect(response.status).toBe(403)
+    expect(response.body).toEqual({
+      error: {
+        message: 'This API key does not have permission to access OpenAI',
+        type: 'permission_denied',
+        code: 'permission_denied'
+      }
+    })
+    expect(azureOpenaiRoutes.handleEmbeddingsRequest).not.toHaveBeenCalled()
   })
 })

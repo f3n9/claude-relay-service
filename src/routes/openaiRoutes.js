@@ -21,6 +21,7 @@ const {
   extractOpenAICacheReadTokens
 } = require('../utils/requestDetailHelper')
 const requestBodyRuleService = require('../services/requestBodyRuleService')
+const { handleEmbeddingsRequest: handleAzureEmbeddingsRequest } = require('./azureOpenaiRoutes')
 
 // Codex CLI 系统提示词（非 Codex CLI 客户端请求时注入，统一端点也使用）
 const CODEX_CLI_INSTRUCTIONS =
@@ -1168,11 +1169,32 @@ const handleResponses = async (req, res) => {
   }
 }
 
+async function handleEmbeddings(req, res) {
+  const apiKeyData = req.apiKey || {}
+
+  if (!checkOpenAIPermissions(apiKeyData)) {
+    logger.security(
+      `🚫 API Key ${apiKeyData.id || 'unknown'} 缺少 OpenAI 权限，拒绝访问 ${req.originalUrl}`
+    )
+    return res.status(403).json({
+      error: {
+        message: 'This API key does not have permission to access OpenAI',
+        type: 'permission_denied',
+        code: 'permission_denied'
+      }
+    })
+  }
+
+  return handleAzureEmbeddingsRequest(req, res)
+}
+
 // 注册两个路由路径，都使用相同的处理函数
 router.post('/responses', authenticateApiKey, handleResponses)
 router.post('/v1/responses', authenticateApiKey, handleResponses)
 router.post('/responses/compact', authenticateApiKey, handleResponses)
 router.post('/v1/responses/compact', authenticateApiKey, handleResponses)
+router.post('/embeddings', authenticateApiKey, handleEmbeddings)
+router.post('/v1/embeddings', authenticateApiKey, handleEmbeddings)
 
 // 使用情况统计端点
 router.get('/usage', authenticateApiKey, async (req, res) => {
@@ -1240,4 +1262,5 @@ router.get('/key-info', authenticateApiKey, async (req, res) => {
 
 module.exports = router
 module.exports.handleResponses = handleResponses
+module.exports.handleEmbeddings = handleEmbeddings
 module.exports.CODEX_CLI_INSTRUCTIONS = CODEX_CLI_INSTRUCTIONS
