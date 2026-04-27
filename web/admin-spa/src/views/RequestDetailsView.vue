@@ -467,7 +467,12 @@
                       {{ record.accountTypeName || record.accountType || '-' }}
                     </div>
                   </td>
-                  <td class="table-cell">{{ record.model }}</td>
+                  <td class="table-cell">
+                    {{ record.model }}
+                    <el-tag v-if="record.serviceTier" class="ml-1" size="small" type="warning">
+                      {{ record.serviceTier }}
+                    </el-tag>
+                  </td>
                   <td class="table-cell">{{ formatReasoning(record.reasoningDisplay) }}</td>
                   <td class="table-cell">
                     <div>{{ record.endpoint || '-' }}</div>

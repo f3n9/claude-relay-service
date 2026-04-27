@@ -93,6 +93,9 @@
                 <p class="field-value">{{ detail.model || '-' }}</p>
                 <p class="field-sub">
                   {{ detail.isLongContextRequest ? '长上下文请求' : '标准上下文' }}
+                  <span v-if="detail.serviceTier" class="ml-1">
+                    · {{ serviceTierLabel(detail.serviceTier) }}
+                  </span>
                 </p>
               </div>
               <div>
@@ -434,6 +437,11 @@ const statusTagType = (statusCode) => {
   if (statusCode >= 500) return 'danger'
   if (statusCode >= 400) return 'warning'
   return 'success'
+}
+
+const serviceTierLabel = (tier) => {
+  const labels = { priority: '优先级', flex: '弹性', default: '默认' }
+  return labels[tier] || tier
 }
 
 const syncViewportState = () => {

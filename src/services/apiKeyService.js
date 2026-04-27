@@ -1803,7 +1803,8 @@ class ApiKeyService {
         realCost: Number(realCost.toFixed(6)),
         costBreakdown: costInfo?.costs || undefined,
         realCostBreakdown: costInfo?.costs || undefined,
-        isLongContext: isLongContextRequest
+        isLongContext: isLongContextRequest,
+        serviceTier: serviceTier || null
       }
 
       await redis.addUsageRecord(keyId, usageRecord)
@@ -2077,7 +2078,8 @@ class ApiKeyService {
           ephemeral5m: costInfo.ephemeral5mCost || 0,
           ephemeral1h: costInfo.ephemeral1hCost || 0
         },
-        isLongContext: costInfo.isLongContextRequest || false
+        isLongContext: costInfo.isLongContextRequest || false,
+        serviceTier: finalizedRequestMeta?.serviceTier || null
       }
 
       await redis.addUsageRecord(keyId, usageRecord)
@@ -2175,7 +2177,8 @@ class ApiKeyService {
       costBreakdown: usageRecord.costBreakdown || null,
       realCostBreakdown: usageRecord.realCostBreakdown || usageRecord.costBreakdown || null,
       isLongContextRequest:
-        usageRecord.isLongContext === true || usageRecord.isLongContextRequest === true
+        usageRecord.isLongContext === true || usageRecord.isLongContextRequest === true,
+      serviceTier: usageRecord.serviceTier || requestMeta?.serviceTier || null
     })
   }
 

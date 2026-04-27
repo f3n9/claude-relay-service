@@ -609,7 +609,8 @@ class RequestDetailService {
       durationMs,
       isLongContextRequest: detail.isLongContextRequest === true,
       reasoningDisplay: detail.reasoningDisplay || reasoningInfo.reasoningDisplay || null,
-      reasoningSource: detail.reasoningSource || reasoningInfo.reasoningSource || null
+      reasoningSource: detail.reasoningSource || reasoningInfo.reasoningSource || null,
+      serviceTier: detail.serviceTier || null
     }
 
     if (options.bodyPreviewEnabled && requestBodySource !== undefined) {
