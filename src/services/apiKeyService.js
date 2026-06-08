@@ -1770,7 +1770,9 @@ class ApiKeyService {
             0, // ephemeral5mTokens - recordUsage 不含详细缓存数据
             0, // ephemeral1hTokens - recordUsage 不含详细缓存数据
             model,
-            isLongContextRequest
+            isLongContextRequest,
+            realCost,
+            ratedCost
           )
           logger.database(
             `📊 Recorded account usage: ${accountId} - ${totalTokens} tokens (API Key: ${keyId})`
@@ -1892,9 +1894,15 @@ class ApiKeyService {
         }
         costInfo = pricingService.calculateCost(usageObject, model)
 
-        // 验证计算结果
-        if (!costInfo || typeof costInfo.totalCost !== 'number') {
-          logger.error(`❌ Invalid cost calculation result for model ${model}:`, costInfo)
+        // 验证计算结果；价格表缺失时使用 CostCalculator 的 unknown 兜底价
+        if (!costInfo || typeof costInfo.totalCost !== 'number' || costInfo.hasPricing === false) {
+          if (costInfo?.hasPricing === false) {
+            logger.warn(
+              `⚠️ Missing detailed pricing for model ${model}, using unknown fallback pricing`
+            )
+          } else {
+            logger.error(`❌ Invalid cost calculation result for model ${model}:`, costInfo)
+          }
           // 使用 CostCalculator 作为后备
           const CostCalculator = require('../utils/costCalculator')
           const fallbackCost = CostCalculator.calculateCost(usageObject, model)
@@ -2031,7 +2039,9 @@ class ApiKeyService {
             ephemeral5mTokens,
             ephemeral1hTokens,
             model,
-            costInfo.isLongContextRequest || false
+            costInfo.isLongContextRequest || false,
+            realCostWithDetails,
+            ratedCostWithDetails
           )
           logger.database(
             `📊 Recorded account usage: ${accountId} - ${totalTokens} tokens (API Key: ${keyId})`

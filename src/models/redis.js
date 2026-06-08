@@ -1388,7 +1388,9 @@ class RedisClient {
     ephemeral5mTokens = 0,
     ephemeral1hTokens = 0,
     model = 'unknown',
-    isLongContextRequest = false
+    isLongContextRequest = false,
+    realCost = 0,
+    ratedCost = 0
   ) {
     const now = new Date()
     const today = getDateStringInTimezone(now)
@@ -1420,6 +1422,8 @@ class RedisClient {
     const finalCacheReadTokens = cacheReadTokens || 0
     const finalEphemeral5mTokens = ephemeral5mTokens || 0
     const finalEphemeral1hTokens = ephemeral1hTokens || 0
+    const realCostMicro = realCost > 0 ? Math.round(realCost * 1000000) : 0
+    const ratedCostMicro = ratedCost > 0 ? Math.round(ratedCost * 1000000) : 0
     const actualTotalTokens =
       finalInputTokens + finalOutputTokens + finalCacheCreateTokens + finalCacheReadTokens
     const coreTokens = finalInputTokens + finalOutputTokens
@@ -1560,6 +1564,17 @@ class RedisClient {
       this.client.del(`account_usage:daily:index:${today}:empty`),
       this.client.del(`account_usage:model:daily:index:${today}:empty`)
     ]
+
+    if (realCostMicro > 0 || ratedCostMicro > 0) {
+      operations.push(
+        this.client.hincrby(accountModelDaily, 'realCostMicro', realCostMicro),
+        this.client.hincrby(accountModelMonthly, 'realCostMicro', realCostMicro),
+        this.client.hincrby(accountModelHourly, 'realCostMicro', realCostMicro),
+        this.client.hincrby(accountModelDaily, 'ratedCostMicro', ratedCostMicro),
+        this.client.hincrby(accountModelMonthly, 'ratedCostMicro', ratedCostMicro),
+        this.client.hincrby(accountModelHourly, 'ratedCostMicro', ratedCostMicro)
+      )
+    }
 
     // 如果是 1M 上下文请求，添加额外的统计
     if (isLongContextRequest) {
@@ -1986,7 +2001,23 @@ class RedisClient {
       const model = accountModels[i]
       const [err, modelUsage] = results[i]
 
-      if (!err && modelUsage && (modelUsage.inputTokens || modelUsage.outputTokens)) {
+      if (!err && modelUsage) {
+        if ('ratedCostMicro' in modelUsage || 'realCostMicro' in modelUsage) {
+          const costMicro =
+            'ratedCostMicro' in modelUsage
+              ? parseInt(modelUsage.ratedCostMicro) || 0
+              : parseInt(modelUsage.realCostMicro) || 0
+          totalCost += costMicro / 1000000
+          logger.debug(
+            `💰 Account ${accountId} daily cost for model ${model} from stored cost: $${(costMicro / 1000000).toFixed(6)}`
+          )
+          continue
+        }
+
+        if (!(modelUsage.inputTokens || modelUsage.outputTokens)) {
+          continue
+        }
+
         const usage = {
           input_tokens: parseInt(modelUsage.inputTokens || 0),
           output_tokens: parseInt(modelUsage.outputTokens || 0),
@@ -2084,7 +2115,20 @@ class RedisClient {
       const { accountId, model } = queryOrder[i]
       const [err, modelUsage] = results[i]
 
-      if (!err && modelUsage && (modelUsage.inputTokens || modelUsage.outputTokens)) {
+      if (!err && modelUsage) {
+        if ('ratedCostMicro' in modelUsage || 'realCostMicro' in modelUsage) {
+          const costMicro =
+            'ratedCostMicro' in modelUsage
+              ? parseInt(modelUsage.ratedCostMicro) || 0
+              : parseInt(modelUsage.realCostMicro) || 0
+          costMap.set(accountId, costMap.get(accountId) + costMicro / 1000000)
+          continue
+        }
+
+        if (!(modelUsage.inputTokens || modelUsage.outputTokens)) {
+          continue
+        }
+
         const usage = {
           input_tokens: parseInt(modelUsage.inputTokens || 0),
           output_tokens: parseInt(modelUsage.outputTokens || 0),
@@ -2136,7 +2180,13 @@ class RedisClient {
       const parts = key.split(':')
       const model = parts[4]
 
-      if (modelUsage.inputTokens || modelUsage.outputTokens) {
+      if ('ratedCostMicro' in modelUsage || 'realCostMicro' in modelUsage) {
+        const costMicro =
+          'ratedCostMicro' in modelUsage
+            ? parseInt(modelUsage.ratedCostMicro) || 0
+            : parseInt(modelUsage.realCostMicro) || 0
+        totalCost += costMicro / 1000000
+      } else if (modelUsage.inputTokens || modelUsage.outputTokens) {
         const usage = {
           input_tokens: parseInt(modelUsage.inputTokens || 0),
           output_tokens: parseInt(modelUsage.outputTokens || 0),
