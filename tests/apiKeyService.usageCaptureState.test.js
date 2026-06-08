@@ -151,6 +151,19 @@ describe('apiKeyService recordUsageWithDetails usageCaptureState', () => {
       ratedCost: 0.006
     })
     expect(redis.incrementDailyCost).toHaveBeenCalledWith('key-1', 0.006, 0.006)
+    expect(redis.addUsageRecord).toHaveBeenCalledWith(
+      'key-1',
+      expect.objectContaining({
+        realCostBreakdown: {
+          input: 0.003,
+          output: 0.003,
+          cacheCreate: 0,
+          cacheRead: 0,
+          ephemeral5m: 0,
+          ephemeral1h: 0
+        }
+      })
+    )
     expect(redis.incrementAccountUsage).toHaveBeenCalledWith(
       'console-account-1',
       1200,
@@ -164,6 +177,19 @@ describe('apiKeyService recordUsageWithDetails usageCaptureState', () => {
       false,
       0.006,
       0.006
+    )
+    expect(apiKeyService._publishBillingEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        cost: 0.006,
+        costBreakdown: {
+          input: 0.003,
+          output: 0.003,
+          cacheCreate: 0,
+          cacheRead: 0,
+          ephemeral5m: 0,
+          ephemeral1h: 0
+        }
+      })
     )
   })
 })

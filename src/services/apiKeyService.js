@@ -1911,9 +1911,14 @@ class ApiKeyService {
               `⚠️ Using fallback cost calculation for ${model}: $${fallbackCost.costs.total}`
             )
             costInfo = {
+              inputCost: fallbackCost.costs.input || 0,
+              outputCost: fallbackCost.costs.output || 0,
+              cacheCreateCost: fallbackCost.costs.cacheWrite || 0,
+              cacheReadCost: fallbackCost.costs.cacheRead || 0,
               totalCost: fallbackCost.costs.total,
               ephemeral5mCost: 0,
-              ephemeral1hCost: 0
+              ephemeral1hCost: 0,
+              isLongContextRequest: fallbackCost.debug?.isLongContextRequest || false
             }
           } else {
             costInfo = { totalCost: 0, ephemeral5mCost: 0, ephemeral1hCost: 0 }
@@ -1931,9 +1936,14 @@ class ApiKeyService {
               `⚠️ Using fallback cost calculation for ${model}: $${fallbackCost.costs.total}`
             )
             costInfo = {
+              inputCost: fallbackCost.costs.input || 0,
+              outputCost: fallbackCost.costs.output || 0,
+              cacheCreateCost: fallbackCost.costs.cacheWrite || 0,
+              cacheReadCost: fallbackCost.costs.cacheRead || 0,
               totalCost: fallbackCost.costs.total,
               ephemeral5mCost: 0,
-              ephemeral1hCost: 0
+              ephemeral1hCost: 0,
+              isLongContextRequest: fallbackCost.debug?.isLongContextRequest || false
             }
           }
         } catch (fallbackError) {
