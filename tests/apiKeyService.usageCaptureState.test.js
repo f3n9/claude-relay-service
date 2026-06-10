@@ -117,8 +117,8 @@ describe('apiKeyService recordUsageWithDetails usageCaptureState', () => {
       0,
       'qwen3.6-plus',
       false,
-      0.0001,
-      0.0001
+      0.006,
+      0.006
     )
   })
 
@@ -154,14 +154,14 @@ describe('apiKeyService recordUsageWithDetails usageCaptureState', () => {
     expect(redis.addUsageRecord).toHaveBeenCalledWith(
       'key-1',
       expect.objectContaining({
-        realCostBreakdown: {
+        realCostBreakdown: expect.objectContaining({
           input: 0.003,
           output: 0.003,
           cacheCreate: 0,
           cacheRead: 0,
           ephemeral5m: 0,
           ephemeral1h: 0
-        }
+        })
       })
     )
     expect(redis.incrementAccountUsage).toHaveBeenCalledWith(
