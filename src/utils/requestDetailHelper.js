@@ -637,13 +637,6 @@ function extractOpenAICacheCreateTokens(usage = {}) {
     return 0
   }
 
-  const totalInputTokens = Math.max(0, Number(usage.input_tokens || usage.prompt_tokens || 0) || 0)
-  const cacheReadTokens = extractOpenAICacheReadTokens(usage)
-  const hasCacheReadDetail =
-    usage.input_tokens_details?.cached_tokens !== undefined ||
-    usage.input_tokens_details?.cached_token !== undefined ||
-    usage.prompt_tokens_details?.cached_tokens !== undefined ||
-    usage.prompt_tokens_details?.cached_token !== undefined
   const candidates = [
     usage.input_tokens_details?.cache_creation_input_tokens,
     usage.input_tokens_details?.cache_creation_tokens,
@@ -662,10 +655,6 @@ function extractOpenAICacheCreateTokens(usage = {}) {
     if (!Number.isNaN(parsed)) {
       return Math.max(0, parsed)
     }
-  }
-
-  if (totalInputTokens > 0 && hasCacheReadDetail) {
-    return Math.max(0, totalInputTokens - cacheReadTokens)
   }
 
   return 0

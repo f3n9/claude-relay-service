@@ -277,20 +277,20 @@ describe('requestDetailHelper', () => {
     ).toBe(23)
   })
 
-  test('extractOpenAICacheCreateTokens infers uncached prompt input when only cached tokens exist', () => {
+  test('extractOpenAICacheCreateTokens does not infer cache creation from cached token details', () => {
     expect(
       extractOpenAICacheCreateTokens({
         input_tokens: 180,
         input_tokens_details: { cached_tokens: 50 }
       })
-    ).toBe(130)
+    ).toBe(0)
 
     expect(
       extractOpenAICacheCreateTokens({
         input_tokens: 180,
         input_tokens_details: { cached_tokens: 0 }
       })
-    ).toBe(180)
+    ).toBe(0)
   })
 
   test('calculateCacheHitRate uses cacheRead / (input + cacheRead + cacheCreate)', () => {

@@ -93,7 +93,8 @@ jest.mock('../src/utils/errorSanitizer', () => ({
 
 jest.mock('../src/utils/requestDetailHelper', () => ({
   createRequestDetailMeta: jest.fn(() => null),
-  extractOpenAICacheReadTokens: jest.fn(() => 0)
+  extractOpenAICacheReadTokens: jest.fn(() => 0),
+  extractOpenAICacheCreateTokens: jest.fn(() => 0)
 }))
 
 const unifiedOpenAIScheduler = require('../src/services/scheduler/unifiedOpenAIScheduler')

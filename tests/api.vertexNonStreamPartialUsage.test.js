@@ -185,7 +185,11 @@ describe('API /v1/messages Vertex non-stream partial usage', () => {
       }),
       'claude-opus-4-6',
       'vertex-account-1',
-      'claude-vertex'
+      'claude-vertex',
+      expect.objectContaining({
+        stream: false,
+        statusCode: 200
+      })
     )
     expect(updateRateLimitCounters).toHaveBeenCalled()
     expect(updateRateLimitCounters.mock.calls[0][5]).toEqual(costs)

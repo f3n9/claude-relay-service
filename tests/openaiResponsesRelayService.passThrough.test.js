@@ -401,7 +401,7 @@ describe('openaiResponsesRelayService stream error logging', () => {
     expect(res.status).not.toHaveBeenCalledWith(502)
   })
 
-  it('records OpenAI-Responses cache creation tokens from non-stream usage details', async () => {
+  it('records OpenAI-Responses cached tokens as cache reads while keeping uncached input as input', async () => {
     const req = createReq()
     const res = createRes()
 
@@ -430,9 +430,9 @@ describe('openaiResponsesRelayService stream error logging', () => {
     const apiKeyService = require('../src/services/apiKeyService')
     expect(apiKeyService.recordUsage).toHaveBeenCalledWith(
       'key-1',
-      0,
-      20,
       130,
+      20,
+      0,
       50,
       'gpt-5.4',
       'resp-1',

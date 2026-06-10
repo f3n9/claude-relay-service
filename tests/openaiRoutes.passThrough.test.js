@@ -226,7 +226,7 @@ describe('openaiRoutes handleResponses passThrough behavior', () => {
     expect(config.headers.authorization).toBe('Bearer decrypted-openai-token')
   })
 
-  it('records OpenAI cache creation tokens from input token details', async () => {
+  it('records OpenAI cached tokens as cache reads while keeping uncached input as input', async () => {
     openaiAccountService.getAccount.mockResolvedValue({
       id: 'oa-1',
       name: 'OpenAI Account',
@@ -258,9 +258,9 @@ describe('openaiRoutes handleResponses passThrough behavior', () => {
 
     expect(apiKeyService.recordUsage).toHaveBeenCalledWith(
       'key-1',
-      0,
-      20,
       130,
+      20,
+      0,
       50,
       'gpt-5',
       'oa-1',

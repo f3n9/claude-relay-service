@@ -356,6 +356,59 @@ describe('Usage Stats Admin Routes', () => {
     })
   })
 
+  it('keeps OpenAI total input visible in api key usage records with cache reads only', async () => {
+    const handler = getApiKeyUsageRecordsHandler()
+    const req = {
+      params: { keyId: 'key-1' },
+      query: {}
+    }
+    const res = createMockResponse()
+
+    redis.getApiKey.mockResolvedValue({ id: 'key-1', name: 'Test Key' })
+    redis.getUsageRecords.mockResolvedValue([
+      {
+        timestamp: '2026-02-14T10:00:00.000Z',
+        model: 'gpt-5.4',
+        accountId: 'openai-1',
+        accountType: 'openai',
+        inputTokens: 130,
+        outputTokens: 20,
+        cacheCreateTokens: 0,
+        cacheReadTokens: 50,
+        totalTokens: 200,
+        cost: 0.2,
+        realCost: 0.2
+      }
+    ])
+
+    const openaiAccountService = require('../src/services/account/openaiAccountService')
+    openaiAccountService.getAccount.mockResolvedValue({
+      id: 'openai-1',
+      name: 'OpenAI Account',
+      status: 'active'
+    })
+
+    await handler(req, res)
+
+    const response = res.json.mock.calls[0][0]
+    expect(response.success).toBe(true)
+    expect(response.data.records).toHaveLength(1)
+    expect(response.data.records[0]).toMatchObject({
+      inputTokens: 180,
+      outputTokens: 20,
+      cacheCreateTokens: 0,
+      cacheReadTokens: 50,
+      totalTokens: 200
+    })
+    expect(response.data.summary).toMatchObject({
+      inputTokens: 180,
+      outputTokens: 20,
+      cacheCreateTokens: 0,
+      cacheReadTokens: 50,
+      totalTokens: 200
+    })
+  })
+
   it('does not expand Azure OpenAI input that is already stored as total prompt input', async () => {
     const handler = getApiKeyUsageRecordsHandler()
     const req = {
@@ -500,6 +553,58 @@ describe('Usage Stats Admin Routes', () => {
       inputTokens: 180,
       outputTokens: 20,
       cacheCreateTokens: 40,
+      cacheReadTokens: 50,
+      totalTokens: 200
+    })
+  })
+
+  it('keeps OpenAI total input visible in account usage records with cache reads only', async () => {
+    const handler = getAccountUsageRecordsHandler()
+    const req = {
+      params: { accountId: 'openai-1' },
+      query: { platform: 'openai' }
+    }
+    const res = createMockResponse()
+
+    const openaiAccountService = require('../src/services/account/openaiAccountService')
+    openaiAccountService.getAccount.mockResolvedValue({
+      id: 'openai-1',
+      name: 'OpenAI Account',
+      status: 'active'
+    })
+    apiKeyService.getAllApiKeysFast.mockResolvedValue([{ id: 'key-1', name: 'Key 1' }])
+    redis.getUsageRecords.mockResolvedValue([
+      {
+        timestamp: '2026-02-14T10:00:00.000Z',
+        model: 'gpt-5.4',
+        accountId: 'openai-1',
+        accountType: 'openai',
+        inputTokens: 130,
+        outputTokens: 20,
+        cacheCreateTokens: 0,
+        cacheReadTokens: 50,
+        totalTokens: 200,
+        cost: 0.2,
+        realCost: 0.2
+      }
+    ])
+
+    await handler(req, res)
+
+    const response = res.json.mock.calls[0][0]
+    expect(response.success).toBe(true)
+    expect(response.data.records).toHaveLength(1)
+    expect(response.data.records[0]).toMatchObject({
+      inputTokens: 180,
+      outputTokens: 20,
+      cacheCreateTokens: 0,
+      cacheReadTokens: 50,
+      totalTokens: 200
+    })
+    expect(response.data.summary).toMatchObject({
+      inputTokens: 180,
+      outputTokens: 20,
+      cacheCreateTokens: 0,
       cacheReadTokens: 50,
       totalTokens: 200
     })

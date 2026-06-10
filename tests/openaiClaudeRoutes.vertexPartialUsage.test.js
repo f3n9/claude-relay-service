@@ -182,7 +182,11 @@ describe('openaiClaudeRoutes vertex partial usage', () => {
       }),
       'claude-opus-4-6',
       'vertex-acc-1',
-      'claude-vertex'
+      'claude-vertex',
+      expect.objectContaining({
+        stream: true,
+        statusCode: 200
+      })
     )
     expect(updateRateLimitCounters).toHaveBeenCalled()
   })
