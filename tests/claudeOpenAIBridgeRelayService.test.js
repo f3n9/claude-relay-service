@@ -367,7 +367,91 @@ describe('claudeOpenAIBridgeRelayService', () => {
     expect(output).toContain('"text":"partial"')
     expect(output).toContain('event: error')
     expect(output).toContain('Claude OpenAI bridge upstream stream ended early')
+    expect(bridgeAccountService.markAccountError).toHaveBeenCalledWith(
+      'bridge-1',
+      'Claude OpenAI bridge upstream stream ended early'
+    )
     expect(res.end).toHaveBeenCalled()
+  })
+
+  it('does not mark incomplete streams as account errors when auto-protection is disabled', async () => {
+    const upstream = createStream()
+    axios.mockResolvedValue({
+      status: 200,
+      headers: {},
+      data: upstream
+    })
+
+    const req = createReq({
+      body: {
+        model: 'claude-sonnet-4-bridge',
+        max_tokens: 64,
+        stream: true,
+        messages: [{ role: 'user', content: 'Stream' }]
+      }
+    })
+    const res = createRes()
+
+    const requestPromise = relayService.handleRequest(
+      req,
+      res,
+      createSelection({
+        account: {
+          disableAutoProtection: true
+        }
+      })
+    )
+    await flushAsync()
+
+    upstream.emit(
+      'data',
+      Buffer.from(
+        'data: {"id":"chatcmpl-early-disabled","choices":[{"delta":{"content":"partial"},"finish_reason":null}]}\n\n'
+      )
+    )
+    upstream.emit('end')
+
+    await requestPromise
+
+    const output = res.write.mock.calls.map(([chunk]) => chunk).join('')
+    expect(output).toContain('event: error')
+    expect(bridgeAccountService.markAccountError).not.toHaveBeenCalled()
+  })
+
+  it('marks invalid upstream stream bodies as account errors without marking account used', async () => {
+    axios.mockResolvedValue({
+      status: 200,
+      headers: {},
+      data: {
+        not: 'a stream'
+      }
+    })
+
+    const req = createReq({
+      body: {
+        model: 'claude-sonnet-4-bridge',
+        max_tokens: 64,
+        stream: true,
+        messages: [{ role: 'user', content: 'Stream' }]
+      }
+    })
+    const res = createRes()
+
+    await relayService.handleRequest(req, res, createSelection())
+
+    expect(res.status).toHaveBeenCalledWith(502)
+    expect(res.json).toHaveBeenCalledWith(
+      expect.objectContaining({
+        error: expect.objectContaining({
+          message: 'Claude OpenAI bridge upstream stream is invalid'
+        })
+      })
+    )
+    expect(bridgeAccountService.markAccountError).toHaveBeenCalledWith(
+      'bridge-1',
+      'Claude OpenAI bridge upstream stream is invalid'
+    )
+    expect(bridgeAccountService.markAccountUsed).not.toHaveBeenCalled()
   })
 
   it('parses CRLF-delimited OpenAI SSE across chunks', async () => {

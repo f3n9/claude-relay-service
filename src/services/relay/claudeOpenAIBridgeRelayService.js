@@ -43,8 +43,6 @@ class ClaudeOpenAIBridgeRelayService {
         return this._handleUpstreamError(response, res, account)
       }
 
-      await bridgeAccountService.markAccountUsed(account.id)
-
       if (stream) {
         return this._handleStreamResponse(response, req, res, account, mapping, targetBody)
       }
@@ -100,6 +98,7 @@ class ClaudeOpenAIBridgeRelayService {
     const usage = claudeResponse.usage || {}
 
     await this._recordUsage(req, account, mapping, usage, false, response.status, bridgeRequestBody)
+    await bridgeAccountService.markAccountUsed(account.id)
 
     return res.status(response.status).json({
       ...claudeResponse,
@@ -109,6 +108,10 @@ class ClaudeOpenAIBridgeRelayService {
 
   async _handleStreamResponse(response, req, res, account, mapping, bridgeRequestBody) {
     if (!response.data || typeof response.data.on !== 'function') {
+      await this._markAccountErrorIfAutoProtectionEnabled(
+        account,
+        'Claude OpenAI bridge upstream stream is invalid'
+      )
       return this._sendJsonError(res, 502, 'Claude OpenAI bridge upstream stream is invalid')
     }
 
@@ -154,6 +157,10 @@ class ClaudeOpenAIBridgeRelayService {
           await recordUsageOnce()
 
           if (!state.completed && !sawDone) {
+            await this._markAccountErrorIfAutoProtectionEnabled(
+              account,
+              'Claude OpenAI bridge upstream stream ended early'
+            )
             logger.warn('Claude OpenAI bridge stream ended before terminal event', {
               accountId: account.id,
               sourceModel: mapping.sourceModel,
@@ -174,6 +181,8 @@ class ClaudeOpenAIBridgeRelayService {
                 )
               )
             }
+          } else {
+            await bridgeAccountService.markAccountUsed(account.id)
           }
 
           if (!res.writableEnded) {
