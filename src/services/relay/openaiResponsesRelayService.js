@@ -13,7 +13,8 @@ const { createSafeSSEError } = require('../../utils/errorSanitizer')
 const DEFAULT_OPENAI_RESPONSES_API_VERSION = '2025-04-01-preview'
 const {
   createRequestDetailMeta,
-  extractOpenAICacheReadTokens
+  extractOpenAICacheReadTokens,
+  extractOpenAICacheCreateTokens
 } = require('../../utils/requestDetailHelper')
 
 // lastUsedAt 更新节流（每账户 60 秒内最多更新一次，使用 LRU 防止内存泄漏）
@@ -22,28 +23,7 @@ const LAST_USED_AT_THROTTLE_MS = 60000
 
 // 抽取缓存写入 token，兼容多种字段命名
 function extractCacheCreationTokens(usageData) {
-  if (!usageData || typeof usageData !== 'object') {
-    return 0
-  }
-
-  const details = usageData.input_tokens_details || usageData.prompt_tokens_details || {}
-  const candidates = [
-    details.cache_creation_input_tokens,
-    details.cache_creation_tokens,
-    usageData.cache_creation_input_tokens,
-    usageData.cache_creation_tokens
-  ]
-
-  for (const value of candidates) {
-    if (value !== undefined && value !== null && value !== '') {
-      const parsed = Number(value)
-      if (!Number.isNaN(parsed)) {
-        return parsed
-      }
-    }
-  }
-
-  return 0
+  return extractOpenAICacheCreateTokens(usageData)
 }
 
 function isCanceledStreamError(error) {
@@ -595,17 +575,19 @@ class OpenAIResponsesRelayService {
           // 提取缓存相关的 tokens（如果存在）
           const cacheReadTokens = extractOpenAICacheReadTokens(usageData)
           const cacheCreateTokens = extractCacheCreationTokens(usageData)
-          // 计算实际输入token（总输入减去缓存部分）
-          const actualInputTokens = Math.max(0, totalInputTokens - cacheReadTokens)
+          // 计算实际输入token（总输入减去缓存读取/创建部分）
+          const actualInputTokens = Math.max(
+            0,
+            totalInputTokens - cacheReadTokens - cacheCreateTokens
+          )
 
-          const totalTokens =
-            usageData.total_tokens || totalInputTokens + outputTokens + cacheCreateTokens
+          const totalTokens = usageData.total_tokens || totalInputTokens + outputTokens
           const modelToRecord = actualModel || requestedModel || 'gpt-4'
           const serviceTier = req._serviceTier || null
 
           await apiKeyService.recordUsage(
             apiKeyData.id,
-            actualInputTokens, // 传递实际输入（不含缓存）
+            actualInputTokens, // 传递实际输入（不含缓存读取/创建）
             outputTokens,
             cacheCreateTokens,
             cacheReadTokens,
@@ -621,7 +603,7 @@ class OpenAIResponsesRelayService {
           )
 
           logger.info(
-            `📊 Recorded usage (${reason}) - Input: ${totalInputTokens}(actual:${actualInputTokens}+cached:${cacheReadTokens}), CacheCreate: ${cacheCreateTokens}, Output: ${outputTokens}, Total: ${totalTokens}, Model: ${modelToRecord}`
+            `📊 Recorded usage (${reason}) - Input: ${totalInputTokens}(actual:${actualInputTokens}+created:${cacheCreateTokens}+cached:${cacheReadTokens}), CacheCreate: ${cacheCreateTokens}, Output: ${outputTokens}, Total: ${totalTokens}, Model: ${modelToRecord}`
           )
 
           // 更新账户的 token 使用统计
@@ -633,7 +615,7 @@ class OpenAIResponsesRelayService {
             const CostCalculator = require('../../utils/costCalculator')
             const costInfo = CostCalculator.calculateCost(
               {
-                input_tokens: actualInputTokens, // 实际输入（不含缓存）
+                input_tokens: actualInputTokens, // 实际输入（不含缓存读取/创建）
                 output_tokens: outputTokens,
                 cache_creation_input_tokens: cacheCreateTokens,
                 cache_read_input_tokens: cacheReadTokens
@@ -893,16 +875,18 @@ class OpenAIResponsesRelayService {
         // 提取缓存相关的 tokens（如果存在）
         const cacheReadTokens = extractOpenAICacheReadTokens(usageData)
         const cacheCreateTokens = extractCacheCreationTokens(usageData)
-        // 计算实际输入token（总输入减去缓存部分）
-        const actualInputTokens = Math.max(0, totalInputTokens - cacheReadTokens)
+        // 计算实际输入token（总输入减去缓存读取/创建部分）
+        const actualInputTokens = Math.max(
+          0,
+          totalInputTokens - cacheReadTokens - cacheCreateTokens
+        )
 
-        const totalTokens =
-          usageData.total_tokens || totalInputTokens + outputTokens + cacheCreateTokens
+        const totalTokens = usageData.total_tokens || totalInputTokens + outputTokens
 
         const serviceTier = req._serviceTier || null
         await apiKeyService.recordUsage(
           apiKeyData.id,
-          actualInputTokens, // 传递实际输入（不含缓存）
+          actualInputTokens, // 传递实际输入（不含缓存读取/创建）
           outputTokens,
           cacheCreateTokens,
           cacheReadTokens,
@@ -918,7 +902,7 @@ class OpenAIResponsesRelayService {
         )
 
         logger.info(
-          `📊 Recorded non-stream usage - Input: ${totalInputTokens}(actual:${actualInputTokens}+cached:${cacheReadTokens}), CacheCreate: ${cacheCreateTokens}, Output: ${outputTokens}, Total: ${totalTokens}, Model: ${actualModel}`
+          `📊 Recorded non-stream usage - Input: ${totalInputTokens}(actual:${actualInputTokens}+created:${cacheCreateTokens}+cached:${cacheReadTokens}), CacheCreate: ${cacheCreateTokens}, Output: ${outputTokens}, Total: ${totalTokens}, Model: ${actualModel}`
         )
 
         // 更新账户的 token 使用统计
@@ -930,7 +914,7 @@ class OpenAIResponsesRelayService {
           const CostCalculator = require('../../utils/costCalculator')
           const costInfo = CostCalculator.calculateCost(
             {
-              input_tokens: actualInputTokens, // 实际输入（不含缓存）
+              input_tokens: actualInputTokens, // 实际输入（不含缓存读取/创建）
               output_tokens: outputTokens,
               cache_creation_input_tokens: cacheCreateTokens,
               cache_read_input_tokens: cacheReadTokens

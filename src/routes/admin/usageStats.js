@@ -215,6 +215,34 @@ const buildUsageRecordCostView = (record, fallbackCost, displayCostMode) => {
   return buildCostView({ realCost, ratedCost }, displayCostMode)
 }
 
+const toUsageRecordNumber = (value) => {
+  const num = Number(value)
+  return Number.isFinite(num) ? num : 0
+}
+
+const normalizeUsageRecordCacheFields = (record = {}) => {
+  const usage = {
+    input_tokens: toUsageRecordNumber(record.inputTokens),
+    output_tokens: toUsageRecordNumber(record.outputTokens),
+    cache_creation_input_tokens: toUsageRecordNumber(record.cacheCreateTokens),
+    cache_read_input_tokens: toUsageRecordNumber(record.cacheReadTokens),
+    cache_creation: record.cacheCreation || record.cache_creation || null
+  }
+
+  if (!usage.cache_creation) {
+    const eph5m = parseInt(record.ephemeral5mTokens) || 0
+    const eph1h = parseInt(record.ephemeral1hTokens) || 0
+    if (eph5m > 0 || eph1h > 0) {
+      usage.cache_creation = {
+        ephemeral_5m_input_tokens: eph5m,
+        ephemeral_1h_input_tokens: eph1h
+      }
+    }
+  }
+
+  return usage
+}
+
 // 📊 账户使用统计
 
 // 获取所有账户的使用统计
@@ -2865,27 +2893,7 @@ router.get('/api-keys/:keyId/usage-records', authenticateAdmin, async (req, res)
       return null
     }
 
-    const toUsageObject = (record) => {
-      const usage = {
-        input_tokens: record.inputTokens || 0,
-        output_tokens: record.outputTokens || 0,
-        cache_creation_input_tokens: record.cacheCreateTokens || 0,
-        cache_read_input_tokens: record.cacheReadTokens || 0,
-        cache_creation: record.cacheCreation || record.cache_creation || null
-      }
-      // 如果没有 cache_creation 但有独立存储的 ephemeral 字段，构建子对象
-      if (!usage.cache_creation) {
-        const eph5m = parseInt(record.ephemeral5mTokens) || 0
-        const eph1h = parseInt(record.ephemeral1hTokens) || 0
-        if (eph5m > 0 || eph1h > 0) {
-          usage.cache_creation = {
-            ephemeral_5m_input_tokens: eph5m,
-            ephemeral_1h_input_tokens: eph1h
-          }
-        }
-      }
-      return usage
-    }
+    const toUsageObject = normalizeUsageRecordCacheFields
 
     const withinRange = (record) => {
       if (!record.timestamp) {
@@ -3254,27 +3262,7 @@ router.get('/accounts/:accountId/usage-records', authenticateAdmin, async (req, 
       keysToUse = [{ id: apiKeyId }]
     }
 
-    const toUsageObject = (record) => {
-      const usage = {
-        input_tokens: record.inputTokens || 0,
-        output_tokens: record.outputTokens || 0,
-        cache_creation_input_tokens: record.cacheCreateTokens || 0,
-        cache_read_input_tokens: record.cacheReadTokens || 0,
-        cache_creation: record.cacheCreation || record.cache_creation || null
-      }
-      // 如果没有 cache_creation 但有独立存储的 ephemeral 字段，构建子对象
-      if (!usage.cache_creation) {
-        const eph5m = parseInt(record.ephemeral5mTokens) || 0
-        const eph1h = parseInt(record.ephemeral1hTokens) || 0
-        if (eph5m > 0 || eph1h > 0) {
-          usage.cache_creation = {
-            ephemeral_5m_input_tokens: eph5m,
-            ephemeral_1h_input_tokens: eph1h
-          }
-        }
-      }
-      return usage
-    }
+    const toUsageObject = normalizeUsageRecordCacheFields
 
     const withinRange = (record) => {
       if (!record.timestamp) {

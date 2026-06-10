@@ -581,7 +581,8 @@ function createSummaryAccumulator() {
     totalDurationMs: 0,
     cacheHitNumerator: 0,
     cacheHitDenominator: 0,
-    openAIRelatedRequests: 0
+    openAIRelatedRequests: 0,
+    cacheCreateApplicableRequests: 0
   }
 }
 
@@ -601,6 +602,9 @@ function updateSummaryAccumulator(accumulator, record) {
   accumulator.cacheHitDenominator += cacheMetrics.denominator
   if (cacheMetrics.isOpenAIRelated) {
     accumulator.openAIRelatedRequests += 1
+  }
+  if (!cacheMetrics.cacheCreateNotApplicable) {
+    accumulator.cacheCreateApplicableRequests += 1
   }
 }
 
@@ -627,7 +631,8 @@ function finalizeSummary(accumulator) {
     cacheHitFormula: CACHE_HIT_FORMULA,
     cacheCreateNotApplicable:
       accumulator.totalRequests > 0 &&
-      accumulator.openAIRelatedRequests === accumulator.totalRequests
+      accumulator.openAIRelatedRequests === accumulator.totalRequests &&
+      accumulator.cacheCreateApplicableRequests === 0
   }
 }
 

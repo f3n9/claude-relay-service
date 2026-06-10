@@ -18,7 +18,8 @@ const { getSafeMessage } = require('../utils/errorSanitizer')
 const { filterForOpenAI } = require('../utils/headerFilter')
 const {
   createRequestDetailMeta,
-  extractOpenAICacheReadTokens
+  extractOpenAICacheReadTokens,
+  extractOpenAICacheCreateTokens
 } = require('../utils/requestDetailHelper')
 const requestBodyRuleService = require('../services/requestBodyRuleService')
 const { handleEmbeddingsRequest: handleAzureEmbeddingsRequest } = require('./azureOpenaiRoutes')
@@ -903,14 +904,18 @@ const handleResponses = async (req, res) => {
           const totalInputTokens = usageData.input_tokens || usageData.prompt_tokens || 0
           const outputTokens = usageData.output_tokens || usageData.completion_tokens || 0
           const cacheReadTokens = extractOpenAICacheReadTokens(usageData)
-          // 计算实际输入token（总输入减去缓存部分）
-          const actualInputTokens = Math.max(0, totalInputTokens - cacheReadTokens)
+          const cacheCreateTokens = extractOpenAICacheCreateTokens(usageData)
+          // 计算实际输入token（总输入减去缓存读取/创建部分）
+          const actualInputTokens = Math.max(
+            0,
+            totalInputTokens - cacheReadTokens - cacheCreateTokens
+          )
 
           const nonStreamCosts = await apiKeyService.recordUsage(
             apiKeyData.id,
-            actualInputTokens, // 传递实际输入（不含缓存）
+            actualInputTokens, // 传递实际输入（不含缓存读取/创建）
             outputTokens,
-            0, // OpenAI没有cache_creation_tokens
+            cacheCreateTokens,
             cacheReadTokens,
             actualModel,
             accountId,
@@ -924,7 +929,7 @@ const handleResponses = async (req, res) => {
           )
 
           logger.info(
-            `📊 Recorded OpenAI non-stream usage - Input: ${totalInputTokens}(actual:${actualInputTokens}+cached:${cacheReadTokens}), Output: ${outputTokens}, Total: ${usageData.total_tokens || totalInputTokens + outputTokens}, Model: ${actualModel}`
+            `📊 Recorded OpenAI non-stream usage - Input: ${totalInputTokens}(actual:${actualInputTokens}+created:${cacheCreateTokens}+cached:${cacheReadTokens}), CacheCreate: ${cacheCreateTokens}, Output: ${outputTokens}, Total: ${usageData.total_tokens || totalInputTokens + outputTokens}, Model: ${actualModel}`
           )
 
           await applyRateLimitTracking(
@@ -932,7 +937,7 @@ const handleResponses = async (req, res) => {
             {
               inputTokens: actualInputTokens,
               outputTokens,
-              cacheCreateTokens: 0,
+              cacheCreateTokens,
               cacheReadTokens
             },
             actualModel,
@@ -1023,17 +1028,21 @@ const handleResponses = async (req, res) => {
           const totalInputTokens = usageData.input_tokens || 0
           const outputTokens = usageData.output_tokens || 0
           const cacheReadTokens = extractOpenAICacheReadTokens(usageData)
-          // 计算实际输入token（总输入减去缓存部分）
-          const actualInputTokens = Math.max(0, totalInputTokens - cacheReadTokens)
+          const cacheCreateTokens = extractOpenAICacheCreateTokens(usageData)
+          // 计算实际输入token（总输入减去缓存读取/创建部分）
+          const actualInputTokens = Math.max(
+            0,
+            totalInputTokens - cacheReadTokens - cacheCreateTokens
+          )
 
           // 使用响应中的真实 model，如果没有则使用请求中的 model，最后回退到默认值
           const modelToRecord = actualModel || upstreamRequestedModel || 'gpt-4'
 
           const streamCosts = await apiKeyService.recordUsage(
             apiKeyData.id,
-            actualInputTokens, // 传递实际输入（不含缓存）
+            actualInputTokens, // 传递实际输入（不含缓存读取/创建）
             outputTokens,
-            0, // OpenAI没有cache_creation_tokens
+            cacheCreateTokens,
             cacheReadTokens,
             modelToRecord,
             accountId,
@@ -1047,7 +1056,7 @@ const handleResponses = async (req, res) => {
           )
 
           logger.info(
-            `📊 Recorded OpenAI usage - Input: ${totalInputTokens}(actual:${actualInputTokens}+cached:${cacheReadTokens}), Output: ${outputTokens}, Total: ${usageData.total_tokens || totalInputTokens + outputTokens}, Model: ${modelToRecord} (actual: ${actualModel}, requested: ${upstreamRequestedModel})`
+            `📊 Recorded OpenAI usage - Input: ${totalInputTokens}(actual:${actualInputTokens}+created:${cacheCreateTokens}+cached:${cacheReadTokens}), CacheCreate: ${cacheCreateTokens}, Output: ${outputTokens}, Total: ${usageData.total_tokens || totalInputTokens + outputTokens}, Model: ${modelToRecord} (actual: ${actualModel}, requested: ${upstreamRequestedModel})`
           )
           usageReported = true
 
@@ -1056,7 +1065,7 @@ const handleResponses = async (req, res) => {
             {
               inputTokens: actualInputTokens,
               outputTokens,
-              cacheCreateTokens: 0,
+              cacheCreateTokens,
               cacheReadTokens
             },
             modelToRecord,

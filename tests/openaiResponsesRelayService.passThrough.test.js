@@ -400,4 +400,48 @@ describe('openaiResponsesRelayService stream error logging', () => {
     expect(res.end).toHaveBeenCalledTimes(1)
     expect(res.status).not.toHaveBeenCalledWith(502)
   })
+
+  it('records OpenAI-Responses cache creation tokens from non-stream usage details', async () => {
+    const req = createReq()
+    const res = createRes()
+
+    await openaiResponsesRelayService._handleNormalResponse(
+      {
+        status: 200,
+        data: {
+          model: 'gpt-5.4',
+          usage: {
+            input_tokens: 180,
+            output_tokens: 20,
+            total_tokens: 200,
+            input_tokens_details: {
+              cached_tokens: 50
+            }
+          }
+        }
+      },
+      res,
+      { id: 'resp-1', dailyQuota: '0' },
+      { id: 'key-1' },
+      'gpt-5.4',
+      req
+    )
+
+    const apiKeyService = require('../src/services/apiKeyService')
+    expect(apiKeyService.recordUsage).toHaveBeenCalledWith(
+      'key-1',
+      0,
+      20,
+      130,
+      50,
+      'gpt-5.4',
+      'resp-1',
+      'openai-responses',
+      null,
+      expect.objectContaining({
+        stream: false,
+        statusCode: 200
+      })
+    )
+  })
 })

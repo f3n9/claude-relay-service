@@ -288,6 +288,54 @@ describe('requestDetailService', () => {
     expect(result.summary.cacheHitRate).toBe(37.5)
   })
 
+  test('listRequestDetails preserves nonzero OpenAI cache creation metrics', async () => {
+    claudeRelayConfigService.getConfig.mockResolvedValue({
+      requestDetailCaptureEnabled: true,
+      requestDetailRetentionHours: 6,
+      requestDetailBodyPreviewEnabled: true
+    })
+
+    redis.getApiKey.mockResolvedValue({ name: 'OpenAI Key' })
+    openaiAccountService.getAccount.mockResolvedValue({ name: 'OpenAI Main' })
+
+    redis.getClient.mockReturnValue({
+      zrangebyscore: jest.fn().mockResolvedValue(['req_openai_create', '1775563200000']),
+      mget: jest.fn().mockResolvedValue([
+        JSON.stringify({
+          requestId: 'req_openai_create',
+          timestamp: '2026-04-07T12:00:00.000Z',
+          endpoint: '/openai/v1/responses',
+          method: 'POST',
+          apiKeyId: 'key_openai',
+          accountId: 'acct_openai',
+          accountType: 'openai',
+          model: 'gpt-5.4',
+          inputTokens: 100,
+          outputTokens: 20,
+          cacheReadTokens: 60,
+          cacheCreateTokens: 40,
+          totalTokens: 220,
+          cost: 0.3,
+          durationMs: 500
+        })
+      ])
+    })
+
+    const result = await requestDetailService.listRequestDetails({
+      startDate: '2026-04-07T00:00:00.000Z',
+      endDate: '2026-04-07T23:59:59.000Z'
+    })
+
+    expect(result.records).toHaveLength(1)
+    expect(result.records[0].isOpenAIRelated).toBe(true)
+    expect(result.records[0].cacheCreateNotApplicable).toBe(false)
+    expect(result.records[0].cacheCreateTokens).toBe(40)
+    expect(result.summary.cacheCreateNotApplicable).toBe(false)
+    expect(result.summary.cacheCreateTokens).toBe(40)
+    expect(result.summary.cacheHitDenominator).toBe(200)
+    expect(result.summary.cacheHitRate).toBe(30)
+  })
+
   test('reads retained zero-cost unknown model records with recomputed display cost', async () => {
     claudeRelayConfigService.getConfig.mockResolvedValue({
       requestDetailCaptureEnabled: true,

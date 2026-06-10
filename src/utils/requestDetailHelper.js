@@ -631,6 +631,45 @@ function extractOpenAICacheReadTokens(usage = {}) {
   return 0
 }
 
+function extractOpenAICacheCreateTokens(usage = {}) {
+  if (!usage || typeof usage !== 'object') {
+    return 0
+  }
+
+  const totalInputTokens = Math.max(0, Number(usage.input_tokens || usage.prompt_tokens || 0) || 0)
+  const cacheReadTokens = extractOpenAICacheReadTokens(usage)
+  const hasCacheReadDetail =
+    usage.input_tokens_details?.cached_tokens !== undefined ||
+    usage.input_tokens_details?.cached_token !== undefined ||
+    usage.prompt_tokens_details?.cached_tokens !== undefined ||
+    usage.prompt_tokens_details?.cached_token !== undefined
+  const candidates = [
+    usage.input_tokens_details?.cache_creation_input_tokens,
+    usage.input_tokens_details?.cache_creation_tokens,
+    usage.prompt_tokens_details?.cache_creation_input_tokens,
+    usage.prompt_tokens_details?.cache_creation_tokens,
+    usage.cache_creation_input_tokens,
+    usage.cache_creation_tokens
+  ]
+
+  for (const value of candidates) {
+    if (value === undefined || value === null || value === '') {
+      continue
+    }
+
+    const parsed = Number(value)
+    if (!Number.isNaN(parsed)) {
+      return Math.max(0, parsed)
+    }
+  }
+
+  if (totalInputTokens > 0 && hasCacheReadDetail) {
+    return Math.max(0, totalInputTokens - cacheReadTokens)
+  }
+
+  return 0
+}
+
 function isOpenAIRelatedEndpoint(endpoint) {
   if (typeof endpoint !== 'string') {
     return false
@@ -658,12 +697,13 @@ function getRequestDetailCacheMetrics(detail = {}) {
   const input = Math.max(0, Number(detail.inputTokens) || 0)
   const isOpenAIRelated =
     OPENAI_RELATED_ACCOUNT_TYPES.has(detail.accountType) || isOpenAIRelatedEndpoint(detail.endpoint)
+  const cacheCreateNotApplicable = isOpenAIRelated && create <= 0
   const denominator = input + read + create
 
   if (denominator <= 0) {
     return {
       isOpenAIRelated,
-      cacheCreateNotApplicable: isOpenAIRelated,
+      cacheCreateNotApplicable,
       numerator: read,
       denominator: 0,
       formula: CACHE_HIT_FORMULA,
@@ -674,7 +714,7 @@ function getRequestDetailCacheMetrics(detail = {}) {
 
   return {
     isOpenAIRelated,
-    cacheCreateNotApplicable: isOpenAIRelated,
+    cacheCreateNotApplicable,
     numerator: read,
     denominator,
     formula: CACHE_HIT_FORMULA,
@@ -711,6 +751,7 @@ module.exports = {
   createRequestDetailMeta,
   finalizeRequestDetailMeta,
   extractOpenAICacheReadTokens,
+  extractOpenAICacheCreateTokens,
   isOpenAIRelatedEndpoint,
   CACHE_HIT_FORMULA,
   getRequestDetailCacheMetrics,

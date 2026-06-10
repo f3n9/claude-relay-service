@@ -5,6 +5,7 @@ const {
   createRequestDetailMeta,
   finalizeRequestDetailMeta,
   extractOpenAICacheReadTokens,
+  extractOpenAICacheCreateTokens,
   isOpenAIRelatedEndpoint,
   getRequestDetailCacheMetrics,
   calculateCacheHitRate
@@ -254,6 +255,44 @@ describe('requestDetailHelper', () => {
     ).toBe(0)
   })
 
+  test('extractOpenAICacheCreateTokens supports OpenAI detail and top-level fields', () => {
+    expect(
+      extractOpenAICacheCreateTokens({
+        input_tokens_details: { cache_creation_input_tokens: 42 },
+        prompt_tokens_details: { cache_creation_tokens: 99 },
+        cache_creation_input_tokens: 17
+      })
+    ).toBe(42)
+
+    expect(
+      extractOpenAICacheCreateTokens({
+        prompt_tokens_details: { cache_creation_tokens: '31' }
+      })
+    ).toBe(31)
+
+    expect(
+      extractOpenAICacheCreateTokens({
+        cache_creation_input_tokens: 23
+      })
+    ).toBe(23)
+  })
+
+  test('extractOpenAICacheCreateTokens infers uncached prompt input when only cached tokens exist', () => {
+    expect(
+      extractOpenAICacheCreateTokens({
+        input_tokens: 180,
+        input_tokens_details: { cached_tokens: 50 }
+      })
+    ).toBe(130)
+
+    expect(
+      extractOpenAICacheCreateTokens({
+        input_tokens: 180,
+        input_tokens_details: { cached_tokens: 0 }
+      })
+    ).toBe(180)
+  })
+
   test('calculateCacheHitRate uses cacheRead / (input + cacheRead + cacheCreate)', () => {
     expect(calculateCacheHitRate(2048, 0, 17206)).toBe(10.64)
     expect(calculateCacheHitRate(120, 80, 100)).toBe(40)
@@ -294,6 +333,21 @@ describe('requestDetailHelper', () => {
         cacheReadTokens: 0
       })
     ).toBe(0)
+  })
+
+  test('getRequestDetailCacheMetrics shows OpenAI cache creation when tokens are present', () => {
+    const metrics = getRequestDetailCacheMetrics({
+      endpoint: '/openai/v1/responses',
+      accountType: 'openai',
+      inputTokens: 100,
+      cacheReadTokens: 60,
+      cacheCreateTokens: 40
+    })
+
+    expect(metrics.isOpenAIRelated).toBe(true)
+    expect(metrics.cacheCreateNotApplicable).toBe(false)
+    expect(metrics.denominator).toBe(200)
+    expect(metrics.rate).toBe(30)
   })
 
   test('calculateCacheHitRate uses one denominator for azure records and claude compatibility routes', () => {

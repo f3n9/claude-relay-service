@@ -226,6 +226,53 @@ describe('openaiRoutes handleResponses passThrough behavior', () => {
     expect(config.headers.authorization).toBe('Bearer decrypted-openai-token')
   })
 
+  it('records OpenAI cache creation tokens from input token details', async () => {
+    openaiAccountService.getAccount.mockResolvedValue({
+      id: 'oa-1',
+      name: 'OpenAI Account',
+      accessToken: 'encrypted-token',
+      accountId: 'chatgpt-account-1',
+      passThrough: 'false'
+    })
+
+    axios.post.mockResolvedValueOnce({
+      status: 200,
+      headers: {},
+      data: {
+        model: 'gpt-5',
+        usage: {
+          input_tokens: 180,
+          output_tokens: 20,
+          total_tokens: 200,
+          input_tokens_details: {
+            cached_tokens: 50
+          }
+        }
+      }
+    })
+
+    const req = createBaseRequest()
+    const res = createMockResponse()
+
+    await handleResponses(req, res)
+
+    expect(apiKeyService.recordUsage).toHaveBeenCalledWith(
+      'key-1',
+      0,
+      20,
+      130,
+      50,
+      'gpt-5',
+      'oa-1',
+      'openai',
+      null,
+      expect.objectContaining({
+        stream: false,
+        statusCode: 200
+      })
+    )
+  })
+
   it('sanitizes replayed responses input items when previous_response_id is missing', async () => {
     unifiedOpenAIScheduler.selectAccountForApiKey.mockResolvedValue({
       accountId: 'resp-1',
