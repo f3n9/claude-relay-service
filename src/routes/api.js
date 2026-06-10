@@ -4,7 +4,9 @@ const claudeConsoleRelayService = require('../services/relay/claudeConsoleRelayS
 const bedrockRelayService = require('../services/relay/bedrockRelayService')
 const gcpVertexRelayService = require('../services/relay/gcpVertexRelayService')
 const ccrRelayService = require('../services/relay/ccrRelayService')
+const claudeOpenAIBridgeRelayService = require('../services/relay/claudeOpenAIBridgeRelayService')
 const bedrockAccountService = require('../services/account/bedrockAccountService')
+const claudeOpenAIBridgeAccountService = require('../services/account/claudeOpenAIBridgeAccountService')
 const unifiedClaudeScheduler = require('../services/scheduler/unifiedClaudeScheduler')
 const apiKeyService = require('../services/apiKeyService')
 const { authenticateApiKey } = require('../middleware/auth')
@@ -278,6 +280,20 @@ async function handleMessagesRequest(req, res) {
     if (forcedVendor === 'gemini-cli' || forcedVendor === 'antigravity') {
       const baseModel = (req.body.model || '').trim()
       return await handleAnthropicMessagesToGemini(req, res, { vendor: forcedVendor, baseModel })
+    }
+
+    const bridgeSelection = await claudeOpenAIBridgeAccountService.selectAccountForModel(
+      req.body.model || ''
+    )
+    if (bridgeSelection) {
+      logger.api('🌉 /v1/messages matched Claude OpenAI bridge mapping', {
+        sourceModel: bridgeSelection.mapping?.sourceModel || req.body.model || '',
+        targetModel: bridgeSelection.mapping?.targetModel || '',
+        bridgeAccountId: bridgeSelection.account?.id || '',
+        bridgeAccountName: bridgeSelection.account?.name || '',
+        stream: req.body.stream === true
+      })
+      return await claudeOpenAIBridgeRelayService.handleRequest(req, res, bridgeSelection)
     }
 
     // 检查是否为流式请求
