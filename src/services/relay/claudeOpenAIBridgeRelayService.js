@@ -46,15 +46,16 @@ class ClaudeOpenAIBridgeRelayService {
       await bridgeAccountService.markAccountUsed(account.id)
 
       if (stream) {
-        return this._handleStreamResponse(response, req, res, account, mapping)
+        return this._handleStreamResponse(response, req, res, account, mapping, targetBody)
       }
 
-      return this._handleNormalResponse(response, req, res, account, mapping)
+      return this._handleNormalResponse(response, req, res, account, mapping, targetBody)
     } catch (error) {
       logger.error('Claude OpenAI bridge relay error', this._compactError(error))
-      await bridgeAccountService
-        .markAccountError(account.id, error?.message || 'Claude OpenAI bridge request failed')
-        .catch(() => {})
+      await this._markAccountErrorIfAutoProtectionEnabled(
+        account,
+        error?.message || 'Claude OpenAI bridge request failed'
+      )
 
       if (res.headersSent) {
         return res.end()
@@ -94,11 +95,11 @@ class ClaudeOpenAIBridgeRelayService {
     return requestOptions
   }
 
-  async _handleNormalResponse(response, req, res, account, mapping) {
+  async _handleNormalResponse(response, req, res, account, mapping, bridgeRequestBody) {
     const claudeResponse = convertOpenAIResponseToClaude(response.data, mapping.sourceModel)
     const usage = claudeResponse.usage || {}
 
-    await this._recordUsage(req, account, mapping.sourceModel, usage, false, response.status)
+    await this._recordUsage(req, account, mapping, usage, false, response.status, bridgeRequestBody)
 
     return res.status(response.status).json({
       ...claudeResponse,
@@ -106,7 +107,7 @@ class ClaudeOpenAIBridgeRelayService {
     })
   }
 
-  async _handleStreamResponse(response, req, res, account, mapping) {
+  async _handleStreamResponse(response, req, res, account, mapping, bridgeRequestBody) {
     if (!response.data || typeof response.data.on !== 'function') {
       return this._sendJsonError(res, 502, 'Claude OpenAI bridge upstream stream is invalid')
     }
@@ -131,10 +132,11 @@ class ClaudeOpenAIBridgeRelayService {
       recordPromise = this._recordUsage(
         req,
         account,
-        mapping.sourceModel,
+        mapping,
         usage,
         true,
-        res.statusCode
+        res.statusCode,
+        bridgeRequestBody
       )
       return recordPromise
     }
@@ -160,6 +162,17 @@ class ClaudeOpenAIBridgeRelayService {
             if (!wroteToClient && !res.headersSent) {
               this._sendJsonError(res, 502, 'Claude OpenAI bridge upstream stream ended early')
               return resolve()
+            }
+            if (wroteToClient) {
+              this._writeSSEEvent(
+                res,
+                'error',
+                this._createClaudeError(
+                  502,
+                  'Claude OpenAI bridge upstream stream ended early',
+                  'api_error'
+                )
+              )
             }
           }
 
@@ -199,9 +212,10 @@ class ClaudeOpenAIBridgeRelayService {
       response.data.on('end', finish)
       response.data.on('error', async (error) => {
         logger.error('Claude OpenAI bridge upstream stream error', this._compactError(error))
-        await bridgeAccountService
-          .markAccountError(account.id, error?.message || 'Claude OpenAI bridge stream error')
-          .catch(() => {})
+        await this._markAccountErrorIfAutoProtectionEnabled(
+          account,
+          error?.message || 'Claude OpenAI bridge stream error'
+        )
 
         if (!wroteToClient && !res.headersSent) {
           this._sendJsonError(res, 502, 'Claude OpenAI bridge upstream stream failed')
@@ -248,8 +262,7 @@ class ClaudeOpenAIBridgeRelayService {
 
         const events = convertOpenAIStreamChunkToClaudeEvents(chunk, state)
         for (const event of events) {
-          res.write(`event: ${event.type}\n`)
-          res.write(`data: ${JSON.stringify(event)}\n\n`)
+          this._writeSSEEvent(res, event.type, event)
           markWritten()
         }
       }
@@ -293,7 +306,7 @@ class ClaudeOpenAIBridgeRelayService {
     }
 
     if (response.status >= 500) {
-      await bridgeAccountService.markAccountError(account.id, message)
+      await this._markAccountErrorIfAutoProtectionEnabled(account, message)
     }
 
     return res.status(response.status).json(this._createClaudeError(response.status, message))
@@ -329,13 +342,22 @@ class ClaudeOpenAIBridgeRelayService {
     res.setHeader('X-Accel-Buffering', 'no')
   }
 
-  async _recordUsage(req, account, model, usage, stream, statusCode) {
+  async _recordUsage(req, account, mapping, usage, stream, statusCode, bridgeRequestBody) {
     const inputTokens = Number(usage?.input_tokens || 0)
     const outputTokens = Number(usage?.output_tokens || 0)
+    const model = mapping.sourceModel
 
     if (inputTokens + outputTokens <= 0) {
       return null
     }
+
+    const requestMeta = createRequestDetailMeta(req, {
+      requestBody: req?.body,
+      stream,
+      statusCode
+    })
+    requestMeta.bridgeTargetModel = mapping.targetModel
+    requestMeta.bridgeRequestBody = bridgeRequestBody
 
     const costs = await apiKeyService.recordUsage(
       req.apiKey.id,
@@ -347,11 +369,7 @@ class ClaudeOpenAIBridgeRelayService {
       account.id,
       ACCOUNT_TYPE,
       null,
-      createRequestDetailMeta(req, {
-        requestBody: req?.body,
-        stream,
-        statusCode
-      })
+      requestMeta
     )
 
     const costInfo = costs?.costs || costs || null
@@ -402,6 +420,26 @@ class ClaudeOpenAIBridgeRelayService {
 
   _sendJsonError(res, status, message, type = 'api_error') {
     return res.status(status).json(this._createClaudeError(status, message, type))
+  }
+
+  _writeSSEEvent(res, type, event) {
+    res.write(`event: ${type}\n`)
+    res.write(`data: ${JSON.stringify(event)}\n\n`)
+  }
+
+  async _markAccountErrorIfAutoProtectionEnabled(account, message) {
+    if (!account?.id) {
+      return null
+    }
+
+    if (account.disableAutoProtection === true || account.disableAutoProtection === 'true') {
+      logger.info('Claude OpenAI bridge auto-protection disabled, skipping account error mark', {
+        accountId: account.id
+      })
+      return { success: true, skipped: true }
+    }
+
+    return bridgeAccountService.markAccountError(account.id, message).catch(() => {})
   }
 
   _extractErrorMessage(errorData) {

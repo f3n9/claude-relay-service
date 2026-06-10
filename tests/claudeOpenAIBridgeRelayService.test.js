@@ -39,7 +39,10 @@ jest.mock(
 )
 
 jest.mock('../src/utils/requestDetailHelper', () => ({
-  createRequestDetailMeta: jest.fn(() => ({ requestId: 'req-meta-1' }))
+  createRequestDetailMeta: jest.fn((_req, overrides = {}) => ({
+    requestId: 'req-meta-1',
+    ...overrides
+  }))
 }))
 
 const axios = require('axios')
@@ -214,7 +217,15 @@ describe('claudeOpenAIBridgeRelayService', () => {
       'bridge-1',
       'claude-openai-bridge',
       null,
-      { requestId: 'req-meta-1' }
+      expect.objectContaining({
+        requestId: 'req-meta-1',
+        requestBody: req.body,
+        bridgeTargetModel: 'gpt-4.1-mini',
+        bridgeRequestBody: expect.objectContaining({
+          model: 'gpt-4.1-mini',
+          messages: [{ role: 'user', content: 'Hello' }]
+        })
+      })
     )
     expect(updateRateLimitCounters).toHaveBeenCalledWith(
       req.rateLimitInfo,
@@ -305,9 +316,57 @@ describe('claudeOpenAIBridgeRelayService', () => {
       'bridge-1',
       'claude-openai-bridge',
       null,
-      { requestId: 'req-meta-1' }
+      expect.objectContaining({
+        requestId: 'req-meta-1',
+        requestBody: req.body,
+        bridgeTargetModel: 'gpt-4.1-mini',
+        bridgeRequestBody: expect.objectContaining({
+          model: 'gpt-4.1-mini',
+          stream: true
+        })
+      })
     )
     expect(bridgeAccountService.markAccountUsed).toHaveBeenCalledWith('bridge-1')
+    expect(res.end).toHaveBeenCalled()
+  })
+
+  it('emits an error SSE when upstream closes after partial stream without terminal event', async () => {
+    const upstream = createStream()
+    axios.mockResolvedValue({
+      status: 200,
+      headers: {},
+      data: upstream
+    })
+
+    const req = createReq({
+      body: {
+        model: 'claude-sonnet-4-bridge',
+        max_tokens: 64,
+        stream: true,
+        messages: [{ role: 'user', content: 'Stream' }]
+      }
+    })
+    const res = createRes()
+
+    const requestPromise = relayService.handleRequest(req, res, createSelection())
+    await flushAsync()
+
+    upstream.emit(
+      'data',
+      Buffer.from(
+        'data: {"id":"chatcmpl-early","choices":[{"delta":{"role":"assistant"},"finish_reason":null}]}\n\n' +
+          'data: {"choices":[{"delta":{"content":"partial"},"finish_reason":null}]}\n\n'
+      )
+    )
+    upstream.emit('end')
+
+    await requestPromise
+
+    const output = res.write.mock.calls.map(([chunk]) => chunk).join('')
+    expect(output).toContain('event: message_start')
+    expect(output).toContain('"text":"partial"')
+    expect(output).toContain('event: error')
+    expect(output).toContain('Claude OpenAI bridge upstream stream ended early')
     expect(res.end).toHaveBeenCalled()
   })
 
@@ -379,7 +438,15 @@ describe('claudeOpenAIBridgeRelayService', () => {
       'bridge-1',
       'claude-openai-bridge',
       null,
-      { requestId: 'req-meta-1' }
+      expect.objectContaining({
+        requestId: 'req-meta-1',
+        requestBody: req.body,
+        bridgeTargetModel: 'gpt-4.1-mini',
+        bridgeRequestBody: expect.objectContaining({
+          model: 'gpt-4.1-mini',
+          stream: true
+        })
+      })
     )
   })
 
@@ -465,6 +532,36 @@ describe('claudeOpenAIBridgeRelayService', () => {
 
     expect(bridgeAccountService.markAccountUnauthorized).toHaveBeenCalledWith('bridge-1', 'bad key')
     expect(bridgeAccountService.markAccountError).toHaveBeenCalledWith('bridge-1', 'unavailable')
+  })
+
+  it('does not mark account error for upstream 5xx when auto-protection is disabled', async () => {
+    axios.mockResolvedValue({
+      status: 503,
+      headers: {},
+      data: { error: { message: 'maintenance' } }
+    })
+
+    const res = createRes()
+
+    await relayService.handleRequest(
+      createReq(),
+      res,
+      createSelection({
+        account: {
+          disableAutoProtection: true
+        }
+      })
+    )
+
+    expect(bridgeAccountService.markAccountError).not.toHaveBeenCalled()
+    expect(res.status).toHaveBeenCalledWith(503)
+    expect(res.json).toHaveBeenCalledWith(
+      expect.objectContaining({
+        error: expect.objectContaining({
+          message: 'maintenance'
+        })
+      })
+    )
   })
 
   it('adds proxy agents and disables axios proxy when account proxy is configured', async () => {
