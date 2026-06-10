@@ -17,7 +17,8 @@ const {
   getRequestDetailCacheMetrics,
   extractRequestReasoningInfo,
   resolveRequestDetailReasoning,
-  CACHE_HIT_FORMULA
+  CACHE_HIT_FORMULA,
+  CACHE_HIT_FORMULA_INPUT_INCLUDES_CACHE
 } = require('../utils/requestDetailHelper')
 
 const REQUEST_DETAIL_ITEM_PREFIX = 'request_detail:item:'
@@ -186,14 +187,32 @@ function createCostRecomputePatch(record = {}) {
 
 function prepareRecordForDisplay(record = {}) {
   const costPatch = createCostRecomputePatch(record)
-  if (!costPatch) {
-    return record
+  const displayRecord = costPatch
+    ? {
+        ...record,
+        ...costPatch
+      }
+    : { ...record }
+
+  const cacheMetrics = getRequestDetailCacheMetrics(displayRecord)
+  const inputTokens = normalizeTokenValue(displayRecord.inputTokens)
+  const outputTokens = normalizeTokenValue(displayRecord.outputTokens)
+  const totalTokens = normalizeTokenValue(displayRecord.totalTokens)
+  const restoredInputTokens = Math.max(0, totalTokens - outputTokens)
+  const restoresOpenAITotalInput =
+    displayRecord.accountType === 'openai' || displayRecord.accountType === 'openai-responses'
+
+  // OpenAI input_tokens already includes cached and newly written cache prompt input.
+  if (
+    restoresOpenAITotalInput &&
+    cacheMetrics.isOpenAIRelated &&
+    restoredInputTokens > inputTokens
+  ) {
+    displayRecord.inputTokens = restoredInputTokens
+    displayRecord.inputTokensIncludesCache = true
   }
 
-  return {
-    ...record,
-    ...costPatch
-  }
+  return displayRecord
 }
 
 function formatDayKey(date) {
@@ -582,7 +601,8 @@ function createSummaryAccumulator() {
     cacheHitNumerator: 0,
     cacheHitDenominator: 0,
     openAIRelatedRequests: 0,
-    cacheCreateApplicableRequests: 0
+    cacheCreateApplicableRequests: 0,
+    inputTokensIncludesCacheRequests: 0
   }
 }
 
@@ -606,9 +626,18 @@ function updateSummaryAccumulator(accumulator, record) {
   if (!cacheMetrics.cacheCreateNotApplicable) {
     accumulator.cacheCreateApplicableRequests += 1
   }
+  if (record.inputTokensIncludesCache === true) {
+    accumulator.inputTokensIncludesCacheRequests += 1
+  }
 }
 
 function finalizeSummary(accumulator) {
+  const cacheHitFormula =
+    accumulator.totalRequests > 0 &&
+    accumulator.inputTokensIncludesCacheRequests === accumulator.totalRequests
+      ? CACHE_HIT_FORMULA_INPUT_INCLUDES_CACHE
+      : CACHE_HIT_FORMULA
+
   return {
     totalRequests: accumulator.totalRequests,
     inputTokens: accumulator.inputTokens,
@@ -628,7 +657,7 @@ function finalizeSummary(accumulator) {
         : 0,
     cacheHitNumerator: accumulator.cacheHitNumerator,
     cacheHitDenominator: accumulator.cacheHitDenominator,
-    cacheHitFormula: CACHE_HIT_FORMULA,
+    cacheHitFormula,
     cacheCreateNotApplicable:
       accumulator.totalRequests > 0 &&
       accumulator.openAIRelatedRequests === accumulator.totalRequests &&

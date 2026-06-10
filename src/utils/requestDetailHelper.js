@@ -9,6 +9,7 @@ const TOOLS_KEY = 'tools'
 const PREVIEW_TRUNCATION_SUFFIX_PATTERN = /\.\.\.\[(?:truncated )?(\d+) chars\]$/
 const OPENAI_RELATED_ACCOUNT_TYPES = new Set(['openai', 'openai-responses', 'azure-openai'])
 const CACHE_HIT_FORMULA = 'cacheReadTokens / (inputTokens + cacheReadTokens + cacheCreateTokens)'
+const CACHE_HIT_FORMULA_INPUT_INCLUDES_CACHE = 'cacheReadTokens / inputTokens'
 
 function toFiniteNumber(value) {
   if (value === undefined || value === null || value === '') {
@@ -698,7 +699,11 @@ function getRequestDetailCacheMetrics(detail = {}) {
   const isOpenAIRelated =
     OPENAI_RELATED_ACCOUNT_TYPES.has(detail.accountType) || isOpenAIRelatedEndpoint(detail.endpoint)
   const cacheCreateNotApplicable = isOpenAIRelated && create <= 0
-  const denominator = input + read + create
+  const inputTokensIncludesCache = isOpenAIRelated && detail.inputTokensIncludesCache === true
+  const denominator = inputTokensIncludesCache ? input : input + read + create
+  const formula = inputTokensIncludesCache
+    ? CACHE_HIT_FORMULA_INPUT_INCLUDES_CACHE
+    : CACHE_HIT_FORMULA
 
   if (denominator <= 0) {
     return {
@@ -706,8 +711,8 @@ function getRequestDetailCacheMetrics(detail = {}) {
       cacheCreateNotApplicable,
       numerator: read,
       denominator: 0,
-      formula: CACHE_HIT_FORMULA,
-      cacheHitFormula: CACHE_HIT_FORMULA,
+      formula,
+      cacheHitFormula: formula,
       rate: 0
     }
   }
@@ -717,8 +722,8 @@ function getRequestDetailCacheMetrics(detail = {}) {
     cacheCreateNotApplicable,
     numerator: read,
     denominator,
-    formula: CACHE_HIT_FORMULA,
-    cacheHitFormula: CACHE_HIT_FORMULA,
+    formula,
+    cacheHitFormula: formula,
     rate: Number(((read / denominator) * 100).toFixed(2))
   }
 }
@@ -754,6 +759,7 @@ module.exports = {
   extractOpenAICacheCreateTokens,
   isOpenAIRelatedEndpoint,
   CACHE_HIT_FORMULA,
+  CACHE_HIT_FORMULA_INPUT_INCLUDES_CACHE,
   getRequestDetailCacheMetrics,
   calculateCacheHitRate
 }

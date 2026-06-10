@@ -336,6 +336,121 @@ describe('requestDetailService', () => {
     expect(result.summary.cacheHitRate).toBe(30)
   })
 
+  test('listRequestDetails keeps OpenAI total input visible with cache creation tokens', async () => {
+    claudeRelayConfigService.getConfig.mockResolvedValue({
+      requestDetailCaptureEnabled: true,
+      requestDetailRetentionHours: 6,
+      requestDetailBodyPreviewEnabled: true
+    })
+
+    redis.getApiKey.mockResolvedValue({ name: 'OpenAI Key' })
+    openaiAccountService.getAccount.mockResolvedValue({ name: 'OpenAI Main' })
+
+    redis.getClient.mockReturnValue({
+      zrangebyscore: jest.fn().mockResolvedValue(['req_openai_create', '1775563200000']),
+      mget: jest.fn().mockResolvedValue([
+        JSON.stringify({
+          requestId: 'req_openai_create',
+          timestamp: '2026-04-07T12:00:00.000Z',
+          endpoint: '/openai/v1/responses',
+          method: 'POST',
+          apiKeyId: 'key_openai',
+          accountId: 'acct_openai',
+          accountType: 'openai',
+          model: 'gpt-5.4',
+          inputTokens: 90,
+          outputTokens: 20,
+          cacheReadTokens: 50,
+          cacheCreateTokens: 40,
+          totalTokens: 200,
+          cost: 0.3,
+          durationMs: 500
+        })
+      ])
+    })
+
+    const result = await requestDetailService.listRequestDetails({
+      startDate: '2026-04-07T00:00:00.000Z',
+      endDate: '2026-04-07T23:59:59.000Z'
+    })
+
+    expect(result.records).toHaveLength(1)
+    expect(result.records[0]).toMatchObject({
+      inputTokens: 180,
+      outputTokens: 20,
+      cacheReadTokens: 50,
+      cacheCreateTokens: 40,
+      totalTokens: 200
+    })
+    expect(result.summary).toMatchObject({
+      inputTokens: 180,
+      outputTokens: 20,
+      cacheReadTokens: 50,
+      cacheCreateTokens: 40
+    })
+    expect(result.summary.cacheHitDenominator).toBe(180)
+    expect(result.summary.cacheHitFormula).toBe('cacheReadTokens / inputTokens')
+    expect(result.summary.cacheHitRate).toBe(27.78)
+  })
+
+  test('listRequestDetails does not expand Azure OpenAI input already stored as total input', async () => {
+    claudeRelayConfigService.getConfig.mockResolvedValue({
+      requestDetailCaptureEnabled: true,
+      requestDetailRetentionHours: 6,
+      requestDetailBodyPreviewEnabled: true
+    })
+
+    redis.getApiKey.mockResolvedValue({ name: 'Azure Key' })
+
+    redis.getClient.mockReturnValue({
+      zrangebyscore: jest.fn().mockResolvedValue(['req_azure', '1775563200000']),
+      mget: jest.fn().mockResolvedValue([
+        JSON.stringify({
+          requestId: 'req_azure',
+          timestamp: '2026-04-07T12:00:00.000Z',
+          endpoint: '/azure/openai/deployments/gpt-4o/chat/completions',
+          method: 'POST',
+          apiKeyId: 'key_azure',
+          accountId: 'acct_azure',
+          accountType: 'azure-openai',
+          model: 'gpt-4o',
+          inputTokens: 180,
+          outputTokens: 20,
+          cacheReadTokens: 50,
+          cacheCreateTokens: 0,
+          totalTokens: 250,
+          cost: 0.3,
+          durationMs: 500
+        })
+      ])
+    })
+
+    const result = await requestDetailService.listRequestDetails({
+      startDate: '2026-04-07T00:00:00.000Z',
+      endDate: '2026-04-07T23:59:59.000Z'
+    })
+
+    expect(result.records).toHaveLength(1)
+    expect(result.records[0]).toMatchObject({
+      inputTokens: 180,
+      outputTokens: 20,
+      cacheReadTokens: 50,
+      cacheCreateTokens: 0,
+      totalTokens: 250
+    })
+    expect(result.summary).toMatchObject({
+      inputTokens: 180,
+      outputTokens: 20,
+      cacheReadTokens: 50,
+      cacheCreateTokens: 0
+    })
+    expect(result.summary.cacheHitDenominator).toBe(230)
+    expect(result.summary.cacheHitFormula).toBe(
+      'cacheReadTokens / (inputTokens + cacheReadTokens + cacheCreateTokens)'
+    )
+    expect(result.summary.cacheHitRate).toBe(21.74)
+  })
+
   test('reads retained zero-cost unknown model records with recomputed display cost', async () => {
     claudeRelayConfigService.getConfig.mockResolvedValue({
       requestDetailCaptureEnabled: true,

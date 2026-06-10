@@ -17,6 +17,7 @@ const CostCalculator = require('../../utils/costCalculator')
 const pricingService = require('../../services/pricingService')
 const config = require('../../../config/config')
 const { resolveDisplayMode, buildCostView } = require('../../utils/billingCostModeHelper')
+const { getRequestDetailCacheMetrics } = require('../../utils/requestDetailHelper')
 
 const router = express.Router()
 
@@ -238,6 +239,27 @@ const normalizeUsageRecordCacheFields = (record = {}) => {
         ephemeral_1h_input_tokens: eph1h
       }
     }
+  }
+
+  return usage
+}
+
+const normalizeUsageRecordDisplayFields = (record = {}) => {
+  const usage = normalizeUsageRecordCacheFields(record)
+  const cacheMetrics = getRequestDetailCacheMetrics(record)
+  const storedTotalTokens = toUsageRecordNumber(record.totalTokens)
+  const restoresOpenAITotalInput =
+    record.accountType === 'openai' || record.accountType === 'openai-responses'
+
+  // OpenAI reports input_tokens as total prompt input, including cached and created cache tokens.
+  if (
+    restoresOpenAITotalInput &&
+    cacheMetrics.isOpenAIRelated &&
+    storedTotalTokens > usage.output_tokens &&
+    storedTotalTokens - usage.output_tokens > usage.input_tokens
+  ) {
+    usage.input_tokens = Math.max(0, storedTotalTokens - usage.output_tokens)
+    usage.input_tokens_includes_cache = true
   }
 
   return usage
@@ -3022,20 +3044,21 @@ router.get('/api-keys/:keyId/usage-records', authenticateAdmin, async (req, res)
         record.usageCaptureState || record.usage_capture_state || ''
       const normalizedRequestRegion = record.requestRegion || record.request_region || ''
       const usage = toUsageObject(record)
+      const displayUsage = normalizeUsageRecordDisplayFields(record)
       const costData = CostCalculator.calculateCost(usage, record.model || 'unknown')
       const costView = buildUsageRecordCostView(record, costData?.costs?.total, displayCostMode)
       const totalTokens =
         record.totalTokens ||
-        usage.input_tokens +
-          usage.output_tokens +
-          usage.cache_creation_input_tokens +
-          usage.cache_read_input_tokens
+        displayUsage.input_tokens +
+          displayUsage.output_tokens +
+          displayUsage.cache_creation_input_tokens +
+          displayUsage.cache_read_input_tokens
 
       summary.totalRequests += 1
-      summary.inputTokens += usage.input_tokens
-      summary.outputTokens += usage.output_tokens
-      summary.cacheCreateTokens += usage.cache_creation_input_tokens
-      summary.cacheReadTokens += usage.cache_read_input_tokens
+      summary.inputTokens += displayUsage.input_tokens
+      summary.outputTokens += displayUsage.output_tokens
+      summary.cacheCreateTokens += displayUsage.cache_creation_input_tokens
+      summary.cacheReadTokens += displayUsage.cache_read_input_tokens
       summary.totalTokens += totalTokens
       summary.totalRatedCost += costView.ratedCost
       summary.totalRealCost += costView.realCost
@@ -3052,14 +3075,15 @@ router.get('/api-keys/:keyId/usage-records', authenticateAdmin, async (req, res)
     const enrichedRecords = []
     for (const record of pageRecords) {
       const usage = toUsageObject(record)
+      const displayUsage = normalizeUsageRecordDisplayFields(record)
       const costData = CostCalculator.calculateCost(usage, record.model || 'unknown')
       const costView = buildUsageRecordCostView(record, costData?.costs?.total, displayCostMode)
       const totalTokens =
         record.totalTokens ||
-        usage.input_tokens +
-          usage.output_tokens +
-          usage.cache_creation_input_tokens +
-          usage.cache_read_input_tokens
+        displayUsage.input_tokens +
+          displayUsage.output_tokens +
+          displayUsage.cache_creation_input_tokens +
+          displayUsage.cache_read_input_tokens
 
       const accountInfo = await resolveAccountInfo(record.accountId, record.accountType)
       const resolvedAccountType = accountInfo?.type || record.accountType || 'unknown'
@@ -3074,10 +3098,11 @@ router.get('/api-keys/:keyId/usage-records', authenticateAdmin, async (req, res)
         accountTypeName: accountTypeNames[resolvedAccountType] || '未知渠道',
         usageCaptureState: record.usageCaptureState || record.usage_capture_state || null,
         requestRegion: record.requestRegion || record.request_region || null,
-        inputTokens: usage.input_tokens,
-        outputTokens: usage.output_tokens,
-        cacheCreateTokens: usage.cache_creation_input_tokens,
-        cacheReadTokens: usage.cache_read_input_tokens,
+        inputTokens: displayUsage.input_tokens,
+        outputTokens: displayUsage.output_tokens,
+        cacheCreateTokens: displayUsage.cache_creation_input_tokens,
+        cacheReadTokens: displayUsage.cache_read_input_tokens,
+        inputTokensIncludesCache: displayUsage.input_tokens_includes_cache === true,
         ephemeral5mTokens: record.ephemeral5mTokens || 0,
         ephemeral1hTokens: record.ephemeral1hTokens || 0,
         totalTokens,
@@ -3411,20 +3436,21 @@ router.get('/accounts/:accountId/usage-records', authenticateAdmin, async (req, 
 
     for (const record of filteredRecords) {
       const usage = toUsageObject(record)
+      const displayUsage = normalizeUsageRecordDisplayFields(record)
       const costData = CostCalculator.calculateCost(usage, record.model || 'unknown')
       const costView = buildUsageRecordCostView(record, costData?.costs?.total, displayCostMode)
       const totalTokens =
         record.totalTokens ||
-        usage.input_tokens +
-          usage.output_tokens +
-          usage.cache_creation_input_tokens +
-          usage.cache_read_input_tokens
+        displayUsage.input_tokens +
+          displayUsage.output_tokens +
+          displayUsage.cache_creation_input_tokens +
+          displayUsage.cache_read_input_tokens
 
       summary.totalRequests += 1
-      summary.inputTokens += usage.input_tokens
-      summary.outputTokens += usage.output_tokens
-      summary.cacheCreateTokens += usage.cache_creation_input_tokens
-      summary.cacheReadTokens += usage.cache_read_input_tokens
+      summary.inputTokens += displayUsage.input_tokens
+      summary.outputTokens += displayUsage.output_tokens
+      summary.cacheCreateTokens += displayUsage.cache_creation_input_tokens
+      summary.cacheReadTokens += displayUsage.cache_read_input_tokens
       summary.totalTokens += totalTokens
       summary.totalRatedCost += costView.ratedCost
       summary.totalRealCost += costView.realCost
@@ -3441,14 +3467,15 @@ router.get('/accounts/:accountId/usage-records', authenticateAdmin, async (req, 
     const enrichedRecords = []
     for (const record of pageRecords) {
       const usage = toUsageObject(record)
+      const displayUsage = normalizeUsageRecordDisplayFields(record)
       const costData = CostCalculator.calculateCost(usage, record.model || 'unknown')
       const costView = buildUsageRecordCostView(record, costData?.costs?.total, displayCostMode)
       const totalTokens =
         record.totalTokens ||
-        usage.input_tokens +
-          usage.output_tokens +
-          usage.cache_creation_input_tokens +
-          usage.cache_read_input_tokens
+        displayUsage.input_tokens +
+          displayUsage.output_tokens +
+          displayUsage.cache_creation_input_tokens +
+          displayUsage.cache_read_input_tokens
 
       enrichedRecords.push({
         timestamp: record.timestamp,
@@ -3461,10 +3488,11 @@ router.get('/accounts/:accountId/usage-records', authenticateAdmin, async (req, 
         accountTypeName: accountTypeNames[record.accountType] || '未知渠道',
         usageCaptureState: record.usageCaptureState || record.usage_capture_state || null,
         requestRegion: record.requestRegion || record.request_region || null,
-        inputTokens: usage.input_tokens,
-        outputTokens: usage.output_tokens,
-        cacheCreateTokens: usage.cache_creation_input_tokens,
-        cacheReadTokens: usage.cache_read_input_tokens,
+        inputTokens: displayUsage.input_tokens,
+        outputTokens: displayUsage.output_tokens,
+        cacheCreateTokens: displayUsage.cache_creation_input_tokens,
+        cacheReadTokens: displayUsage.cache_read_input_tokens,
+        inputTokensIncludesCache: displayUsage.input_tokens_includes_cache === true,
         ephemeral5mTokens: record.ephemeral5mTokens || 0,
         ephemeral1hTokens: record.ephemeral1hTokens || 0,
         totalTokens,
