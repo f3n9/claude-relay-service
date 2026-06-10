@@ -418,6 +418,47 @@ describe('claudeOpenAIBridgeRelayService', () => {
     expect(bridgeAccountService.markAccountError).not.toHaveBeenCalled()
   })
 
+  it('emits an error SSE when upstream stream errors after partial output', async () => {
+    const upstream = createStream()
+    axios.mockResolvedValue({
+      status: 200,
+      headers: {},
+      data: upstream
+    })
+
+    const req = createReq({
+      body: {
+        model: 'claude-sonnet-4-bridge',
+        max_tokens: 64,
+        stream: true,
+        messages: [{ role: 'user', content: 'Stream' }]
+      }
+    })
+    const res = createRes()
+
+    const requestPromise = relayService.handleRequest(req, res, createSelection())
+    await flushAsync()
+
+    upstream.emit(
+      'data',
+      Buffer.from(
+        'data: {"id":"chatcmpl-error","choices":[{"delta":{"role":"assistant"},"finish_reason":null}]}\n\n' +
+          'data: {"choices":[{"delta":{"content":"partial"},"finish_reason":null}]}\n\n'
+      )
+    )
+    upstream.emit('error', new Error('socket closed'))
+
+    await requestPromise
+
+    const output = res.write.mock.calls.map(([chunk]) => chunk).join('')
+    expect(output).toContain('event: message_start')
+    expect(output).toContain('"text":"partial"')
+    expect(output).toContain('event: error')
+    expect(output).toContain('Claude OpenAI bridge upstream stream failed')
+    expect(bridgeAccountService.markAccountError).toHaveBeenCalledWith('bridge-1', 'socket closed')
+    expect(res.end).toHaveBeenCalled()
+  })
+
   it('marks invalid upstream stream bodies as account errors without marking account used', async () => {
     axios.mockResolvedValue({
       status: 200,

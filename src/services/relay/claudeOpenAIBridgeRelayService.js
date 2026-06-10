@@ -229,6 +229,11 @@ class ClaudeOpenAIBridgeRelayService {
         if (!wroteToClient && !res.headersSent) {
           this._sendJsonError(res, 502, 'Claude OpenAI bridge upstream stream failed')
         } else if (!res.writableEnded) {
+          this._writeSSEEvent(
+            res,
+            'error',
+            this._createClaudeError(502, 'Claude OpenAI bridge upstream stream failed', 'api_error')
+          )
           res.end()
         }
         resolve()
