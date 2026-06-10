@@ -250,6 +250,53 @@ describe('claudeOpenAIBridgeAccountService', () => {
     await expect(service.selectAccountForModel('deepseek-v4-flash')).resolves.toBe(null)
   })
 
+  it('does not select accounts that are daily quota exhausted or quota stopped', async () => {
+    await service.updateConfig({ enabled: true })
+    const quotaExhausted = await service.createAccount({
+      name: 'Quota Exhausted',
+      endpointUrl: 'https://quota.example.com/v1/chat/completions',
+      apiKey: 'quota-key',
+      priority: 1,
+      dailyQuota: 10,
+      dailyUsage: 10,
+      modelMappings: [
+        { sourceModel: 'deepseek-v4-flash', targetModel: 'QuotaTarget', enabled: true }
+      ]
+    })
+    const quotaStopped = await service.createAccount({
+      name: 'Quota Stopped',
+      endpointUrl: 'https://stopped.example.com/v1/chat/completions',
+      apiKey: 'stopped-key',
+      priority: 2,
+      dailyQuota: 0,
+      modelMappings: [
+        { sourceModel: 'deepseek-v4-flash', targetModel: 'StoppedTarget', enabled: true }
+      ]
+    })
+    const eligible = await service.createAccount({
+      name: 'Eligible',
+      endpointUrl: 'https://eligible.example.com/v1/chat/completions',
+      apiKey: 'eligible-key',
+      priority: 50,
+      dailyQuota: 10,
+      dailyUsage: 9,
+      modelMappings: [
+        { sourceModel: 'deepseek-v4-flash', targetModel: 'EligibleTarget', enabled: true }
+      ]
+    })
+
+    await service.updateAccount(quotaStopped.id, { quotaStoppedAt: '2026-06-11T12:00:00.000Z' })
+
+    const selection = await service.selectAccountForModel('deepseek-v4-flash')
+    expect(selection.account.id).toBe(eligible.id)
+    expect(selection.mapping.targetModel).toBe('EligibleTarget')
+
+    await service.updateAccount(eligible.id, { dailyUsage: 10 })
+
+    await expect(service.selectAccountForModel('deepseek-v4-flash')).resolves.toBe(null)
+    expect((await service.getAccount(quotaExhausted.id)).dailyUsage).toBe(10)
+  })
+
   it('updates lastUsedAt and status/quota helper fields', async () => {
     const account = await service.createAccount({
       name: 'Protected',

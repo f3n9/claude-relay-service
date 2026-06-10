@@ -84,10 +84,15 @@ function accountKey(accountId) {
 }
 
 function isAccountEligible(account) {
+  const dailyQuota = normalizeNumber(account.dailyQuota, 0)
+  const dailyUsage = normalizeNumber(account.dailyUsage, 0)
+
   return (
     normalizeBoolean(account.isActive, true) &&
     normalizeBoolean(account.schedulable, true) &&
-    (account.status || 'active') === 'active'
+    (account.status || 'active') === 'active' &&
+    !account.quotaStoppedAt &&
+    (dailyQuota <= 0 || dailyUsage < dailyQuota)
   )
 }
 
