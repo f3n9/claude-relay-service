@@ -9,6 +9,30 @@ const ACCOUNT_KEY_PREFIX = 'claude_openai_bridge_account:'
 const ACCOUNT_INDEX_KEY = 'claude_openai_bridge_account:index'
 const CONFIG_KEY = 'claude_openai_bridge:config'
 const PLATFORM = 'claude-openai-bridge'
+const API_KEY_MASK_SENTINELS = new Set(['***'])
+const MUTABLE_ACCOUNT_FIELDS = new Set([
+  'name',
+  'description',
+  'endpointUrl',
+  'apiKey',
+  'proxy',
+  'isActive',
+  'schedulable',
+  'status',
+  'errorMessage',
+  'priority',
+  'rateLimitDuration',
+  'rateLimitedAt',
+  'rateLimitResetAt',
+  'dailyQuota',
+  'dailyUsage',
+  'lastResetDate',
+  'quotaResetTime',
+  'quotaStoppedAt',
+  'disableAutoProtection',
+  'modelMappings',
+  'lastUsedAt'
+])
 
 function normalizeBoolean(value, defaultValue = false) {
   if (value === undefined || value === null || value === '') {
@@ -29,6 +53,14 @@ function normalizeNumber(value, defaultValue = 0) {
   }
   const number = Number(value)
   return Number.isFinite(number) ? number : defaultValue
+}
+
+function isApiKeyUpdate(value) {
+  if (value === undefined || value === null) {
+    return false
+  }
+  const normalized = String(value).trim()
+  return normalized !== '' && !API_KEY_MASK_SENTINELS.has(normalized)
 }
 
 function normalizeMappings(modelMappings = []) {
@@ -236,11 +268,18 @@ async function updateAccount(accountId, updates = {}) {
     throw new Error('Account not found')
   }
 
-  const normalizedUpdates = { ...updates, updatedAt: new Date().toISOString() }
+  const normalizedUpdates = Object.entries(updates).reduce((allowed, [field, value]) => {
+    if (MUTABLE_ACCOUNT_FIELDS.has(field)) {
+      allowed[field] = value
+    }
+    return allowed
+  }, {})
 
-  if (normalizedUpdates.apiKey) {
+  normalizedUpdates.updatedAt = new Date().toISOString()
+
+  if (isApiKeyUpdate(normalizedUpdates.apiKey)) {
     normalizedUpdates.apiKey = encryptor.encrypt(String(normalizedUpdates.apiKey))
-  } else if (normalizedUpdates.apiKey === '') {
+  } else {
     delete normalizedUpdates.apiKey
   }
 
@@ -346,7 +385,14 @@ async function markAccountRateLimited(accountId, durationMinutes = null) {
     return { success: true, skipped: true }
   }
 
-  const duration = normalizeNumber(durationMinutes, account.rateLimitDuration || 60)
+  const duration = normalizeNumber(durationMinutes ?? account.rateLimitDuration, 60)
+  if (duration <= 0) {
+    logger.info(
+      `Claude OpenAI bridge account ${accountId} has rate-limit duration 0, skipping rate-limit mark`
+    )
+    return { success: true, skipped: true }
+  }
+
   const now = new Date()
   const resetAt = new Date(now.getTime() + duration * 60000)
 
@@ -425,6 +471,49 @@ async function resetUsage(accountId) {
   return { success: true }
 }
 
+async function recordUsage(accountId, usageAmount = 0) {
+  const account = await getAccount(accountId)
+  if (!account) {
+    return { success: false }
+  }
+
+  const today = redis.getDateStringInTimezone()
+  const staleUsageWindow = account.lastResetDate !== today
+  const usageIncrement = normalizeNumber(usageAmount, 0)
+  const dailyUsage = (staleUsageWindow ? 0 : account.dailyUsage) + usageIncrement
+  const dailyQuota = normalizeNumber(account.dailyQuota, 0)
+  const quotaExceeded = dailyQuota > 0 && dailyUsage >= dailyQuota
+  const now = new Date().toISOString()
+  const updates = {
+    dailyUsage,
+    lastResetDate: today
+  }
+
+  if (staleUsageWindow) {
+    updates.quotaStoppedAt = ''
+    updates.errorMessage = ''
+    if (account.status === 'quotaExceeded') {
+      updates.status = 'active'
+      updates.schedulable = true
+    }
+  }
+
+  if (quotaExceeded) {
+    updates.quotaStoppedAt = staleUsageWindow ? now : account.quotaStoppedAt || now
+    updates.status = 'quotaExceeded'
+    updates.schedulable = false
+    updates.errorMessage = 'Daily quota exceeded'
+  }
+
+  await updateAccount(accountId, updates)
+
+  return {
+    success: true,
+    dailyUsage,
+    quotaExceeded
+  }
+}
+
 module.exports = {
   getConfig,
   updateConfig,
@@ -440,5 +529,7 @@ module.exports = {
   markAccountError,
   resetAccountStatus,
   resetUsage,
+  recordUsage,
+  updateUsageQuota: recordUsage,
   _normalizeMappings: normalizeMappings
 }

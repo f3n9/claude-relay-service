@@ -64,6 +64,12 @@ const redis = require('../src/models/redis')
 const service = require('../src/services/account/claudeOpenAIBridgeAccountService')
 
 describe('claudeOpenAIBridgeAccountService', () => {
+  const rawAccountKey = (accountId) => `claude_openai_bridge_account:${accountId}`
+  const setRawAccountFields = (accountId, fields) => {
+    const key = rawAccountKey(accountId)
+    redis.__hashes.set(key, { ...redis.__hashes.get(key), ...fields })
+  }
+
   beforeEach(() => {
     redis.__hashes.clear()
     redis.__sets.clear()
@@ -181,8 +187,46 @@ describe('claudeOpenAIBridgeAccountService', () => {
     await expect(service.getAllAccounts(true)).resolves.toHaveLength(1)
 
     await expect(service.deleteAccount(account.id)).resolves.toEqual({ success: true })
-    expect(redis.__hashes.has(`claude_openai_bridge_account:${account.id}`)).toBe(false)
+    expect(redis.__hashes.has(rawAccountKey(account.id))).toBe(false)
     expect(redis.__sets.get('claude_openai_bridge_account:index').has(account.id)).toBe(false)
+  })
+
+  it('ignores immutable fields and masked api key updates', async () => {
+    const account = await service.createAccount({
+      endpointUrl: 'https://example.com/v1/chat/completions',
+      apiKey: 'original-key'
+    })
+    const originalRaw = redis.__hashes.get(rawAccountKey(account.id))
+
+    await service.updateAccount(account.id, {
+      id: 'corrupted-id',
+      platform: 'other-platform',
+      createdAt: '2000-01-01T00:00:00.000Z',
+      apiKey: '***',
+      name: 'Renamed'
+    })
+
+    const afterMasked = redis.__hashes.get(rawAccountKey(account.id))
+    expect(afterMasked).toMatchObject({
+      id: account.id,
+      platform: 'claude-openai-bridge',
+      createdAt: originalRaw.createdAt,
+      apiKey: originalRaw.apiKey,
+      name: 'Renamed'
+    })
+
+    await service.updateAccount(account.id, { apiKey: '' })
+    expect(redis.__hashes.get(rawAccountKey(account.id)).apiKey).toBe(originalRaw.apiKey)
+
+    await service.updateAccount(account.id, { apiKey: undefined })
+    expect(redis.__hashes.get(rawAccountKey(account.id)).apiKey).toBe(originalRaw.apiKey)
+
+    await service.updateAccount(account.id, { apiKey: 'updated-key' })
+    expect(await service.getAccount(account.id)).toMatchObject({
+      id: account.id,
+      apiKey: 'updated-key',
+      platform: 'claude-openai-bridge'
+    })
   })
 
   it('selects an eligible account by exact source model, priority, lastUsedAt, and createdAt', async () => {
@@ -216,17 +260,29 @@ describe('claudeOpenAIBridgeAccountService', () => {
       ]
     })
 
-    await service.updateAccount(olderSamePriority.id, {
+    setRawAccountFields(olderSamePriority.id, {
       createdAt: '2026-06-11T08:00:00.000Z',
-      lastUsedAt: '2026-06-11T10:00:00.000Z'
+      lastUsedAt: '2026-06-11T11:00:00.000Z'
     })
-    await service.updateAccount(laterSamePriority.id, {
+    setRawAccountFields(laterSamePriority.id, {
       createdAt: '2026-06-11T09:00:00.000Z',
       lastUsedAt: '2026-06-11T10:00:00.000Z'
     })
-    await service.updateAccount(lowerPriority.id, {
+    setRawAccountFields(lowerPriority.id, {
       createdAt: '2026-06-11T07:00:00.000Z',
       lastUsedAt: '2026-06-11T09:00:00.000Z'
+    })
+
+    const olderLastUsedSelection = await service.selectAccountForModel('deepseek-v4-flash')
+
+    expect(olderLastUsedSelection.account.id).toBe(laterSamePriority.id)
+    expect(olderLastUsedSelection.mapping.targetModel).toBe('DeepSeek-V4-Flash-B')
+
+    setRawAccountFields(olderSamePriority.id, {
+      lastUsedAt: '2026-06-11T10:00:00.000Z'
+    })
+    setRawAccountFields(laterSamePriority.id, {
+      lastUsedAt: '2026-06-11T10:00:00.000Z'
     })
 
     const selection = await service.selectAccountForModel('deepseek-v4-flash')
@@ -312,7 +368,7 @@ describe('claudeOpenAIBridgeAccountService', () => {
 
     await service.markAccountRateLimited(account.id, 30)
     const limited = await service.getAccount(account.id)
-    const rawLimited = redis.__hashes.get(`claude_openai_bridge_account:${account.id}`)
+    const rawLimited = redis.__hashes.get(rawAccountKey(account.id))
     expect(limited.status).toBe('rateLimited')
     expect(limited.schedulable).toBe(false)
     expect(rawLimited.schedulable).toBe('false')
@@ -322,7 +378,7 @@ describe('claudeOpenAIBridgeAccountService', () => {
 
     await service.resetAccountStatus(account.id)
     const reset = await service.getAccount(account.id)
-    const rawReset = redis.__hashes.get(`claude_openai_bridge_account:${account.id}`)
+    const rawReset = redis.__hashes.get(rawAccountKey(account.id))
     expect(reset.status).toBe('active')
     expect(reset.schedulable).toBe(true)
     expect(rawReset.schedulable).toBe('true')
@@ -348,6 +404,98 @@ describe('claudeOpenAIBridgeAccountService', () => {
     expect(await service.getAccount(account.id)).toMatchObject({
       dailyUsage: 0,
       lastResetDate: '2026-06-11'
+    })
+  })
+
+  it('records daily usage, resets stale daily windows, and stops quota-exhausted accounts', async () => {
+    const account = await service.createAccount({
+      endpointUrl: 'https://example.com/v1/chat/completions',
+      apiKey: 'key',
+      dailyQuota: 10,
+      dailyUsage: 3
+    })
+
+    await expect(service.recordUsage(account.id, 4)).resolves.toMatchObject({
+      success: true,
+      dailyUsage: 7,
+      quotaExceeded: false
+    })
+    expect(await service.getAccount(account.id)).toMatchObject({
+      dailyUsage: 7,
+      status: 'active',
+      schedulable: true,
+      quotaStoppedAt: ''
+    })
+
+    await expect(service.recordUsage(account.id, 3)).resolves.toMatchObject({
+      success: true,
+      dailyUsage: 10,
+      quotaExceeded: true
+    })
+    expect(await service.getAccount(account.id)).toMatchObject({
+      dailyUsage: 10,
+      status: 'quotaExceeded',
+      schedulable: false,
+      errorMessage: 'Daily quota exceeded'
+    })
+    expect((await service.getAccount(account.id)).quotaStoppedAt).toBeTruthy()
+
+    setRawAccountFields(account.id, {
+      dailyUsage: '8',
+      lastResetDate: '2026-06-10',
+      quotaStoppedAt: '2026-06-10T23:59:00.000Z',
+      status: 'quotaExceeded',
+      schedulable: 'false',
+      errorMessage: 'Daily quota exceeded'
+    })
+
+    await expect(service.recordUsage(account.id, 1)).resolves.toMatchObject({
+      success: true,
+      dailyUsage: 1,
+      quotaExceeded: false
+    })
+    expect(await service.getAccount(account.id)).toMatchObject({
+      dailyUsage: 1,
+      lastResetDate: '2026-06-11',
+      quotaStoppedAt: '',
+      status: 'active',
+      schedulable: true,
+      errorMessage: ''
+    })
+  })
+
+  it('skips rate-limit marking when explicit or stored duration is zero', async () => {
+    const explicitZero = await service.createAccount({
+      endpointUrl: 'https://explicit-zero.example.com/v1/chat/completions',
+      apiKey: 'explicit-key'
+    })
+    const storedZero = await service.createAccount({
+      endpointUrl: 'https://stored-zero.example.com/v1/chat/completions',
+      apiKey: 'stored-key',
+      rateLimitDuration: 0
+    })
+
+    await expect(service.markAccountRateLimited(explicitZero.id, 0)).resolves.toMatchObject({
+      success: true,
+      skipped: true
+    })
+    expect(await service.getAccount(explicitZero.id)).toMatchObject({
+      status: 'active',
+      schedulable: true,
+      rateLimitedAt: '',
+      rateLimitResetAt: ''
+    })
+
+    await expect(service.markAccountRateLimited(storedZero.id)).resolves.toMatchObject({
+      success: true,
+      skipped: true
+    })
+    expect(await service.getAccount(storedZero.id)).toMatchObject({
+      status: 'active',
+      schedulable: true,
+      rateLimitDuration: 0,
+      rateLimitedAt: '',
+      rateLimitResetAt: ''
     })
   })
 
