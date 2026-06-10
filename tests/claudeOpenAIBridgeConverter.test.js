@@ -330,6 +330,56 @@ describe('claudeOpenAIBridgeConverter', () => {
     expect(state.completed).toBe(true)
   })
 
+  it('updates state usage from post-completion usage-only stream chunks without events', () => {
+    const state = createStreamState('claude-sonnet-4-bridge')
+
+    convertOpenAIStreamChunkToClaudeEvents(
+      {
+        id: 'chatcmpl_usage_late',
+        choices: [{ delta: { content: 'Done' }, finish_reason: null }]
+      },
+      state
+    )
+    const finishEvents = convertOpenAIStreamChunkToClaudeEvents(
+      {
+        choices: [{ delta: {}, finish_reason: 'stop' }]
+      },
+      state
+    )
+    const usageEvents = convertOpenAIStreamChunkToClaudeEvents(
+      {
+        choices: [],
+        usage: {
+          prompt_tokens: 21,
+          completion_tokens: 8
+        }
+      },
+      state
+    )
+
+    expect(finishEvents).toEqual([
+      { type: 'content_block_stop', index: 0 },
+      {
+        type: 'message_delta',
+        delta: {
+          stop_reason: 'end_turn',
+          stop_sequence: null
+        },
+        usage: {
+          input_tokens: 0,
+          output_tokens: 0
+        }
+      },
+      { type: 'message_stop' }
+    ])
+    expect(usageEvents).toEqual([])
+    expect(state.completed).toBe(true)
+    expect(state.usage).toEqual({
+      input_tokens: 21,
+      output_tokens: 8
+    })
+  })
+
   it('converts OpenAI stream tool call deltas to Claude tool_use events', () => {
     const state = createStreamState('claude-sonnet-4-bridge')
 
@@ -395,7 +445,9 @@ describe('claudeOpenAIBridgeConverter', () => {
           stop_sequence: null,
           usage: { input_tokens: 0, output_tokens: 0 }
         }
-      },
+      }
+    ])
+    expect(moreEvents).toEqual([
       {
         type: 'content_block_start',
         index: 0,
@@ -411,17 +463,7 @@ describe('claudeOpenAIBridgeConverter', () => {
         index: 0,
         delta: {
           type: 'input_json_delta',
-          partial_json: '{"city":"Shang'
-        }
-      }
-    ])
-    expect(moreEvents).toEqual([
-      {
-        type: 'content_block_delta',
-        index: 0,
-        delta: {
-          type: 'input_json_delta',
-          partial_json: 'hai"}'
+          partial_json: '{"city":"Shanghai"}'
         }
       },
       {
@@ -437,6 +479,159 @@ describe('claudeOpenAIBridgeConverter', () => {
         usage: {
           input_tokens: 9,
           output_tokens: 3
+        }
+      },
+      { type: 'message_stop' }
+    ])
+  })
+
+  it('buffers interleaved OpenAI stream tool calls and emits valid sequential Claude blocks at finish', () => {
+    const state = createStreamState('claude-sonnet-4-bridge')
+
+    const firstEvents = convertOpenAIStreamChunkToClaudeEvents(
+      {
+        id: 'chatcmpl_parallel_tools',
+        choices: [
+          {
+            delta: {
+              tool_calls: [
+                {
+                  index: 0,
+                  id: 'call_weather',
+                  type: 'function',
+                  function: {
+                    name: 'get_weather',
+                    arguments: '{"city":"Shang'
+                  }
+                }
+              ]
+            },
+            finish_reason: null
+          }
+        ]
+      },
+      state
+    )
+    const secondEvents = convertOpenAIStreamChunkToClaudeEvents(
+      {
+        choices: [
+          {
+            delta: {
+              tool_calls: [
+                {
+                  index: 1,
+                  id: 'call_time',
+                  type: 'function',
+                  function: {
+                    name: 'get_time',
+                    arguments: '{"zone":"Asia'
+                  }
+                },
+                {
+                  index: 0,
+                  function: {
+                    arguments: 'hai"}'
+                  }
+                }
+              ]
+            },
+            finish_reason: null
+          }
+        ]
+      },
+      state
+    )
+    const finalEvents = convertOpenAIStreamChunkToClaudeEvents(
+      {
+        choices: [
+          {
+            delta: {
+              tool_calls: [
+                {
+                  index: 1,
+                  function: {
+                    arguments: '/Shanghai"}'
+                  }
+                }
+              ]
+            },
+            finish_reason: 'tool_calls'
+          }
+        ]
+      },
+      state
+    )
+
+    expect(firstEvents).toEqual([
+      {
+        type: 'message_start',
+        message: {
+          id: 'chatcmpl_parallel_tools',
+          type: 'message',
+          role: 'assistant',
+          model: 'claude-sonnet-4-bridge',
+          content: [],
+          stop_reason: null,
+          stop_sequence: null,
+          usage: { input_tokens: 0, output_tokens: 0 }
+        }
+      }
+    ])
+    expect(secondEvents).toEqual([])
+    expect(finalEvents).toEqual([
+      {
+        type: 'content_block_start',
+        index: 0,
+        content_block: {
+          type: 'tool_use',
+          id: 'call_weather',
+          name: 'get_weather',
+          input: {}
+        }
+      },
+      {
+        type: 'content_block_delta',
+        index: 0,
+        delta: {
+          type: 'input_json_delta',
+          partial_json: '{"city":"Shanghai"}'
+        }
+      },
+      {
+        type: 'content_block_stop',
+        index: 0
+      },
+      {
+        type: 'content_block_start',
+        index: 1,
+        content_block: {
+          type: 'tool_use',
+          id: 'call_time',
+          name: 'get_time',
+          input: {}
+        }
+      },
+      {
+        type: 'content_block_delta',
+        index: 1,
+        delta: {
+          type: 'input_json_delta',
+          partial_json: '{"zone":"Asia/Shanghai"}'
+        }
+      },
+      {
+        type: 'content_block_stop',
+        index: 1
+      },
+      {
+        type: 'message_delta',
+        delta: {
+          stop_reason: 'tool_use',
+          stop_sequence: null
+        },
+        usage: {
+          input_tokens: 0,
+          output_tokens: 0
         }
       },
       { type: 'message_stop' }

@@ -23,7 +23,7 @@ function convertClaudeRequestToOpenAI(claudeBody = {}, targetModel) {
     body.messages.push(..._convertClaudeMessageToOpenAI(message))
   }
 
-  if (Array.isArray(claudeBody.tools)) {
+  if (Array.isArray(claudeBody.tools) && claudeBody.tools.length > 0) {
     body.tools = claudeBody.tools.map((tool) => ({
       type: 'function',
       function: {
@@ -104,13 +104,21 @@ function createStreamState(sourceModel) {
     nextContentBlockIndex: 0,
     currentBlockIndex: null,
     currentBlockType: null,
-    toolBlocks: new Map(),
+    bufferedToolCalls: new Map(),
     usage: { input_tokens: 0, output_tokens: 0 }
   }
 }
 
 function convertOpenAIStreamChunkToClaudeEvents(chunk = {}, state) {
-  if (!state || state.completed) {
+  if (!state) {
+    return []
+  }
+
+  if (chunk.usage) {
+    state.usage = _usageFromOpenAI(chunk.usage)
+  }
+
+  if (state.completed) {
     return []
   }
 
@@ -130,13 +138,17 @@ function convertOpenAIStreamChunkToClaudeEvents(chunk = {}, state) {
   }
 
   for (const toolCall of delta.tool_calls || []) {
-    _emitToolCallDelta(events, toolCall, state)
+    _bufferToolCallDelta(toolCall, state)
   }
 
   if (choice.finish_reason) {
     _closeCurrentBlock(events, state)
+    _flushBufferedToolCalls(events, state)
 
-    state.usage = _usageFromOpenAI(chunk.usage || choice.usage || state.usage)
+    if (choice.usage) {
+      state.usage = _usageFromOpenAI(choice.usage)
+    }
+
     events.push({
       type: 'message_delta',
       delta: {
@@ -273,7 +285,7 @@ function _openAIContentFromParts(parts) {
       converted.push({
         type: 'image_url',
         image_url: {
-          url: `data:${part.source.media_type};base64,${part.source.data}`
+          url: `data:${part.source.media_type || 'image/jpeg'};base64,${part.source.data}`
         }
       })
     }
@@ -426,32 +438,18 @@ function _ensureTextBlock(events, state) {
   })
 }
 
-function _emitToolCallDelta(events, toolCall, state) {
+function _bufferToolCallDelta(toolCall, state) {
   const openAIIndex = toolCall.index ?? 0
-  let block = state.toolBlocks.get(openAIIndex)
+  let block = state.bufferedToolCalls.get(openAIIndex)
 
   if (!block) {
-    _closeCurrentBlock(events, state)
-
     block = {
-      index: state.nextContentBlockIndex++,
+      openAIIndex,
       id: toolCall.id || `call_${openAIIndex}`,
-      name: toolCall.function?.name || ''
+      name: toolCall.function?.name || '',
+      argumentParts: []
     }
-    state.toolBlocks.set(openAIIndex, block)
-    state.currentBlockIndex = block.index
-    state.currentBlockType = 'tool_use'
-
-    events.push({
-      type: 'content_block_start',
-      index: block.index,
-      content_block: {
-        type: 'tool_use',
-        id: block.id,
-        name: block.name,
-        input: {}
-      }
-    })
+    state.bufferedToolCalls.set(openAIIndex, block)
   } else {
     if (toolCall.id) {
       block.id = toolCall.id
@@ -459,21 +457,55 @@ function _emitToolCallDelta(events, toolCall, state) {
     if (toolCall.function?.name) {
       block.name = toolCall.function.name
     }
-    state.currentBlockIndex = block.index
-    state.currentBlockType = 'tool_use'
   }
 
   const partialJson = toolCall.function?.arguments
   if (typeof partialJson === 'string' && partialJson.length > 0) {
+    block.argumentParts.push(partialJson)
+  }
+}
+
+function _flushBufferedToolCalls(events, state) {
+  if (state.bufferedToolCalls.size === 0) {
+    return
+  }
+
+  const toolCalls = Array.from(state.bufferedToolCalls.values()).sort(
+    (a, b) => a.openAIIndex - b.openAIIndex
+  )
+
+  for (const toolCall of toolCalls) {
+    const index = state.nextContentBlockIndex++
     events.push({
-      type: 'content_block_delta',
-      index: block.index,
-      delta: {
-        type: 'input_json_delta',
-        partial_json: partialJson
+      type: 'content_block_start',
+      index,
+      content_block: {
+        type: 'tool_use',
+        id: toolCall.id,
+        name: toolCall.name,
+        input: {}
       }
     })
+
+    const partialJson = toolCall.argumentParts.join('')
+    if (partialJson.length > 0) {
+      events.push({
+        type: 'content_block_delta',
+        index,
+        delta: {
+          type: 'input_json_delta',
+          partial_json: partialJson
+        }
+      })
+    }
+
+    events.push({
+      type: 'content_block_stop',
+      index
+    })
   }
+
+  state.bufferedToolCalls.clear()
 }
 
 function _closeCurrentBlock(events, state) {
