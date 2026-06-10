@@ -128,6 +128,30 @@ function isAccountEligible(account) {
   )
 }
 
+function isRateLimitExpired(account) {
+  if ((account.status || 'active') !== 'rateLimited') {
+    return false
+  }
+
+  const now = Date.now()
+  if (account.rateLimitResetAt) {
+    const resetAt = new Date(account.rateLimitResetAt).getTime()
+    return Number.isFinite(resetAt) && now >= resetAt
+  }
+
+  if (account.rateLimitedAt) {
+    const rateLimitedAt = new Date(account.rateLimitedAt).getTime()
+    const duration = normalizeNumber(account.rateLimitDuration, 60)
+    return Number.isFinite(rateLimitedAt) && duration > 0 && now - rateLimitedAt >= duration * 60000
+  }
+
+  return false
+}
+
+function isQuotaStopped(account) {
+  return (account.status || 'active') === 'quotaExceeded' || Boolean(account.quotaStoppedAt)
+}
+
 function maskAndFormatAccount(accountData, { includeSecret = false } = {}) {
   const modelMappings = normalizeMappings(accountData.modelMappings)
   return {
@@ -333,6 +357,24 @@ async function deleteAccount(accountId) {
   return { success: true }
 }
 
+async function checkAndClearRateLimit(accountId) {
+  const account = await getAccount(accountId)
+  if (!account || !isRateLimitExpired(account)) {
+    return false
+  }
+
+  await updateAccount(accountId, {
+    status: 'active',
+    schedulable: true,
+    errorMessage: '',
+    rateLimitedAt: '',
+    rateLimitResetAt: ''
+  })
+
+  logger.info(`Rate limit cleared for Claude OpenAI bridge account: ${account.name || accountId}`)
+  return true
+}
+
 async function selectAccountForModel(sourceModel) {
   const config = await getConfig()
   if (!config.enabled) {
@@ -340,7 +382,20 @@ async function selectAccountForModel(sourceModel) {
   }
 
   const accounts = await getAllAccounts(true)
-  const eligibleAccounts = accounts
+  const recoveredIds = []
+  for (const account of accounts) {
+    if (await checkAndClearRateLimit(account.id)) {
+      recoveredIds.push(account.id)
+    }
+  }
+
+  const accountsForSelection =
+    recoveredIds.length === 0
+      ? accounts
+      : await Promise.all(accounts.map((account) => getAccount(account.id)))
+
+  const eligibleAccounts = accountsForSelection
+    .filter(Boolean)
     .filter(isAccountEligible)
     .map((account) => {
       const mapping = account.modelMappings.find(
@@ -462,13 +517,44 @@ async function resetAccountStatus(accountId) {
 }
 
 async function resetUsage(accountId) {
-  await updateAccount(accountId, {
+  const account = await getAccount(accountId)
+  if (!account) {
+    return { success: false }
+  }
+
+  const updates = {
     dailyUsage: 0,
     lastResetDate: redis.getDateStringInTimezone(),
     quotaStoppedAt: ''
-  })
+  }
+
+  if (isQuotaStopped(account)) {
+    updates.status = 'active'
+    updates.schedulable = true
+    updates.errorMessage = ''
+  }
+
+  await updateAccount(accountId, updates)
 
   return { success: true }
+}
+
+async function resetDailyUsageWindow(accountId, account, amount, today) {
+  const dailyUsage = normalizeNumber(amount, 0)
+  const updates = {
+    dailyUsage,
+    lastResetDate: today,
+    quotaStoppedAt: ''
+  }
+
+  if (isQuotaStopped(account)) {
+    updates.status = 'active'
+    updates.schedulable = true
+    updates.errorMessage = ''
+  }
+
+  await updateAccount(accountId, updates)
+  return dailyUsage
 }
 
 async function recordUsage(accountId, usageAmount = 0) {
@@ -480,32 +566,38 @@ async function recordUsage(accountId, usageAmount = 0) {
   const today = redis.getDateStringInTimezone()
   const staleUsageWindow = account.lastResetDate !== today
   const usageIncrement = normalizeNumber(usageAmount, 0)
-  const dailyUsage = (staleUsageWindow ? 0 : account.dailyUsage) + usageIncrement
+  const client = redis.getClientSafe()
+  const dailyUsage = staleUsageWindow
+    ? await resetDailyUsageWindow(accountId, account, usageIncrement, today)
+    : normalizeNumber(
+        await client.hincrbyfloat(accountKey(accountId), 'dailyUsage', usageIncrement),
+        0
+      )
   const dailyQuota = normalizeNumber(account.dailyQuota, 0)
   const quotaExceeded = dailyQuota > 0 && dailyUsage >= dailyQuota
   const now = new Date().toISOString()
-  const updates = {
-    dailyUsage,
-    lastResetDate: today
-  }
-
-  if (staleUsageWindow) {
-    updates.quotaStoppedAt = ''
-    updates.errorMessage = ''
-    if (account.status === 'quotaExceeded') {
-      updates.status = 'active'
-      updates.schedulable = true
-    }
-  }
+  const updates = {}
 
   if (quotaExceeded) {
     updates.quotaStoppedAt = staleUsageWindow ? now : account.quotaStoppedAt || now
     updates.status = 'quotaExceeded'
     updates.schedulable = false
     updates.errorMessage = 'Daily quota exceeded'
+  } else if (isQuotaStopped(account)) {
+    updates.quotaStoppedAt = ''
+    updates.errorMessage = ''
+    updates.status = 'active'
+    updates.schedulable = true
   }
 
-  await updateAccount(accountId, updates)
+  if (staleUsageWindow) {
+    updates.dailyUsage = dailyUsage
+    updates.lastResetDate = today
+  }
+
+  if (Object.keys(updates).length > 0) {
+    await updateAccount(accountId, updates)
+  }
 
   return {
     success: true,
@@ -523,6 +615,7 @@ module.exports = {
   updateAccount,
   deleteAccount,
   selectAccountForModel,
+  checkAndClearRateLimit,
   markAccountUsed,
   markAccountRateLimited,
   markAccountUnauthorized,

@@ -9,6 +9,11 @@ jest.mock('../src/models/redis', () => {
       return 'OK'
     }),
     hgetall: jest.fn(async (key) => hashes.get(key) || {}),
+    hincrbyfloat: jest.fn(async (key, field, increment) => {
+      const next = (parseFloat(hashes.get(key)?.[field] || '0') || 0) + parseFloat(increment)
+      hashes.set(key, { ...(hashes.get(key) || {}), [field]: next.toString() })
+      return next.toString()
+    }),
     del: jest.fn(async (key) => {
       const existed = hashes.delete(key) || values.delete(key)
       return existed ? 1 : 0
@@ -353,6 +358,37 @@ describe('claudeOpenAIBridgeAccountService', () => {
     expect((await service.getAccount(quotaExhausted.id)).dailyUsage).toBe(10)
   })
 
+  it('recovers expired rate-limited accounts during model selection', async () => {
+    await service.updateConfig({ enabled: true })
+    const account = await service.createAccount({
+      endpointUrl: 'https://recover.example.com/v1/chat/completions',
+      apiKey: 'recover-key',
+      modelMappings: [
+        { sourceModel: 'deepseek-v4-flash', targetModel: 'RecoveredTarget', enabled: true }
+      ]
+    })
+
+    setRawAccountFields(account.id, {
+      status: 'rateLimited',
+      schedulable: 'false',
+      rateLimitedAt: '2026-06-11T00:00:00.000Z',
+      rateLimitResetAt: '2000-01-01T00:00:00.000Z',
+      errorMessage: 'Rate limited until 2000-01-01T00:00:00.000Z'
+    })
+
+    const selection = await service.selectAccountForModel('deepseek-v4-flash')
+
+    expect(selection.account.id).toBe(account.id)
+    expect(selection.mapping.targetModel).toBe('RecoveredTarget')
+    expect(await service.getAccount(account.id)).toMatchObject({
+      status: 'active',
+      schedulable: true,
+      rateLimitedAt: '',
+      rateLimitResetAt: '',
+      errorMessage: ''
+    })
+  })
+
   it('updates lastUsedAt and status/quota helper fields', async () => {
     const account = await service.createAccount({
       name: 'Protected',
@@ -462,6 +498,74 @@ describe('claudeOpenAIBridgeAccountService', () => {
       schedulable: true,
       errorMessage: ''
     })
+  })
+
+  it('resetUsage clears quota stop state and makes quota-exhausted accounts selectable', async () => {
+    await service.updateConfig({ enabled: true })
+    const account = await service.createAccount({
+      endpointUrl: 'https://quota-reset.example.com/v1/chat/completions',
+      apiKey: 'quota-reset-key',
+      dailyQuota: 10,
+      dailyUsage: 10,
+      modelMappings: [
+        { sourceModel: 'deepseek-v4-flash', targetModel: 'QuotaResetTarget', enabled: true }
+      ]
+    })
+    setRawAccountFields(account.id, {
+      status: 'quotaExceeded',
+      schedulable: 'false',
+      quotaStoppedAt: '2026-06-11T10:00:00.000Z',
+      errorMessage: 'Daily quota exceeded'
+    })
+
+    await expect(service.selectAccountForModel('deepseek-v4-flash')).resolves.toBe(null)
+
+    await service.resetUsage(account.id)
+
+    expect(await service.getAccount(account.id)).toMatchObject({
+      dailyUsage: 0,
+      lastResetDate: '2026-06-11',
+      quotaStoppedAt: '',
+      status: 'active',
+      schedulable: true,
+      errorMessage: ''
+    })
+    const selection = await service.selectAccountForModel('deepseek-v4-flash')
+    expect(selection.account.id).toBe(account.id)
+  })
+
+  it('records repeated same-day usage through Redis increments and applies quota status', async () => {
+    const account = await service.createAccount({
+      endpointUrl: 'https://usage.example.com/v1/chat/completions',
+      apiKey: 'usage-key',
+      dailyQuota: 5,
+      dailyUsage: 0
+    })
+
+    await expect(service.recordUsage(account.id, 2)).resolves.toMatchObject({
+      success: true,
+      dailyUsage: 2,
+      quotaExceeded: false
+    })
+    await expect(service.recordUsage(account.id, 2.5)).resolves.toMatchObject({
+      success: true,
+      dailyUsage: 4.5,
+      quotaExceeded: false
+    })
+    await expect(service.recordUsage(account.id, 0.5)).resolves.toMatchObject({
+      success: true,
+      dailyUsage: 5,
+      quotaExceeded: true
+    })
+
+    expect(redis.__client.hincrbyfloat).toHaveBeenCalledTimes(3)
+    expect(await service.getAccount(account.id)).toMatchObject({
+      dailyUsage: 5,
+      status: 'quotaExceeded',
+      schedulable: false,
+      errorMessage: 'Daily quota exceeded'
+    })
+    expect((await service.getAccount(account.id)).quotaStoppedAt).toBeTruthy()
   })
 
   it('skips rate-limit marking when explicit or stored duration is zero', async () => {
