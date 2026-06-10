@@ -234,6 +234,21 @@ describe('claudeOpenAIBridgeAccountService', () => {
     })
   })
 
+  it('rejects blank endpoint URL updates and preserves the previous endpoint', async () => {
+    const account = await service.createAccount({
+      endpointUrl: 'https://valid.example.com/v1/chat/completions',
+      apiKey: 'key'
+    })
+
+    await expect(service.updateAccount(account.id, { endpointUrl: '   ' })).rejects.toThrow(
+      'Endpoint URL cannot be empty'
+    )
+
+    expect(await service.getAccount(account.id)).toMatchObject({
+      endpointUrl: 'https://valid.example.com/v1/chat/completions'
+    })
+  })
+
   it('selects an eligible account by exact source model, priority, lastUsedAt, and createdAt', async () => {
     await service.updateConfig({ enabled: true })
     const olderSamePriority = await service.createAccount({
@@ -566,6 +581,32 @@ describe('claudeOpenAIBridgeAccountService', () => {
       errorMessage: 'Daily quota exceeded'
     })
     expect((await service.getAccount(account.id)).quotaStoppedAt).toBeTruthy()
+  })
+
+  it('clamps negative usage amounts to zero', async () => {
+    const account = await service.createAccount({
+      endpointUrl: 'https://usage.example.com/v1/chat/completions',
+      apiKey: 'usage-key',
+      dailyQuota: 5,
+      dailyUsage: 3
+    })
+
+    await expect(service.recordUsage(account.id, -2)).resolves.toMatchObject({
+      success: true,
+      dailyUsage: 3,
+      quotaExceeded: false
+    })
+
+    expect(redis.__client.hincrbyfloat).toHaveBeenCalledWith(
+      rawAccountKey(account.id),
+      'dailyUsage',
+      0
+    )
+    expect(await service.getAccount(account.id)).toMatchObject({
+      dailyUsage: 3,
+      status: 'active',
+      schedulable: true
+    })
   })
 
   it('skips rate-limit marking when explicit or stored duration is zero', async () => {

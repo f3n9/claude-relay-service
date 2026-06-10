@@ -309,6 +309,9 @@ async function updateAccount(accountId, updates = {}) {
 
   if (normalizedUpdates.endpointUrl !== undefined) {
     normalizedUpdates.endpointUrl = String(normalizedUpdates.endpointUrl).trim()
+    if (!normalizedUpdates.endpointUrl) {
+      throw new Error('Endpoint URL cannot be empty')
+    }
   }
 
   if (normalizedUpdates.proxy !== undefined) {
@@ -565,7 +568,7 @@ async function recordUsage(accountId, usageAmount = 0) {
 
   const today = redis.getDateStringInTimezone()
   const staleUsageWindow = account.lastResetDate !== today
-  const usageIncrement = normalizeNumber(usageAmount, 0)
+  const usageIncrement = Math.max(0, normalizeNumber(usageAmount, 0))
   const client = redis.getClientSafe()
   const dailyUsage = staleUsageWindow
     ? await resetDailyUsageWindow(accountId, account, usageIncrement, today)
