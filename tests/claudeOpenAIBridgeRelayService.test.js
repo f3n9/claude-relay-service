@@ -413,6 +413,40 @@ describe('claudeOpenAIBridgeRelayService', () => {
     )
   })
 
+  it('treats upstream redirects as errors without recording usage or marking account used', async () => {
+    axios.mockResolvedValue({
+      status: 307,
+      statusText: 'Temporary Redirect',
+      headers: {
+        location: 'https://bridge.example.com/other'
+      },
+      data: {
+        error: {
+          message: 'Temporary Redirect'
+        }
+      }
+    })
+
+    const req = createReq()
+    const res = createRes()
+
+    await relayService.handleRequest(req, res, createSelection())
+
+    expect(res.status).toHaveBeenCalledWith(307)
+    expect(res.json).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'error',
+        error: expect.objectContaining({
+          message: 'Temporary Redirect'
+        })
+      })
+    )
+    expect(apiKeyService.recordUsage).not.toHaveBeenCalled()
+    expect(updateRateLimitCounters).not.toHaveBeenCalled()
+    expect(bridgeAccountService.markAccountUsed).not.toHaveBeenCalled()
+    expect(bridgeAccountService.updateUsageQuota).not.toHaveBeenCalled()
+  })
+
   it('marks unauthorized accounts for upstream 401/403 and error accounts for upstream 5xx', async () => {
     axios
       .mockResolvedValueOnce({

@@ -39,7 +39,7 @@ class ClaudeOpenAIBridgeRelayService {
     try {
       const response = await axios(requestOptions)
 
-      if (response.status >= 400) {
+      if (response.status < 200 || response.status >= 300) {
         return this._handleUpstreamError(response, res, account)
       }
 
