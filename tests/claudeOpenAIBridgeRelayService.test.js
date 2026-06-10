@@ -124,7 +124,9 @@ function createSelection(overrides = {}) {
 }
 
 function createStream() {
-  return new EventEmitter()
+  const stream = new EventEmitter()
+  stream.destroy = jest.fn()
+  return stream
 }
 
 async function flushAsync() {
@@ -289,7 +291,10 @@ describe('claudeOpenAIBridgeRelayService', () => {
       responseType: 'stream',
       data: expect.objectContaining({
         model: 'gpt-4.1-mini',
-        stream: true
+        stream: true,
+        stream_options: {
+          include_usage: true
+        }
       })
     })
     expect(res.setHeader).toHaveBeenCalledWith('Content-Type', 'text/event-stream')
@@ -327,6 +332,193 @@ describe('claudeOpenAIBridgeRelayService', () => {
       })
     )
     expect(bridgeAccountService.markAccountUsed).toHaveBeenCalledWith('bridge-1')
+    expect(res.end).toHaveBeenCalled()
+  })
+
+  it('preserves stream options while requesting upstream usage for stream requests', async () => {
+    const upstream = createStream()
+    axios.mockResolvedValue({
+      status: 200,
+      headers: {},
+      data: upstream
+    })
+
+    const req = createReq({
+      body: {
+        model: 'claude-sonnet-4-bridge',
+        max_tokens: 64,
+        stream: true,
+        stream_options: {
+          include_obfuscation: true
+        },
+        messages: [{ role: 'user', content: 'Stream' }]
+      }
+    })
+
+    const requestPromise = relayService.handleRequest(req, createRes(), createSelection())
+    await flushAsync()
+
+    expect(axios.mock.calls[0][0].data.stream_options).toEqual({
+      include_obfuscation: true,
+      include_usage: true
+    })
+
+    upstream.emit(
+      'data',
+      Buffer.from(
+        'data: {"choices":[{"delta":{"content":"ok"},"finish_reason":"stop"}]}\n\n' +
+          'data: {"choices":[],"usage":{"prompt_tokens":3,"completion_tokens":1}}\n\n'
+      )
+    )
+    upstream.emit('end')
+
+    await requestPromise
+  })
+
+  it('records captured stream usage once when upstream errors after usage chunk', async () => {
+    const upstream = createStream()
+    axios.mockResolvedValue({
+      status: 200,
+      headers: {},
+      data: upstream
+    })
+
+    const req = createReq({
+      body: {
+        model: 'claude-sonnet-4-bridge',
+        max_tokens: 64,
+        stream: true,
+        messages: [{ role: 'user', content: 'Stream' }]
+      }
+    })
+    const res = createRes()
+
+    const requestPromise = relayService.handleRequest(req, res, createSelection())
+    await flushAsync()
+
+    upstream.emit(
+      'data',
+      Buffer.from(
+        'data: {"choices":[{"delta":{"content":"charged"},"finish_reason":null}]}\n\n' +
+          'data: {"choices":[],"usage":{"prompt_tokens":17,"completion_tokens":4}}\n\n'
+      )
+    )
+    upstream.emit('error', new Error('socket closed after usage'))
+
+    await requestPromise
+
+    expect(apiKeyService.recordUsage).toHaveBeenCalledTimes(1)
+    expect(apiKeyService.recordUsage).toHaveBeenCalledWith(
+      'key-1',
+      17,
+      4,
+      0,
+      0,
+      'claude-sonnet-4-bridge',
+      'bridge-1',
+      'claude-openai-bridge',
+      null,
+      expect.objectContaining({
+        bridgeRequestBody: expect.objectContaining({
+          stream: true
+        })
+      })
+    )
+    expect(res.end).toHaveBeenCalled()
+  })
+
+  it('destroys upstream stream on client close and records already captured usage once', async () => {
+    const upstream = createStream()
+    axios.mockResolvedValue({
+      status: 200,
+      headers: {},
+      data: upstream
+    })
+
+    const req = createReq({
+      body: {
+        model: 'claude-sonnet-4-bridge',
+        max_tokens: 64,
+        stream: true,
+        messages: [{ role: 'user', content: 'Stream' }]
+      }
+    })
+    const res = createRes()
+
+    const requestPromise = relayService.handleRequest(req, res, createSelection())
+    await flushAsync()
+
+    upstream.emit(
+      'data',
+      Buffer.from(
+        'data: {"choices":[{"delta":{"content":"charged"},"finish_reason":null}]}\n\n' +
+          'data: {"choices":[],"usage":{"prompt_tokens":19,"completion_tokens":6}}\n\n'
+      )
+    )
+    req.emit('close')
+
+    await requestPromise
+
+    expect(upstream.destroy).toHaveBeenCalledTimes(1)
+    expect(apiKeyService.recordUsage).toHaveBeenCalledTimes(1)
+    expect(apiKeyService.recordUsage).toHaveBeenCalledWith(
+      'key-1',
+      19,
+      6,
+      0,
+      0,
+      'claude-sonnet-4-bridge',
+      'bridge-1',
+      'claude-openai-bridge',
+      null,
+      expect.objectContaining({
+        bridgeRequestBody: expect.objectContaining({
+          stream: true
+        })
+      })
+    )
+    expect(res.end).not.toHaveBeenCalled()
+  })
+
+  it('emits an error SSE for upstream DONE without a finish chunk', async () => {
+    const upstream = createStream()
+    axios.mockResolvedValue({
+      status: 200,
+      headers: {},
+      data: upstream
+    })
+
+    const req = createReq({
+      body: {
+        model: 'claude-sonnet-4-bridge',
+        max_tokens: 64,
+        stream: true,
+        messages: [{ role: 'user', content: 'Stream' }]
+      }
+    })
+    const res = createRes()
+
+    const requestPromise = relayService.handleRequest(req, res, createSelection())
+    await flushAsync()
+
+    upstream.emit(
+      'data',
+      Buffer.from(
+        'data: {"choices":[{"delta":{"content":"partial"},"finish_reason":null}]}\n\n' +
+          'data: [DONE]\n\n'
+      )
+    )
+    upstream.emit('end')
+
+    await requestPromise
+
+    const output = res.write.mock.calls.map(([chunk]) => chunk).join('')
+    expect(output).toContain('event: content_block_delta')
+    expect(output).toContain('"text":"partial"')
+    expect(output).toContain('event: error')
+    expect(output).toContain('Claude OpenAI bridge upstream stream ended early')
+    expect(output).not.toContain('event: message_stop')
+    expect(bridgeAccountService.markAccountUsed).not.toHaveBeenCalled()
     expect(res.end).toHaveBeenCalled()
   })
 

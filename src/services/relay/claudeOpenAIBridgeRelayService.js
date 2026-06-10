@@ -31,6 +31,9 @@ class ClaudeOpenAIBridgeRelayService {
     const stream = req.body?.stream === true
     const targetBody = convertClaudeRequestToOpenAI(req.body, mapping.targetModel)
     targetBody.stream = stream
+    if (stream) {
+      this._ensureStreamUsageOptions(targetBody, req.body)
+    }
 
     this._logHandoff(req, account, mapping, stream)
 
@@ -93,6 +96,21 @@ class ClaudeOpenAIBridgeRelayService {
     return requestOptions
   }
 
+  _ensureStreamUsageOptions(targetBody, sourceBody = {}) {
+    const sourceOptions = this._isPlainObject(sourceBody.stream_options)
+      ? sourceBody.stream_options
+      : {}
+    const targetOptions = this._isPlainObject(targetBody.stream_options)
+      ? targetBody.stream_options
+      : {}
+
+    targetBody.stream_options = {
+      ...sourceOptions,
+      ...targetOptions,
+      include_usage: true
+    }
+  }
+
   async _handleNormalResponse(response, req, res, account, mapping, bridgeRequestBody) {
     const claudeResponse = convertOpenAIResponseToClaude(response.data, mapping.sourceModel)
     const usage = claudeResponse.usage || {}
@@ -120,8 +138,8 @@ class ClaudeOpenAIBridgeRelayService {
     const state = createStreamState(mapping.sourceModel)
     let buffer = ''
     let wroteToClient = false
-    let sawDone = false
     let recordPromise = null
+    let finalized = false
 
     const recordUsageOnce = async () => {
       const usage = state.usage || {}
@@ -145,9 +163,26 @@ class ClaudeOpenAIBridgeRelayService {
     }
 
     return new Promise((resolve) => {
-      const finish = async () => {
+      const handlers = {}
+
+      const cleanup = () => {
+        req.off?.('close', handlers.clientClose)
+        req.off?.('aborted', handlers.clientClose)
+        res.off?.('close', handlers.clientClose)
+        response.data.off?.('data', handlers.data)
+        response.data.off?.('end', handlers.end)
+        response.data.off?.('error', handlers.upstreamError)
+      }
+
+      const finalize = async ({ reason, upstreamError = null, clientDisconnected = false }) => {
+        if (finalized) {
+          return
+        }
+        finalized = true
+        cleanup()
+
         try {
-          if (buffer.trim()) {
+          if (!clientDisconnected && buffer.trim()) {
             this._processSSEBuffer(`${buffer}\n\n`, state, res, () => {
               wroteToClient = true
             })
@@ -156,7 +191,34 @@ class ClaudeOpenAIBridgeRelayService {
 
           await recordUsageOnce()
 
-          if (!state.completed && !sawDone) {
+          if (clientDisconnected) {
+            return
+          }
+
+          if (reason === 'error') {
+            await this._markAccountErrorIfAutoProtectionEnabled(
+              account,
+              upstreamError?.message || 'Claude OpenAI bridge stream error'
+            )
+
+            if (!wroteToClient && !res.headersSent) {
+              this._sendJsonError(res, 502, 'Claude OpenAI bridge upstream stream failed')
+            } else if (!res.writableEnded) {
+              this._writeSSEEvent(
+                res,
+                'error',
+                this._createClaudeError(
+                  502,
+                  'Claude OpenAI bridge upstream stream failed',
+                  'api_error'
+                )
+              )
+              res.end()
+            }
+            return
+          }
+
+          if (!state.completed) {
             await this._markAccountErrorIfAutoProtectionEnabled(
               account,
               'Claude OpenAI bridge upstream stream ended early'
@@ -188,56 +250,56 @@ class ClaudeOpenAIBridgeRelayService {
           if (!res.writableEnded) {
             res.end()
           }
-        } catch (error) {
-          logger.error('Claude OpenAI bridge stream finalization error', this._compactError(error))
+        } catch (finalizeError) {
+          logger.error(
+            'Claude OpenAI bridge stream finalization error',
+            this._compactError(finalizeError)
+          )
           if (!res.headersSent) {
             this._sendJsonError(res, 502, 'Claude OpenAI bridge stream failed')
           } else if (!res.writableEnded) {
             res.end()
           }
+        } finally {
+          resolve()
         }
-        resolve()
       }
 
-      response.data.on('data', (chunk) => {
+      handlers.data = (chunk) => {
         try {
           buffer += Buffer.isBuffer(chunk) ? chunk.toString('utf8') : String(chunk)
 
-          const { buffer: nextBuffer, sawDone: chunkSawDone } = this._processSSEBuffer(
-            buffer,
-            state,
-            res,
-            () => {
-              wroteToClient = true
-            }
-          )
+          const { buffer: nextBuffer } = this._processSSEBuffer(buffer, state, res, () => {
+            wroteToClient = true
+          })
           buffer = nextBuffer
-          sawDone = sawDone || chunkSawDone
         } catch (error) {
           logger.error('Claude OpenAI bridge stream parse error', this._compactError(error))
         }
-      })
+      }
 
-      response.data.on('end', finish)
-      response.data.on('error', async (error) => {
+      handlers.end = () => {
+        finalize({ reason: 'end' })
+      }
+
+      handlers.upstreamError = (error) => {
         logger.error('Claude OpenAI bridge upstream stream error', this._compactError(error))
-        await this._markAccountErrorIfAutoProtectionEnabled(
-          account,
-          error?.message || 'Claude OpenAI bridge stream error'
-        )
+        finalize({ reason: 'error', upstreamError: error })
+      }
 
-        if (!wroteToClient && !res.headersSent) {
-          this._sendJsonError(res, 502, 'Claude OpenAI bridge upstream stream failed')
-        } else if (!res.writableEnded) {
-          this._writeSSEEvent(
-            res,
-            'error',
-            this._createClaudeError(502, 'Claude OpenAI bridge upstream stream failed', 'api_error')
-          )
-          res.end()
+      handlers.clientClose = () => {
+        if (!finalized && typeof response.data.destroy === 'function') {
+          response.data.destroy()
         }
-        resolve()
-      })
+        finalize({ reason: 'client_close', clientDisconnected: true })
+      }
+
+      req.on?.('close', handlers.clientClose)
+      req.on?.('aborted', handlers.clientClose)
+      res.on?.('close', handlers.clientClose)
+      response.data.on('data', handlers.data)
+      response.data.on('end', handlers.end)
+      response.data.on('error', handlers.upstreamError)
     })
   }
 
@@ -434,6 +496,10 @@ class ClaudeOpenAIBridgeRelayService {
 
   _sendJsonError(res, status, message, type = 'api_error') {
     return res.status(status).json(this._createClaudeError(status, message, type))
+  }
+
+  _isPlainObject(value) {
+    return value !== null && typeof value === 'object' && !Array.isArray(value)
   }
 
   _writeSSEEvent(res, type, event) {
