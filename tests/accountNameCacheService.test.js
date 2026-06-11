@@ -11,6 +11,9 @@ jest.mock('../src/services/account/claudeAccountService', () => ({
 jest.mock('../src/services/account/claudeConsoleAccountService', () => ({
   getAllAccounts: jest.fn()
 }))
+jest.mock('../src/services/account/claudeOpenAIBridgeAccountService', () => ({
+  getAllAccounts: jest.fn()
+}))
 jest.mock('../src/services/account/gcpVertexAccountService', () => ({
   getAllAccounts: jest.fn()
 }))
@@ -44,6 +47,7 @@ jest.mock('../src/services/accountGroupService', () => ({
 
 const claudeAccountService = require('../src/services/account/claudeAccountService')
 const claudeConsoleAccountService = require('../src/services/account/claudeConsoleAccountService')
+const claudeOpenAIBridgeAccountService = require('../src/services/account/claudeOpenAIBridgeAccountService')
 const gcpVertexAccountService = require('../src/services/account/gcpVertexAccountService')
 const geminiAccountService = require('../src/services/account/geminiAccountService')
 const geminiApiAccountService = require('../src/services/account/geminiApiAccountService')
@@ -63,6 +67,7 @@ describe('AccountNameCacheService', () => {
 
     claudeAccountService.getAllAccounts.mockResolvedValue([])
     claudeConsoleAccountService.getAllAccounts.mockResolvedValue([])
+    claudeOpenAIBridgeAccountService.getAllAccounts.mockResolvedValue([])
     gcpVertexAccountService.getAllAccounts.mockResolvedValue({
       success: true,
       data: [{ id: 'vertex-1', name: 'Vertex Account 1' }]
@@ -94,5 +99,32 @@ describe('AccountNameCacheService', () => {
     const result = accountNameCacheService.searchByBindingAccount(apiKeys, 'vertex only')
 
     expect(result).toHaveLength(1)
+  })
+
+  it('loads Claude OpenAI Bridge account names into cache during refresh', async () => {
+    claudeOpenAIBridgeAccountService.getAllAccounts.mockResolvedValue([
+      { id: 'bridge-1', name: 'Bridge Account 1' }
+    ])
+
+    await accountNameCacheService.refresh()
+
+    expect(accountNameCacheService.getAccountDisplayName('bridge-1')).toBe('Bridge Account 1')
+  })
+
+  it('includes claudeOpenAIBridgeAccountId in binding-account search', () => {
+    accountNameCacheService.accountCache.set('bridge-only', {
+      name: 'Bridge Only Binding',
+      platform: 'claude-openai-bridge'
+    })
+
+    const apiKeys = [{ id: 'key-1', claudeOpenAIBridgeAccountId: 'bridge-only' }]
+    const result = accountNameCacheService.searchByBindingAccount(apiKeys, 'bridge only')
+
+    expect(result).toHaveLength(1)
+    expect(accountNameCacheService.getBindingDisplayNames(apiKeys[0])[0]).toMatchObject({
+      field: 'claudeOpenAIBridgeAccountId',
+      platform: 'Claude OpenAI Bridge',
+      name: 'Bridge Only Binding'
+    })
   })
 })

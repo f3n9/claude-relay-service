@@ -49,6 +49,10 @@ jest.mock('../src/models/redis', () => {
   }
 })
 
+jest.mock('../src/services/accountGroupService', () => ({
+  getGroupMembers: jest.fn()
+}))
+
 jest.mock(
   '../config/config',
   () => ({
@@ -66,6 +70,7 @@ jest.mock('../src/utils/logger', () => ({
 }))
 
 const redis = require('../src/models/redis')
+const accountGroupService = require('../src/services/accountGroupService')
 const service = require('../src/services/account/claudeOpenAIBridgeAccountService')
 
 describe('claudeOpenAIBridgeAccountService', () => {
@@ -80,6 +85,7 @@ describe('claudeOpenAIBridgeAccountService', () => {
     redis.__sets.clear()
     redis.__values.clear()
     jest.clearAllMocks()
+    accountGroupService.getGroupMembers.mockResolvedValue([])
   })
 
   it('stores global enabled config with false default', async () => {
@@ -96,6 +102,10 @@ describe('claudeOpenAIBridgeAccountService', () => {
       name: 'Azure Bridge',
       endpointUrl: 'https://bc-openai-1.openai.azure.com/openai/v1/chat/completions',
       apiKey: 'secret-key',
+      accountType: 'group',
+      groupId: 'group-1',
+      groupIds: ['group-1', 'group-2'],
+      expiresAt: '2026-07-01T00:00:00.000Z',
       modelMappings: [
         { sourceModel: ' deepseek-v4-flash ', targetModel: ' DeepSeek-V4-Flash ', enabled: true },
         { sourceModel: '', targetModel: 'Ignored', enabled: true }
@@ -115,12 +125,20 @@ describe('claudeOpenAIBridgeAccountService', () => {
       dailyUsage: 0,
       schedulable: true,
       isActive: true,
-      mappingCount: 1
+      mappingCount: 1,
+      accountType: 'group',
+      groupId: 'group-1',
+      groupIds: ['group-1', 'group-2'],
+      expiresAt: '2026-07-01T00:00:00.000Z'
     })
 
     const raw = redis.__hashes.get(`claude_openai_bridge_account:${created.id}`)
     expect(raw.apiKey).not.toBe('secret-key')
     expect(raw.proxy).toBe(JSON.stringify({ type: 'http', host: '127.0.0.1', port: 8118 }))
+    expect(raw.accountType).toBe('group')
+    expect(raw.groupId).toBe('group-1')
+    expect(raw.groupIds).toBe(JSON.stringify(['group-1', 'group-2']))
+    expect(raw.expiresAt).toBe('2026-07-01T00:00:00.000Z')
     expect(raw.modelMappings).toBe(
       JSON.stringify([
         { sourceModel: 'deepseek-v4-flash', targetModel: 'DeepSeek-V4-Flash', enabled: true }
@@ -138,7 +156,11 @@ describe('claudeOpenAIBridgeAccountService', () => {
       platform: 'claude-openai-bridge',
       priority: 10,
       dailyQuota: 12,
-      dailyUsage: 0
+      dailyUsage: 0,
+      accountType: 'group',
+      groupId: 'group-1',
+      groupIds: ['group-1', 'group-2'],
+      expiresAt: '2026-07-01T00:00:00.000Z'
     })
 
     const all = await service.getAllAccounts(true)
@@ -186,6 +208,20 @@ describe('claudeOpenAIBridgeAccountService', () => {
       dailyQuota: 42,
       dailyUsage: 7,
       modelMappings: [{ sourceModel: 'new-model', targetModel: 'NewModel', enabled: false }]
+    })
+
+    await service.updateAccount(account.id, {
+      accountType: 'dedicated',
+      groupId: '',
+      groupIds: [],
+      expiresAt: '2026-08-01T00:00:00.000Z'
+    })
+
+    expect(await service.getAccount(account.id)).toMatchObject({
+      accountType: 'dedicated',
+      groupId: '',
+      groupIds: [],
+      expiresAt: '2026-08-01T00:00:00.000Z'
     })
 
     await expect(service.getAllAccounts()).resolves.toEqual([])
@@ -324,6 +360,47 @@ describe('claudeOpenAIBridgeAccountService', () => {
 
     await service.updateConfig({ enabled: false })
     await expect(service.selectAccountForModel('deepseek-v4-flash')).resolves.toBe(null)
+  })
+
+  it('keeps dedicated accounts out of the shared pool but honors direct and group bindings', async () => {
+    await service.updateConfig({ enabled: true })
+    const dedicated = await service.createAccount({
+      name: 'Dedicated',
+      endpointUrl: 'https://dedicated.example.com/v1/chat/completions',
+      apiKey: 'dedicated-key',
+      accountType: 'dedicated',
+      priority: 1,
+      modelMappings: [
+        { sourceModel: 'deepseek-v4-pro', targetModel: 'DeepSeek-V4-Pro-Dedicated', enabled: true }
+      ]
+    })
+    await service.createAccount({
+      name: 'Shared',
+      endpointUrl: 'https://shared.example.com/v1/chat/completions',
+      apiKey: 'shared-key',
+      accountType: 'shared',
+      priority: 50,
+      modelMappings: [
+        { sourceModel: 'deepseek-v4-pro', targetModel: 'DeepSeek-V4-Pro-Shared', enabled: true }
+      ]
+    })
+
+    const sharedPoolSelection = await service.selectAccountForModel('deepseek-v4-pro')
+    expect(sharedPoolSelection.account.id).not.toBe(dedicated.id)
+    expect(sharedPoolSelection.mapping.targetModel).toBe('DeepSeek-V4-Pro-Shared')
+
+    const directBindingSelection = await service.selectAccountForModel('deepseek-v4-pro', {
+      boundAccountId: dedicated.id
+    })
+    expect(directBindingSelection.account.id).toBe(dedicated.id)
+    expect(directBindingSelection.mapping.targetModel).toBe('DeepSeek-V4-Pro-Dedicated')
+
+    accountGroupService.getGroupMembers.mockResolvedValue([dedicated.id])
+    const groupBindingSelection = await service.selectAccountForModel('deepseek-v4-pro', {
+      boundAccountId: 'group:bridge-group-1'
+    })
+    expect(groupBindingSelection.account.id).toBe(dedicated.id)
+    expect(accountGroupService.getGroupMembers).toHaveBeenCalledWith('bridge-group-1')
   })
 
   it('does not select accounts that are daily quota exhausted or quota stopped', async () => {

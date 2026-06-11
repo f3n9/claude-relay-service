@@ -531,6 +531,7 @@ const getAccountEndpoint = () => {
     claude: `${APP_CONFIG.apiPrefix}/admin/claude-accounts/${props.account.id}/test`,
     'claude-console': `${APP_CONFIG.apiPrefix}/admin/claude-console-accounts/${props.account.id}/test`,
     'claude-vertex': `${APP_CONFIG.apiPrefix}/admin/gcp-vertex-accounts/${props.account.id}/test`,
+    'claude-openai-bridge': `${APP_CONFIG.apiPrefix}/admin/claude-openai-bridge/accounts/${props.account.id}/test`,
     bedrock: `${APP_CONFIG.apiPrefix}/admin/bedrock-accounts/${props.account.id}/test`,
     gemini: `${APP_CONFIG.apiPrefix}/admin/gemini-accounts/${props.account.id}/test`,
     'gemini-api': `${APP_CONFIG.apiPrefix}/admin/gemini-api-accounts/${props.account.id}/test`,

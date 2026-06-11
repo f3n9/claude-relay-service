@@ -1305,6 +1305,7 @@ const authenticateApiKey = async (req, res, next) => {
       tokenLimit: validation.keyData.tokenLimit,
       claudeAccountId: validation.keyData.claudeAccountId,
       claudeConsoleAccountId: validation.keyData.claudeConsoleAccountId, // 添加 Claude Console 账号ID
+      claudeOpenAIBridgeAccountId: validation.keyData.claudeOpenAIBridgeAccountId,
       claudeVertexAccountId: validation.keyData.claudeVertexAccountId, // 添加 GCP Vertex 账号ID
       geminiAccountId: validation.keyData.geminiAccountId,
       openaiAccountId: validation.keyData.openaiAccountId, // 添加 OpenAI 账号ID

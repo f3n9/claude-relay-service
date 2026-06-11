@@ -141,6 +141,36 @@
               </el-tooltip>
             </div>
 
+            <!-- Claude OpenAI Bridge 总开关 -->
+            <div class="relative">
+              <el-tooltip
+                content="控制 /api/v1/messages 模型桥接逻辑"
+                effect="dark"
+                placement="bottom"
+              >
+                <button
+                  class="group relative flex items-center justify-center gap-2 rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-700 shadow-sm transition-all duration-200 hover:border-gray-300 hover:shadow-md dark:border-gray-600 dark:bg-gray-800 dark:text-gray-300 dark:hover:border-gray-500 sm:w-auto"
+                  :disabled="bridgeConfigLoading"
+                  @click="toggleClaudeOpenAIBridge"
+                >
+                  <div
+                    class="absolute -inset-0.5 rounded-lg bg-gradient-to-r from-slate-500 to-cyan-500 opacity-0 blur transition duration-300 group-hover:opacity-20"
+                  ></div>
+                  <i
+                    :class="[
+                      'fas relative',
+                      claudeOpenAIBridgeConfig.enabled
+                        ? 'fa-toggle-on text-green-500'
+                        : 'fa-toggle-off text-gray-400'
+                    ]"
+                  />
+                  <span class="relative"
+                    >Bridge {{ claudeOpenAIBridgeConfig.enabled ? '已启用' : '已关闭' }}</span
+                  >
+                </button>
+              </el-tooltip>
+            </div>
+
             <!-- 刷新余额按钮 -->
             <div class="relative">
               <el-tooltip :content="refreshBalanceTooltip" effect="dark" placement="bottom">
@@ -627,6 +657,19 @@
                       <span class="mx-1 h-4 w-px bg-teal-300 dark:bg-teal-600" />
                       <span class="text-xs font-medium text-teal-700 dark:text-teal-400"
                         >API Key</span
+                      >
+                    </div>
+                    <div
+                      v-else-if="account.platform === 'claude-openai-bridge'"
+                      class="flex items-center gap-1.5 rounded-lg border border-slate-200 bg-gradient-to-r from-slate-100 to-cyan-100 px-2.5 py-1 dark:border-slate-700 dark:from-slate-900/30 dark:to-cyan-900/20"
+                    >
+                      <i class="fas fa-exchange-alt text-xs text-slate-700 dark:text-slate-300" />
+                      <span class="text-xs font-semibold text-slate-800 dark:text-slate-200"
+                        >OpenAI Bridge</span
+                      >
+                      <span class="mx-1 h-4 w-px bg-slate-300 dark:bg-slate-600" />
+                      <span class="text-xs font-medium text-slate-700 dark:text-slate-300"
+                        >Claude API</span
                       >
                     </div>
                     <div
@@ -1238,6 +1281,7 @@
                       account.platform === 'claude' ||
                       account.platform === 'claude-console' ||
                       account.platform === 'claude-vertex' ||
+                      account.platform === 'claude-openai-bridge' ||
                       account.platform === 'bedrock' ||
                       account.platform === 'gemini' ||
                       account.platform === 'openai' ||
@@ -2310,6 +2354,8 @@ const handleCancel = () => {
 // 数据状态
 const accounts = ref([])
 const accountsLoading = ref(false)
+const bridgeConfigLoading = ref(false)
+const claudeOpenAIBridgeConfig = ref({ enabled: false })
 const refreshingBalances = ref(false)
 const tempUnavailableNowTs = ref(Date.now())
 const accountsSortBy = ref('name')
@@ -2355,6 +2401,7 @@ const platformToAccountType = (platform) => {
 const TEMP_UNAVAILABLE_ACCOUNT_TYPE_ALIASES = {
   claude: ['claude-official', 'claude'],
   'claude-console': ['claude-console'],
+  'claude-openai-bridge': ['claude-openai-bridge'],
   'claude-vertex': ['claude-vertex'],
   bedrock: ['bedrock'],
   gemini: ['gemini'],
@@ -2406,6 +2453,7 @@ const supportedUsagePlatforms = [
   'claude',
   'claude-console',
   'claude-vertex',
+  'claude-openai-bridge',
   'openai',
   'openai-responses',
   'gemini',
@@ -2463,6 +2511,7 @@ const platformHierarchy = [
       { value: 'claude', label: 'Claude 官方/OAuth', icon: 'fa-brain' },
       { value: 'claude-console', label: 'Claude Console', icon: 'fa-terminal' },
       { value: 'claude-vertex', label: 'GCP Vertex Claude', icon: 'fab fa-google' },
+      { value: 'claude-openai-bridge', label: 'Claude OpenAI Bridge', icon: 'fa-exchange-alt' },
       { value: 'bedrock', label: 'Bedrock', icon: 'fab fa-aws' },
       { value: 'ccr', label: 'CCR Relay', icon: 'fa-code-branch' }
     ]
@@ -2496,7 +2545,14 @@ const platformHierarchy = [
 
 // 平台分组映射
 const platformGroupMap = {
-  'group-claude': ['claude', 'claude-console', 'claude-vertex', 'bedrock', 'ccr'],
+  'group-claude': [
+    'claude',
+    'claude-console',
+    'claude-vertex',
+    'claude-openai-bridge',
+    'bedrock',
+    'ccr'
+  ],
   'group-openai': ['openai', 'openai-responses', 'azure_openai'],
   'group-gemini': ['gemini', 'gemini-api'],
   'group-droid': ['droid']
@@ -2506,6 +2562,7 @@ const platformGroupMap = {
 const platformRequestHandlers = {
   claude: () => httpApis.getClaudeAccountsApi(),
   'claude-console': () => httpApis.getClaudeConsoleAccountsApi(),
+  'claude-openai-bridge': () => httpApis.getClaudeOpenAIBridgeAccountsApi(),
   bedrock: () => httpApis.getBedrockAccountsApi(),
   'claude-vertex': () => httpApis.getGcpVertexAccountsApi(),
   gemini: () => httpApis.getGeminiAccountsApi(),
@@ -2647,6 +2704,7 @@ const showResetButton = (account) => {
     'claude',
     'claude-console',
     'claude-vertex',
+    'claude-openai-bridge',
     'openai',
     'openai-responses',
     'gemini',
@@ -2767,6 +2825,7 @@ const supportedTestPlatforms = [
   'gemini',
   'gemini-api',
   'openai-responses',
+  'claude-openai-bridge',
   'azure-openai',
   'droid',
   'ccr'
@@ -2788,6 +2847,40 @@ const openAccountTestModal = (account) => {
 const closeAccountTestModal = () => {
   showAccountTestModal.value = false
   testingAccount.value = null
+}
+
+const loadClaudeOpenAIBridgeConfig = async () => {
+  try {
+    const res = await httpApis.getClaudeOpenAIBridgeConfigApi()
+    if (res.success) {
+      claudeOpenAIBridgeConfig.value = res.data || { enabled: false }
+    }
+  } catch (error) {
+    console.debug('Failed to load Claude OpenAI bridge config:', error)
+  }
+}
+
+const toggleClaudeOpenAIBridge = async () => {
+  if (bridgeConfigLoading.value) return
+  bridgeConfigLoading.value = true
+  try {
+    const res = await httpApis.updateClaudeOpenAIBridgeConfigApi({
+      enabled: !claudeOpenAIBridgeConfig.value.enabled
+    })
+    if (res.success) {
+      claudeOpenAIBridgeConfig.value = res.data || { enabled: false }
+      showToast(
+        claudeOpenAIBridgeConfig.value.enabled ? 'Bridge 已启用' : 'Bridge 已关闭',
+        'success'
+      )
+    } else {
+      showToast(res.message || 'Bridge 配置更新失败', 'error')
+    }
+  } catch (error) {
+    showToast(error.message || 'Bridge 配置更新失败', 'error')
+  } finally {
+    bridgeConfigLoading.value = false
+  }
 }
 
 // 定时测试配置相关函数
@@ -2950,6 +3043,7 @@ const accountStats = computed(() => {
   const platforms = [
     { value: 'claude', label: 'Claude' },
     { value: 'claude-console', label: 'Claude Console' },
+    { value: 'claude-openai-bridge', label: 'Claude OpenAI Bridge' },
     { value: 'claude-vertex', label: 'GCP Vertex Claude' },
     { value: 'gemini', label: 'Gemini' },
     { value: 'gemini-api', label: 'Gemini API' },
@@ -3387,6 +3481,14 @@ const loadAccounts = async (forceReload = false) => {
           const items = list.map((acc) => {
             const boundApiKeysCount = counts.claudeConsoleAccountId?.[acc.id] || 0
             return { ...acc, platform: 'claude-console', boundApiKeysCount }
+          })
+          allAccounts.push(...items)
+          break
+        }
+        case 'claude-openai-bridge': {
+          const items = list.map((acc) => {
+            const boundApiKeysCount = counts.claudeOpenAIBridgeAccountId?.[acc.id] || 0
+            return { ...acc, platform: 'claude-openai-bridge', boundApiKeysCount }
           })
           allAccounts.push(...items)
           break
@@ -3989,6 +4091,7 @@ const getBoundApiKeysForAccount = (account) => {
       key.claudeAccountId === accountId ||
       key.claudeAccountId === vertexKeyId ||
       key.claudeConsoleAccountId === accountId ||
+      key.claudeOpenAIBridgeAccountId === accountId ||
       key.claudeVertexAccountId === accountId ||
       key.geminiAccountId === accountId ||
       key.openaiAccountId === accountId ||
@@ -4005,6 +4108,8 @@ const resolveAccountDeleteEndpoint = (account) => {
       return `/admin/claude-accounts/${account.id}`
     case 'claude-console':
       return `/admin/claude-console-accounts/${account.id}`
+    case 'claude-openai-bridge':
+      return `/admin/claude-openai-bridge/accounts/${account.id}`
     case 'bedrock':
       return `/admin/bedrock-accounts/${account.id}`
     case 'claude-vertex':
@@ -4165,6 +4270,7 @@ const RESET_STATUS_ENDPOINT_MAP = {
   'openai-responses': (id) => `/admin/openai-responses-accounts/${id}/reset-status`,
   claude: (id) => `/admin/claude-accounts/${id}/reset-status`,
   'claude-console': (id) => `/admin/claude-console-accounts/${id}/reset-status`,
+  'claude-openai-bridge': (id) => `/admin/claude-openai-bridge/accounts/${id}/reset-status`,
   ccr: (id) => `/admin/ccr-accounts/${id}/reset-status`,
   droid: (id) => `/admin/droid-accounts/${id}/reset-status`,
   'gemini-api': (id) => `/admin/gemini-api-accounts/${id}/reset-status`,
@@ -4178,6 +4284,7 @@ const RESET_STATUS_ENDPOINT_MAP = {
 const TOGGLE_SCHEDULABLE_ENDPOINT_MAP = {
   claude: (id) => `/admin/claude-accounts/${id}/toggle-schedulable`,
   'claude-console': (id) => `/admin/claude-console-accounts/${id}/toggle-schedulable`,
+  'claude-openai-bridge': (id) => `/admin/claude-openai-bridge/accounts/${id}/toggle-schedulable`,
   bedrock: (id) => `/admin/bedrock-accounts/${id}/toggle-schedulable`,
   'claude-vertex': (id) => `/admin/gcp-vertex-accounts/${id}/toggle-schedulable`,
   gemini: (id) => `/admin/gemini-accounts/${id}/toggle-schedulable`,
@@ -4255,8 +4362,9 @@ const toggleSchedulable = async (account) => {
 
   const data = await httpApis.toggleAccountStatusApi(endpoint)
   if (data.success) {
-    account.schedulable = data.schedulable
-    showToast(data.schedulable ? '已启用调度' : '已禁用调度', 'success')
+    const schedulable = data.schedulable !== undefined ? data.schedulable : data.data?.schedulable
+    account.schedulable = schedulable
+    showToast(schedulable ? '已启用调度' : '已禁用调度', 'success')
   } else {
     showToast(data.message || '操作失败', 'error')
   }
@@ -5217,6 +5325,9 @@ const handleSaveAccountExpiry = async ({ accountId, expiresAt }) => {
       case 'claude-console':
         endpoint = `/admin/claude-console-accounts/${accountId}`
         break
+      case 'claude-openai-bridge':
+        endpoint = `/admin/claude-openai-bridge/accounts/${accountId}`
+        break
       case 'bedrock':
         endpoint = `/admin/bedrock-accounts/${accountId}`
         break
@@ -5272,6 +5383,7 @@ let tempUnavailableCountdownTimer = null
 onMounted(() => {
   // 首次加载时强制刷新所有数据
   loadAccounts(true)
+  loadClaudeOpenAIBridgeConfig()
 
   // 让临时不可用剩余时间在页面停留时也可见地递减
   tempUnavailableCountdownTimer = setInterval(() => {

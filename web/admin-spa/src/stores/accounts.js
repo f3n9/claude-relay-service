@@ -16,6 +16,10 @@ const PLATFORM_CONFIG = {
     endpoint: 'openai-responses-accounts',
     stateKey: 'openaiResponsesAccounts'
   },
+  'claude-openai-bridge': {
+    endpoint: 'claude-openai-bridge/accounts',
+    stateKey: 'claudeOpenAIBridgeAccounts'
+  },
   droid: { endpoint: 'droid-accounts', stateKey: 'droidAccounts' }
 }
 
@@ -28,6 +32,8 @@ export const useAccountsStore = defineStore('accounts', () => {
   const openaiAccounts = ref([])
   const azureOpenaiAccounts = ref([])
   const openaiResponsesAccounts = ref([])
+  const claudeOpenAIBridgeAccounts = ref([])
+  const claudeOpenAIBridgeConfig = ref({ enabled: false })
   const droidAccounts = ref([])
   const loading = ref(false)
   const error = ref(null)
@@ -44,6 +50,7 @@ export const useAccountsStore = defineStore('accounts', () => {
     openaiAccounts,
     azureOpenaiAccounts,
     openaiResponsesAccounts,
+    claudeOpenAIBridgeAccounts,
     droidAccounts
   }
 
@@ -79,6 +86,20 @@ export const useAccountsStore = defineStore('accounts', () => {
     fetchAccounts(httpApis.getAzureOpenAIAccountsApi, azureOpenaiAccounts)
   const fetchOpenAIResponsesAccounts = () =>
     fetchAccounts(httpApis.getOpenAIResponsesAccountsApi, openaiResponsesAccounts)
+  const fetchClaudeOpenAIBridgeConfig = async () => {
+    const res = await httpApis.getClaudeOpenAIBridgeConfigApi()
+    if (res.success) claudeOpenAIBridgeConfig.value = res.data || { enabled: false }
+    else error.value = res.message
+    return res
+  }
+  const updateClaudeOpenAIBridgeConfig = async (data) => {
+    const res = await httpApis.updateClaudeOpenAIBridgeConfigApi(data)
+    if (res.success) claudeOpenAIBridgeConfig.value = res.data || { enabled: false }
+    else error.value = res.message
+    return res
+  }
+  const fetchClaudeOpenAIBridgeAccounts = () =>
+    fetchAccounts(httpApis.getClaudeOpenAIBridgeAccountsApi, claudeOpenAIBridgeAccounts)
   const fetchDroidAccounts = () => fetchAccounts(httpApis.getDroidAccountsApi, droidAccounts)
 
   const fetchAllAccounts = async () => {
@@ -92,6 +113,8 @@ export const useAccountsStore = defineStore('accounts', () => {
       fetchOpenAIAccounts(),
       fetchAzureOpenAIAccounts(),
       fetchOpenAIResponsesAccounts(),
+      fetchClaudeOpenAIBridgeAccounts(),
+      fetchClaudeOpenAIBridgeConfig(),
       fetchDroidAccounts()
     ])
     loading.value = false
@@ -116,6 +139,12 @@ export const useAccountsStore = defineStore('accounts', () => {
     mutateAccount(httpApis.createAzureOpenAIAccountApi, fetchAzureOpenAIAccounts, data)
   const createOpenAIResponsesAccount = (data) =>
     mutateAccount(httpApis.createOpenAIResponsesAccountApi, fetchOpenAIResponsesAccounts, data)
+  const createClaudeOpenAIBridgeAccount = (data) =>
+    mutateAccount(
+      httpApis.createClaudeOpenAIBridgeAccountApi,
+      fetchClaudeOpenAIBridgeAccounts,
+      data
+    )
   const createGeminiApiAccount = (data) =>
     mutateAccount(httpApis.createGeminiApiAccountApi, fetchGeminiAccounts, data)
 
@@ -136,6 +165,13 @@ export const useAccountsStore = defineStore('accounts', () => {
     mutateAccount(httpApis.updateAzureOpenAIAccountApi, fetchAzureOpenAIAccounts, id, data)
   const updateOpenAIResponsesAccount = (id, data) =>
     mutateAccount(httpApis.updateOpenAIResponsesAccountApi, fetchOpenAIResponsesAccounts, id, data)
+  const updateClaudeOpenAIBridgeAccount = (id, data) =>
+    mutateAccount(
+      httpApis.updateClaudeOpenAIBridgeAccountApi,
+      fetchClaudeOpenAIBridgeAccounts,
+      id,
+      data
+    )
   const updateGeminiApiAccount = (id, data) =>
     mutateAccount(httpApis.updateGeminiApiAccountApi, fetchGeminiAccounts, id, data)
   const updateDroidAccount = (id, data) =>
@@ -175,6 +211,7 @@ export const useAccountsStore = defineStore('accounts', () => {
         openai: fetchOpenAIAccounts,
         azure_openai: fetchAzureOpenAIAccounts,
         'openai-responses': fetchOpenAIResponsesAccounts,
+        'claude-openai-bridge': fetchClaudeOpenAIBridgeAccounts,
         droid: fetchDroidAccounts
       }
       await fetchMap[platform]()
@@ -282,6 +319,8 @@ export const useAccountsStore = defineStore('accounts', () => {
     openaiAccounts.value = []
     azureOpenaiAccounts.value = []
     openaiResponsesAccounts.value = []
+    claudeOpenAIBridgeAccounts.value = []
+    claudeOpenAIBridgeConfig.value = { enabled: false }
     droidAccounts.value = []
     loading.value = false
     error.value = null
@@ -298,6 +337,8 @@ export const useAccountsStore = defineStore('accounts', () => {
     openaiAccounts,
     azureOpenaiAccounts,
     openaiResponsesAccounts,
+    claudeOpenAIBridgeAccounts,
+    claudeOpenAIBridgeConfig,
     droidAccounts,
     loading,
     error,
@@ -311,6 +352,8 @@ export const useAccountsStore = defineStore('accounts', () => {
     fetchOpenAIAccounts,
     fetchAzureOpenAIAccounts,
     fetchOpenAIResponsesAccounts,
+    fetchClaudeOpenAIBridgeAccounts,
+    fetchClaudeOpenAIBridgeConfig,
     fetchDroidAccounts,
     fetchAllAccounts,
     createClaudeAccount,
@@ -323,6 +366,7 @@ export const useAccountsStore = defineStore('accounts', () => {
     updateDroidAccount,
     createAzureOpenAIAccount,
     createOpenAIResponsesAccount,
+    createClaudeOpenAIBridgeAccount,
     createGeminiApiAccount,
     updateClaudeAccount,
     updateClaudeConsoleAccount,
@@ -332,6 +376,8 @@ export const useAccountsStore = defineStore('accounts', () => {
     updateOpenAIAccount,
     updateAzureOpenAIAccount,
     updateOpenAIResponsesAccount,
+    updateClaudeOpenAIBridgeAccount,
+    updateClaudeOpenAIBridgeConfig,
     updateGeminiApiAccount,
     toggleAccount,
     deleteAccount,

@@ -13,6 +13,7 @@ const ACCOUNT_TYPE_CONFIG = {
   claude: { prefix: 'claude:account:' },
   'claude-console': { prefix: 'claude_console_account:' },
   'claude-vertex': { prefix: 'claude_vertex_account:', storage: 'json' },
+  'claude-openai-bridge': { prefix: 'claude_openai_bridge_account:' },
   openai: { prefix: 'openai:account:' },
   'openai-responses': { prefix: 'openai_responses_account:' },
   'azure-openai': { prefix: 'azure_openai:account:' },
@@ -28,6 +29,7 @@ const ACCOUNT_TYPE_PRIORITY = [
   'claude',
   'claude-console',
   'claude-vertex',
+  'claude-openai-bridge',
   'gemini',
   'gemini-api',
   'droid'
@@ -37,6 +39,7 @@ const ACCOUNT_CATEGORY_MAP = {
   claude: 'claude',
   'claude-console': 'claude',
   'claude-vertex': 'claude',
+  'claude-openai-bridge': 'claude',
   openai: 'openai',
   'openai-responses': 'openai',
   'azure-openai': 'openai',
@@ -117,6 +120,13 @@ function normalizeAccountTypeKey(type) {
   if (lower === 'claude_vertex' || lower === 'claude-vertex') {
     return 'claude-vertex'
   }
+  if (
+    lower === 'claude_openai_bridge' ||
+    lower === 'claude-openai-bridge' ||
+    lower === 'claudeopenai-bridge'
+  ) {
+    return 'claude-openai-bridge'
+  }
   return lower
 }
 
@@ -184,6 +194,7 @@ class ApiKeyService {
       expiresAt = null,
       claudeAccountId = null,
       claudeConsoleAccountId = null,
+      claudeOpenAIBridgeAccountId = null,
       geminiAccountId = null,
       openaiAccountId = null,
       azureOpenaiAccountId = null,
@@ -244,6 +255,7 @@ class ApiKeyService {
       isActive: String(isActive),
       claudeAccountId: claudeAccountId || '',
       claudeConsoleAccountId: claudeConsoleAccountId || '',
+      claudeOpenAIBridgeAccountId: claudeOpenAIBridgeAccountId || '',
       geminiAccountId: geminiAccountId || '',
       openaiAccountId: openaiAccountId || '',
       azureOpenaiAccountId: azureOpenaiAccountId || '',
@@ -321,6 +333,7 @@ class ApiKeyService {
       isActive: keyData.isActive === 'true',
       claudeAccountId: keyData.claudeAccountId,
       claudeConsoleAccountId: keyData.claudeConsoleAccountId,
+      claudeOpenAIBridgeAccountId: keyData.claudeOpenAIBridgeAccountId,
       geminiAccountId: keyData.geminiAccountId,
       openaiAccountId: keyData.openaiAccountId,
       azureOpenaiAccountId: keyData.azureOpenaiAccountId,
@@ -521,6 +534,7 @@ class ApiKeyService {
           expiresAt: keyData.expiresAt,
           claudeAccountId: keyData.claudeAccountId,
           claudeConsoleAccountId: keyData.claudeConsoleAccountId,
+          claudeOpenAIBridgeAccountId: keyData.claudeOpenAIBridgeAccountId,
           geminiAccountId: keyData.geminiAccountId,
           openaiAccountId: keyData.openaiAccountId,
           azureOpenaiAccountId: keyData.azureOpenaiAccountId,
@@ -668,6 +682,7 @@ class ApiKeyService {
           activatedAt: keyData.activatedAt || null,
           claudeAccountId: keyData.claudeAccountId,
           claudeConsoleAccountId: keyData.claudeConsoleAccountId,
+          claudeOpenAIBridgeAccountId: keyData.claudeOpenAIBridgeAccountId,
           geminiAccountId: keyData.geminiAccountId,
           openaiAccountId: keyData.openaiAccountId,
           azureOpenaiAccountId: keyData.azureOpenaiAccountId,
@@ -1295,6 +1310,7 @@ class ApiKeyService {
         pipeline.hmget(
           `apikey:${keyId}`,
           'claudeAccountId',
+          'claudeOpenAIBridgeAccountId',
           'geminiAccountId',
           'openaiAccountId',
           'claudeVertexAccountId',
@@ -1313,11 +1329,12 @@ class ApiKeyService {
           return {
             id,
             claudeAccountId: fields[0] || null,
-            geminiAccountId: fields[1] || null,
-            openaiAccountId: fields[2] || null,
-            claudeVertexAccountId: fields[3] || null,
-            droidAccountId: fields[4] || null,
-            isDeleted: fields[5] === 'true'
+            claudeOpenAIBridgeAccountId: fields[1] || null,
+            geminiAccountId: fields[2] || null,
+            openaiAccountId: fields[3] || null,
+            claudeVertexAccountId: fields[4] || null,
+            droidAccountId: fields[5] || null,
+            isDeleted: fields[6] === 'true'
           }
         })
         .filter((k) => k && !k.isDeleted)
@@ -1347,6 +1364,7 @@ class ApiKeyService {
         'isActive',
         'claudeAccountId',
         'claudeConsoleAccountId',
+        'claudeOpenAIBridgeAccountId',
         'geminiAccountId',
         'openaiAccountId',
         'azureOpenaiAccountId',
@@ -2292,6 +2310,7 @@ class ApiKeyService {
         pushType('claude')
         pushType('claude-console')
         pushType('claude-vertex')
+        pushType('claude-openai-bridge')
       } else if (lowerModel.includes('droid')) {
         pushType('droid')
       }
@@ -2435,6 +2454,7 @@ class ApiKeyService {
           userId: key.userId,
           userUsername: key.userUsername,
           createdBy: key.createdBy,
+          claudeOpenAIBridgeAccountId: key.claudeOpenAIBridgeAccountId,
           droidAccountId: key.droidAccountId,
           // Include deletion fields for deleted keys
           isDeleted: key.isDeleted,
@@ -2483,6 +2503,7 @@ class ApiKeyService {
         // 所有平台账户绑定字段
         claudeAccountId: keyData.claudeAccountId,
         claudeConsoleAccountId: keyData.claudeConsoleAccountId,
+        claudeOpenAIBridgeAccountId: keyData.claudeOpenAIBridgeAccountId,
         geminiAccountId: keyData.geminiAccountId,
         openaiAccountId: keyData.openaiAccountId,
         bedrockAccountId: keyData.bedrockAccountId,
@@ -2643,6 +2664,7 @@ class ApiKeyService {
         claude: 'claudeAccountId',
         'claude-console': 'claudeConsoleAccountId',
         'claude-vertex': 'claudeVertexAccountId',
+        'claude-openai-bridge': 'claudeOpenAIBridgeAccountId',
         gemini: 'geminiAccountId',
         'gemini-api': 'geminiAccountId', // 特殊处理，带 api: 前缀
         openai: 'openaiAccountId',

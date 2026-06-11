@@ -198,6 +198,18 @@ export const createOpenAIResponsesAccountApi = (data) =>
 export const updateOpenAIResponsesAccountApi = (id, data) =>
   request({ url: `/admin/openai-responses-accounts/${id}`, method: 'PUT', data })
 
+// Claude OpenAI Bridge
+export const getClaudeOpenAIBridgeConfigApi = () =>
+  request({ url: '/admin/claude-openai-bridge/config', method: 'GET' })
+export const updateClaudeOpenAIBridgeConfigApi = (data) =>
+  request({ url: '/admin/claude-openai-bridge/config', method: 'PUT', data })
+export const getClaudeOpenAIBridgeAccountsApi = () =>
+  request({ url: '/admin/claude-openai-bridge/accounts', method: 'GET' })
+export const createClaudeOpenAIBridgeAccountApi = (data) =>
+  request({ url: '/admin/claude-openai-bridge/accounts', method: 'POST', data })
+export const updateClaudeOpenAIBridgeAccountApi = (id, data) =>
+  request({ url: `/admin/claude-openai-bridge/accounts/${id}`, method: 'PUT', data })
+
 // Azure OpenAI 账户
 export const getAzureOpenAIAccountsApi = () =>
   request({ url: '/admin/azure-openai-accounts', method: 'GET' })

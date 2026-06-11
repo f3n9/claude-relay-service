@@ -873,6 +873,7 @@ router.get('/accounts/binding-counts', authenticateAdmin, async (req, res) => {
       claudeAccountId: {},
       claudeConsoleAccountId: {},
       claudeVertexAccountId: {},
+      claudeOpenAIBridgeAccountId: {},
       geminiAccountId: {},
       openaiAccountId: {},
       azureOpenaiAccountId: {},
@@ -900,6 +901,12 @@ router.get('/accounts/binding-counts', authenticateAdmin, async (req, res) => {
         const id = key.claudeConsoleAccountId
         bindingCounts.claudeConsoleAccountId[id] =
           (bindingCounts.claudeConsoleAccountId[id] || 0) + 1
+      }
+
+      if (key.claudeOpenAIBridgeAccountId) {
+        const id = key.claudeOpenAIBridgeAccountId
+        bindingCounts.claudeOpenAIBridgeAccountId[id] =
+          (bindingCounts.claudeOpenAIBridgeAccountId[id] || 0) + 1
       }
 
       if (key.claudeVertexAccountId && !key.claudeAccountId?.startsWith('vertex:')) {
@@ -1483,6 +1490,7 @@ router.post('/api-keys', authenticateAdmin, async (req, res) => {
       expiresAt,
       claudeAccountId,
       claudeConsoleAccountId,
+      claudeOpenAIBridgeAccountId,
       claudeVertexAccountId,
       geminiAccountId,
       openaiAccountId,
@@ -1689,6 +1697,7 @@ router.post('/api-keys', authenticateAdmin, async (req, res) => {
       expiresAt,
       claudeAccountId,
       claudeConsoleAccountId,
+      claudeOpenAIBridgeAccountId,
       claudeVertexAccountId,
       geminiAccountId,
       openaiAccountId,
@@ -1748,6 +1757,7 @@ router.post('/api-keys/batch', authenticateAdmin, async (req, res) => {
       expiresAt,
       claudeAccountId,
       claudeConsoleAccountId,
+      claudeOpenAIBridgeAccountId,
       claudeVertexAccountId,
       geminiAccountId,
       openaiAccountId,
@@ -1814,6 +1824,7 @@ router.post('/api-keys/batch', authenticateAdmin, async (req, res) => {
           expiresAt,
           claudeAccountId,
           claudeConsoleAccountId,
+          claudeOpenAIBridgeAccountId,
           claudeVertexAccountId,
           geminiAccountId,
           openaiAccountId,
@@ -2009,6 +2020,9 @@ router.put('/api-keys/batch', authenticateAdmin, async (req, res) => {
         if (updates.claudeConsoleAccountId !== undefined) {
           finalUpdates.claudeConsoleAccountId = updates.claudeConsoleAccountId
         }
+        if (updates.claudeOpenAIBridgeAccountId !== undefined) {
+          finalUpdates.claudeOpenAIBridgeAccountId = updates.claudeOpenAIBridgeAccountId
+        }
         if (updates.claudeVertexAccountId !== undefined) {
           finalUpdates.claudeVertexAccountId = updates.claudeVertexAccountId
         }
@@ -2123,6 +2137,7 @@ router.put('/api-keys/:keyId', authenticateAdmin, async (req, res) => {
       isActive,
       claudeAccountId,
       claudeConsoleAccountId,
+      claudeOpenAIBridgeAccountId,
       claudeVertexAccountId,
       geminiAccountId,
       openaiAccountId,
@@ -2208,6 +2223,10 @@ router.put('/api-keys/:keyId', authenticateAdmin, async (req, res) => {
     if (claudeConsoleAccountId !== undefined) {
       // 空字符串表示解绑，null或空字符串都设置为空字符串
       updates.claudeConsoleAccountId = claudeConsoleAccountId || ''
+    }
+
+    if (claudeOpenAIBridgeAccountId !== undefined) {
+      updates.claudeOpenAIBridgeAccountId = claudeOpenAIBridgeAccountId || ''
     }
 
     if (claudeVertexAccountId !== undefined) {

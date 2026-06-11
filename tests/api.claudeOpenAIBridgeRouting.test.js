@@ -200,7 +200,8 @@ describe('API /v1/messages Claude OpenAI bridge routing', () => {
     await getMessagesHandler()(req, res)
 
     expect(bridgeAccountService.selectAccountForModel).toHaveBeenCalledWith(
-      'claude-sonnet-4-bridge'
+      'claude-sonnet-4-bridge',
+      { boundAccountId: '' }
     )
     expect(bridgeRelayService.handleRequest).toHaveBeenCalledWith(req, res, selection)
     expect(unifiedClaudeScheduler.selectAccountForApiKey).not.toHaveBeenCalled()
@@ -214,7 +215,8 @@ describe('API /v1/messages Claude OpenAI bridge routing', () => {
     await getMessagesHandler()(req, res)
 
     expect(bridgeAccountService.selectAccountForModel).toHaveBeenCalledWith(
-      'claude-sonnet-4-bridge'
+      'claude-sonnet-4-bridge',
+      { boundAccountId: '' }
     )
     expect(bridgeRelayService.handleRequest).not.toHaveBeenCalled()
     expect(unifiedClaudeScheduler.selectAccountForApiKey).toHaveBeenCalledWith(
@@ -224,6 +226,39 @@ describe('API /v1/messages Claude OpenAI bridge routing', () => {
       null
     )
     expect(gcpVertexRelayService.relayRequest).toHaveBeenCalled()
+  })
+
+  it('passes API key bridge account binding into bridge account selection', async () => {
+    const selection = {
+      account: {
+        id: 'bridge-account-1',
+        name: 'Bridge Account'
+      },
+      mapping: {
+        sourceModel: 'claude-sonnet-4-bridge',
+        targetModel: 'gpt-4.1-mini'
+      }
+    }
+    bridgeAccountService.selectAccountForModel.mockResolvedValue(selection)
+
+    const req = createReq({
+      apiKey: {
+        id: 'key-1',
+        name: 'test-key',
+        permissions: [],
+        enableModelRestriction: false,
+        claudeOpenAIBridgeAccountId: 'bridge-account-1'
+      }
+    })
+    const res = createRes()
+
+    await getMessagesHandler()(req, res)
+
+    expect(bridgeAccountService.selectAccountForModel).toHaveBeenCalledWith(
+      'claude-sonnet-4-bridge',
+      { boundAccountId: 'bridge-account-1' }
+    )
+    expect(bridgeRelayService.handleRequest).toHaveBeenCalledWith(req, res, selection)
   })
 
   it('bypasses bridge selection for forced Gemini vendors', async () => {

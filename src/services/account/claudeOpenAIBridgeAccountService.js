@@ -15,6 +15,10 @@ const MUTABLE_ACCOUNT_FIELDS = new Set([
   'description',
   'endpointUrl',
   'apiKey',
+  'accountType',
+  'groupId',
+  'groupIds',
+  'expiresAt',
   'proxy',
   'isActive',
   'schedulable',
@@ -111,6 +115,37 @@ function parseProxy(proxy) {
   }
 }
 
+function normalizeGroupIds(groupIds = []) {
+  if (typeof groupIds === 'string') {
+    try {
+      groupIds = JSON.parse(groupIds)
+    } catch {
+      groupIds = groupIds ? [groupIds] : []
+    }
+  }
+
+  if (!Array.isArray(groupIds)) {
+    return []
+  }
+
+  return groupIds.map((groupId) => String(groupId).trim()).filter(Boolean)
+}
+
+function parseGroupIds(groupIds) {
+  if (!groupIds) {
+    return []
+  }
+  if (Array.isArray(groupIds)) {
+    return groupIds
+  }
+  try {
+    const parsed = JSON.parse(groupIds)
+    return normalizeGroupIds(parsed)
+  } catch {
+    return normalizeGroupIds(groupIds)
+  }
+}
+
 function accountKey(accountId) {
   return `${ACCOUNT_KEY_PREFIX}${accountId}`
 }
@@ -118,12 +153,14 @@ function accountKey(accountId) {
 function isAccountEligible(account) {
   const dailyQuota = normalizeNumber(account.dailyQuota, 0)
   const dailyUsage = normalizeNumber(account.dailyUsage, 0)
+  const expiresAt = account.expiresAt ? new Date(account.expiresAt).getTime() : null
 
   return (
     normalizeBoolean(account.isActive, true) &&
     normalizeBoolean(account.schedulable, true) &&
     (account.status || 'active') === 'active' &&
     !account.quotaStoppedAt &&
+    (!expiresAt || !Number.isFinite(expiresAt) || expiresAt > Date.now()) &&
     (dailyQuota <= 0 || dailyUsage < dailyQuota)
   )
 }
@@ -163,6 +200,10 @@ function maskAndFormatAccount(accountData, { includeSecret = false } = {}) {
         ? '***'
         : '',
     proxy: parseProxy(accountData.proxy),
+    accountType: accountData.accountType || 'shared',
+    groupId: accountData.groupId || '',
+    groupIds: parseGroupIds(accountData.groupIds),
+    expiresAt: accountData.expiresAt || null,
     modelMappings,
     mappingCount: modelMappings.filter((mapping) => mapping.enabled).length,
     isActive: normalizeBoolean(accountData.isActive, true),
@@ -219,6 +260,10 @@ async function createAccount(options = {}) {
     description: options.description || '',
     endpointUrl,
     apiKey: encryptor.encrypt(apiKey),
+    accountType: options.accountType || 'shared',
+    groupId: options.groupId || '',
+    groupIds: JSON.stringify(normalizeGroupIds(options.groupIds)),
+    expiresAt: options.expiresAt || '',
     proxy: serializeProxy(options.proxy),
     isActive: normalizeBoolean(options.isActive, true).toString(),
     schedulable: normalizeBoolean(options.schedulable, true).toString(),
@@ -318,6 +363,22 @@ async function updateAccount(accountId, updates = {}) {
     normalizedUpdates.proxy = serializeProxy(normalizedUpdates.proxy)
   }
 
+  if (normalizedUpdates.accountType !== undefined) {
+    normalizedUpdates.accountType = normalizedUpdates.accountType || 'shared'
+  }
+
+  if (normalizedUpdates.groupId !== undefined) {
+    normalizedUpdates.groupId = normalizedUpdates.groupId || ''
+  }
+
+  if (normalizedUpdates.groupIds !== undefined) {
+    normalizedUpdates.groupIds = JSON.stringify(normalizeGroupIds(normalizedUpdates.groupIds))
+  }
+
+  if (normalizedUpdates.expiresAt !== undefined) {
+    normalizedUpdates.expiresAt = normalizedUpdates.expiresAt || ''
+  }
+
   if (normalizedUpdates.modelMappings !== undefined) {
     normalizedUpdates.modelMappings = JSON.stringify(
       normalizeMappings(normalizedUpdates.modelMappings)
@@ -378,32 +439,18 @@ async function checkAndClearRateLimit(accountId) {
   return true
 }
 
-async function selectAccountForModel(sourceModel) {
-  const config = await getConfig()
-  if (!config.enabled) {
-    return null
-  }
+function findEnabledMapping(account, sourceModel) {
+  return (account.modelMappings || []).find(
+    (candidate) => candidate.enabled && candidate.sourceModel === sourceModel
+  )
+}
 
-  const accounts = await getAllAccounts(true)
-  const recoveredIds = []
-  for (const account of accounts) {
-    if (await checkAndClearRateLimit(account.id)) {
-      recoveredIds.push(account.id)
-    }
-  }
-
-  const accountsForSelection =
-    recoveredIds.length === 0
-      ? accounts
-      : await Promise.all(accounts.map((account) => getAccount(account.id)))
-
-  const eligibleAccounts = accountsForSelection
+async function selectAccountFromCandidates(sourceModel, candidates) {
+  const eligibleAccounts = candidates
     .filter(Boolean)
     .filter(isAccountEligible)
     .map((account) => {
-      const mapping = account.modelMappings.find(
-        (candidate) => candidate.enabled && candidate.sourceModel === sourceModel
-      )
+      const mapping = findEnabledMapping(account, sourceModel)
       return mapping ? { ...account, matchedMapping: mapping } : null
     })
     .filter(Boolean)
@@ -423,6 +470,57 @@ async function selectAccountForModel(sourceModel) {
     account,
     mapping: selected.matchedMapping
   }
+}
+
+async function selectBoundAccountForModel(sourceModel, binding) {
+  if (!binding || typeof binding !== 'string') {
+    return null
+  }
+
+  if (binding.startsWith('group:')) {
+    const groupId = binding.substring(6)
+    const accountGroupService = require('../accountGroupService')
+    const memberIds = await accountGroupService.getGroupMembers(groupId)
+    if (!memberIds || memberIds.length === 0) {
+      return null
+    }
+
+    const accounts = await Promise.all(memberIds.map((accountId) => getAccount(accountId)))
+    return selectAccountFromCandidates(sourceModel, accounts)
+  }
+
+  const account = await getAccount(binding)
+  return selectAccountFromCandidates(sourceModel, [account])
+}
+
+async function selectAccountForModel(sourceModel, options = {}) {
+  const config = await getConfig()
+  if (!config.enabled) {
+    return null
+  }
+
+  const boundSelection = await selectBoundAccountForModel(sourceModel, options.boundAccountId)
+  if (boundSelection) {
+    return boundSelection
+  }
+
+  const accounts = await getAllAccounts(true)
+  const recoveredIds = []
+  for (const account of accounts) {
+    if (await checkAndClearRateLimit(account.id)) {
+      recoveredIds.push(account.id)
+    }
+  }
+
+  const accountsForSelection =
+    recoveredIds.length === 0
+      ? accounts
+      : await Promise.all(accounts.map((account) => getAccount(account.id)))
+
+  return selectAccountFromCandidates(
+    sourceModel,
+    accountsForSelection.filter((account) => (account.accountType || 'shared') === 'shared')
+  )
 }
 
 async function markAccountUsed(accountId) {

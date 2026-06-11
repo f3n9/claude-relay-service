@@ -4,9 +4,7 @@ const claudeConsoleRelayService = require('../services/relay/claudeConsoleRelayS
 const bedrockRelayService = require('../services/relay/bedrockRelayService')
 const gcpVertexRelayService = require('../services/relay/gcpVertexRelayService')
 const ccrRelayService = require('../services/relay/ccrRelayService')
-const claudeOpenAIBridgeRelayService = require('../services/relay/claudeOpenAIBridgeRelayService')
 const bedrockAccountService = require('../services/account/bedrockAccountService')
-const claudeOpenAIBridgeAccountService = require('../services/account/claudeOpenAIBridgeAccountService')
 const unifiedClaudeScheduler = require('../services/scheduler/unifiedClaudeScheduler')
 const apiKeyService = require('../services/apiKeyService')
 const { authenticateApiKey } = require('../middleware/auth')
@@ -116,6 +114,24 @@ async function getVertexRequestRegion(accountType, accountId) {
   } catch (error) {
     logger.warn(`⚠️ Failed to resolve Vertex account region for ${accountId}:`, error.message)
     return 'global'
+  }
+}
+
+async function selectClaudeOpenAIBridgeAccount(sourceModel, apiKeyData = {}) {
+  try {
+    const claudeOpenAIBridgeAccountService = require('../services/account/claudeOpenAIBridgeAccountService')
+    return await claudeOpenAIBridgeAccountService.selectAccountForModel(sourceModel, {
+      boundAccountId: apiKeyData?.claudeOpenAIBridgeAccountId || ''
+    })
+  } catch (error) {
+    if (
+      error?.code === 'MODULE_NOT_FOUND' &&
+      String(error.message || '').includes('config/config')
+    ) {
+      logger.debug('Claude OpenAI bridge skipped because runtime config is unavailable')
+      return null
+    }
+    throw error
   }
 }
 
@@ -282,9 +298,7 @@ async function handleMessagesRequest(req, res) {
       return await handleAnthropicMessagesToGemini(req, res, { vendor: forcedVendor, baseModel })
     }
 
-    const bridgeSelection = await claudeOpenAIBridgeAccountService.selectAccountForModel(
-      req.body.model || ''
-    )
+    const bridgeSelection = await selectClaudeOpenAIBridgeAccount(req.body.model || '', req.apiKey)
     if (bridgeSelection) {
       logger.api('🌉 /v1/messages matched Claude OpenAI bridge mapping', {
         sourceModel: bridgeSelection.mapping?.sourceModel || req.body.model || '',
@@ -293,6 +307,7 @@ async function handleMessagesRequest(req, res) {
         bridgeAccountName: bridgeSelection.account?.name || '',
         stream: req.body.stream === true
       })
+      const claudeOpenAIBridgeRelayService = require('../services/relay/claudeOpenAIBridgeRelayService')
       return await claudeOpenAIBridgeRelayService.handleRequest(req, res, bridgeSelection)
     }
 

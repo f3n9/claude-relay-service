@@ -382,6 +382,7 @@ class AccountGroupService {
           (keyData.claudeAccountId === groupKey ||
             keyData.claudeAccountId === `vertex:${groupKey}` ||
             keyData.claudeVertexAccountId === groupKey ||
+            keyData.claudeOpenAIBridgeAccountId === groupKey ||
             keyData.geminiAccountId === groupKey ||
             keyData.openaiAccountId === groupKey ||
             keyData.droidAccountId === groupKey)

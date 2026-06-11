@@ -372,6 +372,41 @@
                           <i class="fas fa-check text-xs text-white"></i>
                         </div>
                       </label>
+
+                      <label
+                        class="group relative flex cursor-pointer items-center rounded-md border p-2 transition-all"
+                        :class="[
+                          form.platform === 'claude-openai-bridge'
+                            ? 'border-slate-500 bg-slate-50 dark:border-slate-400 dark:bg-slate-900/30'
+                            : 'border-gray-300 bg-white hover:border-slate-400 hover:bg-slate-50/50 dark:border-gray-600 dark:bg-gray-700 dark:hover:border-slate-500 dark:hover:bg-slate-900/20'
+                        ]"
+                      >
+                        <input
+                          v-model="form.platform"
+                          class="sr-only"
+                          type="radio"
+                          value="claude-openai-bridge"
+                        />
+                        <div class="flex items-center gap-2">
+                          <i
+                            class="fas fa-exchange-alt text-sm text-slate-600 dark:text-slate-400"
+                          ></i>
+                          <div>
+                            <span class="block text-xs font-medium text-gray-900 dark:text-gray-100"
+                              >OpenAI Bridge</span
+                            >
+                            <span class="text-xs text-gray-500 dark:text-gray-400"
+                              >Chat Completions</span
+                            >
+                          </div>
+                        </div>
+                        <div
+                          v-if="form.platform === 'claude-openai-bridge'"
+                          class="absolute right-1 top-1 flex h-4 w-4 items-center justify-center rounded-full bg-slate-500"
+                        >
+                          <i class="fas fa-check text-xs text-white"></i>
+                        </div>
+                      </label>
                     </template>
 
                     <!-- OpenAI 子选项 -->
@@ -613,6 +648,7 @@
                 form.platform !== 'bedrock' &&
                 form.platform !== 'azure_openai' &&
                 form.platform !== 'openai-responses' &&
+                form.platform !== 'claude-openai-bridge' &&
                 form.platform !== 'gemini-api'
               "
             >
@@ -1898,6 +1934,141 @@
               <input v-model.number="form.rateLimitDuration" type="hidden" value="60" />
             </div>
 
+            <!-- Claude OpenAI Bridge 特定字段 -->
+            <div v-if="form.platform === 'claude-openai-bridge' && !isEdit" class="space-y-4">
+              <div>
+                <label class="mb-3 block text-sm font-semibold text-gray-700 dark:text-gray-300"
+                  >Endpoint URL *</label
+                >
+                <input
+                  v-model="form.endpointUrl"
+                  class="form-input w-full border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200 dark:placeholder-gray-400"
+                  :class="{ 'border-red-500': errors.endpointUrl }"
+                  placeholder="https://bc-openai-1.openai.azure.com/openai/v1/chat/completions"
+                  required
+                  type="url"
+                />
+                <p v-if="errors.endpointUrl" class="mt-1 text-xs text-red-500">
+                  {{ errors.endpointUrl }}
+                </p>
+              </div>
+
+              <div>
+                <label class="mb-3 block text-sm font-semibold text-gray-700 dark:text-gray-300"
+                  >API Key *</label
+                >
+                <div class="relative">
+                  <input
+                    v-model="form.apiKey"
+                    class="form-input w-full border-gray-300 pr-10 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200 dark:placeholder-gray-400"
+                    :class="{ 'border-red-500': errors.apiKey }"
+                    placeholder="sk-xxxxxxxxxxxx"
+                    required
+                    :type="showApiKey ? 'text' : 'password'"
+                  />
+                  <button
+                    class="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-400"
+                    type="button"
+                    @click="showApiKey = !showApiKey"
+                  >
+                    <i :class="showApiKey ? 'fas fa-eye-slash' : 'fas fa-eye'" />
+                  </button>
+                </div>
+                <p v-if="errors.apiKey" class="mt-1 text-xs text-red-500">
+                  {{ errors.apiKey }}
+                </p>
+              </div>
+
+              <div>
+                <label class="mb-3 block text-sm font-semibold text-gray-700 dark:text-gray-300"
+                  >模型映射 *</label
+                >
+                <div class="space-y-2">
+                  <div
+                    v-for="(mapping, index) in form.bridgeModelMappings"
+                    :key="index"
+                    class="grid grid-cols-[1fr_1fr_auto_auto] items-center gap-2"
+                  >
+                    <input
+                      v-model="mapping.sourceModel"
+                      class="form-input min-w-0 border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200 dark:placeholder-gray-400"
+                      placeholder="deepseek-v4-flash"
+                      type="text"
+                    />
+                    <input
+                      v-model="mapping.targetModel"
+                      class="form-input min-w-0 border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200 dark:placeholder-gray-400"
+                      placeholder="DeepSeek-V4-Flash"
+                      type="text"
+                    />
+                    <label class="flex items-center gap-1 text-sm text-gray-600 dark:text-gray-300">
+                      <input v-model="mapping.enabled" type="checkbox" />
+                      启用
+                    </label>
+                    <button
+                      class="rounded-lg p-2 text-red-500 transition-colors hover:bg-red-50 dark:hover:bg-red-900/20"
+                      type="button"
+                      @click="removeBridgeModelMapping(index)"
+                    >
+                      <i class="fas fa-trash" />
+                    </button>
+                  </div>
+                </div>
+                <button
+                  class="mt-2 rounded-lg border-2 border-dashed border-gray-300 px-4 py-2 text-sm text-gray-600 transition-colors hover:border-gray-400 hover:text-gray-700 dark:border-gray-600 dark:text-gray-400 dark:hover:border-gray-500 dark:hover:text-gray-300"
+                  type="button"
+                  @click="addBridgeModelMapping"
+                >
+                  <i class="fas fa-plus mr-2" />
+                  添加映射
+                </button>
+                <p v-if="errors.modelMappings" class="mt-1 text-xs text-red-500">
+                  {{ errors.modelMappings }}
+                </p>
+              </div>
+
+              <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <div>
+                  <label class="mb-3 block text-sm font-semibold text-gray-700 dark:text-gray-300"
+                    >优先级</label
+                  >
+                  <input
+                    v-model.number="form.priority"
+                    class="form-input w-full border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200"
+                    max="100"
+                    min="1"
+                    type="number"
+                  />
+                </div>
+                <div>
+                  <label class="mb-3 block text-sm font-semibold text-gray-700 dark:text-gray-300"
+                    >每日额度限制 ($)</label
+                  >
+                  <input
+                    v-model.number="form.dailyQuota"
+                    class="form-input w-full border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200"
+                    min="0"
+                    placeholder="0 表示不限制"
+                    step="0.01"
+                    type="number"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label class="mb-3 block text-sm font-semibold text-gray-700 dark:text-gray-300"
+                  >限流保护时长 (分钟)</label
+                >
+                <input
+                  v-model.number="form.rateLimitDuration"
+                  class="form-input w-full border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200"
+                  min="0"
+                  placeholder="默认60分钟"
+                  type="number"
+                />
+              </div>
+            </div>
+
             <!-- Gemini API 配置 -->
             <div v-if="form.platform === 'gemini-api' && !isEdit" class="space-y-4">
               <div>
@@ -2485,6 +2656,7 @@
                   form.platform !== 'bedrock' &&
                   form.platform !== 'azure_openai' &&
                   form.platform !== 'openai-responses' &&
+                  form.platform !== 'claude-openai-bridge' &&
                   form.platform !== 'gemini-api'
                 "
                 class="btn btn-primary flex-1 px-6 py-3 font-semibold"
@@ -3783,6 +3955,122 @@
             </div>
           </div>
 
+          <!-- Claude OpenAI Bridge 特定字段（编辑模式）-->
+          <div v-if="form.platform === 'claude-openai-bridge'" class="space-y-4">
+            <div>
+              <label class="mb-3 block text-sm font-semibold text-gray-700 dark:text-gray-300"
+                >Endpoint URL</label
+              >
+              <input
+                v-model="form.endpointUrl"
+                class="form-input w-full border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200 dark:placeholder-gray-400"
+                :class="{ 'border-red-500': errors.endpointUrl }"
+                placeholder="https://bc-openai-1.openai.azure.com/openai/v1/chat/completions"
+                type="url"
+              />
+              <p v-if="errors.endpointUrl" class="mt-1 text-xs text-red-500">
+                {{ errors.endpointUrl }}
+              </p>
+            </div>
+
+            <div>
+              <label class="mb-3 block text-sm font-semibold text-gray-700 dark:text-gray-300"
+                >API Key</label
+              >
+              <div class="relative">
+                <input
+                  v-model="form.apiKey"
+                  class="form-input w-full border-gray-300 pr-10 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200 dark:placeholder-gray-400"
+                  placeholder="留空表示不更新"
+                  :type="showApiKey ? 'text' : 'password'"
+                />
+                <button
+                  class="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-400"
+                  type="button"
+                  @click="showApiKey = !showApiKey"
+                >
+                  <i :class="showApiKey ? 'fas fa-eye-slash' : 'fas fa-eye'" />
+                </button>
+              </div>
+              <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">留空表示不更新 API Key</p>
+            </div>
+
+            <div>
+              <label class="mb-3 block text-sm font-semibold text-gray-700 dark:text-gray-300"
+                >模型映射</label
+              >
+              <div class="space-y-2">
+                <div
+                  v-for="(mapping, index) in form.bridgeModelMappings"
+                  :key="index"
+                  class="grid grid-cols-[1fr_1fr_auto_auto] items-center gap-2"
+                >
+                  <input
+                    v-model="mapping.sourceModel"
+                    class="form-input min-w-0 border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200 dark:placeholder-gray-400"
+                    placeholder="deepseek-v4-flash"
+                    type="text"
+                  />
+                  <input
+                    v-model="mapping.targetModel"
+                    class="form-input min-w-0 border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200 dark:placeholder-gray-400"
+                    placeholder="DeepSeek-V4-Flash"
+                    type="text"
+                  />
+                  <label class="flex items-center gap-1 text-sm text-gray-600 dark:text-gray-300">
+                    <input v-model="mapping.enabled" type="checkbox" />
+                    启用
+                  </label>
+                  <button
+                    class="rounded-lg p-2 text-red-500 transition-colors hover:bg-red-50 dark:hover:bg-red-900/20"
+                    type="button"
+                    @click="removeBridgeModelMapping(index)"
+                  >
+                    <i class="fas fa-trash" />
+                  </button>
+                </div>
+              </div>
+              <button
+                class="mt-2 rounded-lg border-2 border-dashed border-gray-300 px-4 py-2 text-sm text-gray-600 transition-colors hover:border-gray-400 hover:text-gray-700 dark:border-gray-600 dark:text-gray-400 dark:hover:border-gray-500 dark:hover:text-gray-300"
+                type="button"
+                @click="addBridgeModelMapping"
+              >
+                <i class="fas fa-plus mr-2" />
+                添加映射
+              </button>
+              <p v-if="errors.modelMappings" class="mt-1 text-xs text-red-500">
+                {{ errors.modelMappings }}
+              </p>
+            </div>
+
+            <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <div>
+                <label class="mb-3 block text-sm font-semibold text-gray-700 dark:text-gray-300"
+                  >每日额度限制 ($)</label
+                >
+                <input
+                  v-model.number="form.dailyQuota"
+                  class="form-input w-full border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200"
+                  min="0"
+                  placeholder="0 表示不限制"
+                  step="0.01"
+                  type="number"
+                />
+              </div>
+              <div>
+                <label class="mb-3 block text-sm font-semibold text-gray-700 dark:text-gray-300"
+                  >限流保护时长 (分钟)</label
+                >
+                <input
+                  v-model.number="form.rateLimitDuration"
+                  class="form-input w-full border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200"
+                  min="0"
+                  type="number"
+                />
+              </div>
+            </div>
+          </div>
+
           <!-- GCP Vertex Claude 特定字段（编辑模式）-->
           <div v-if="form.platform === 'claude-vertex'" class="space-y-4">
             <div>
@@ -4268,7 +4556,8 @@
               form.platform !== 'claude-vertex' &&
               form.platform !== 'bedrock' &&
               form.platform !== 'azure_openai' &&
-              form.platform !== 'openai-responses'
+              form.platform !== 'openai-responses' &&
+              form.platform !== 'claude-openai-bridge'
             "
             class="rounded-lg border border-amber-200 bg-amber-50 p-4 dark:border-amber-700 dark:bg-amber-900/30"
           >
@@ -4437,6 +4726,7 @@ const show = ref(true)
 // 支持 disableAutoProtection 的平台白名单
 const autoProtectionPlatforms = [
   'claude-console',
+  'claude-openai-bridge',
   'ccr',
   'droid',
   'bedrock',
@@ -4494,7 +4784,16 @@ const showApiKeyManagement = ref(false)
 
 // 根据现有平台确定分组
 const determinePlatformGroup = (platform) => {
-  if (['claude', 'claude-console', 'claude-vertex', 'ccr', 'bedrock'].includes(platform)) {
+  if (
+    [
+      'claude',
+      'claude-console',
+      'claude-vertex',
+      'claude-openai-bridge',
+      'ccr',
+      'bedrock'
+    ].includes(platform)
+  ) {
     return 'claude'
   } else if (['openai', 'openai-responses', 'azure_openai'].includes(platform)) {
     return 'openai'
@@ -4649,6 +4948,25 @@ const normalizeAccountCooldownOverride = (value) => {
 
 const toFormBoolean = (value) => value === true || value === 'true'
 
+const defaultBridgeMappings = () => [
+  { sourceModel: 'deepseek-v4-pro', targetModel: 'DeepSeek-V4-Pro', enabled: true },
+  { sourceModel: 'deepseek-v4-flash', targetModel: 'DeepSeek-V4-Flash', enabled: true },
+  { sourceModel: 'kimi-k2.6', targetModel: 'Kimi-K2.6', enabled: true },
+  { sourceModel: 'grok-4.3', targetModel: 'grok-4.3', enabled: true }
+]
+
+const cloneBridgeMappings = (mappings) => {
+  if (!Array.isArray(mappings) || mappings.length === 0) {
+    return defaultBridgeMappings()
+  }
+
+  return mappings.map((mapping) => ({
+    sourceModel: mapping.sourceModel || '',
+    targetModel: mapping.targetModel || '',
+    enabled: mapping.enabled !== false
+  }))
+}
+
 // 表单数据
 const form = ref({
   platform: props.account?.platform || 'claude',
@@ -4682,8 +5000,10 @@ const form = ref({
   proxy: initProxyConfig(),
   // Claude Console 特定字段
   apiUrl: props.account?.apiUrl || '',
+  endpointUrl: props.account?.endpointUrl || '',
   apiKey: props.account?.apiKey || '',
   priority: props.account?.priority || 50,
+  bridgeModelMappings: cloneBridgeMappings(props.account?.modelMappings),
   endpointType: props.account?.endpointType || 'anthropic',
   // OpenAI-Responses 特定字段
   baseApi: props.account?.baseApi || '',
@@ -4907,7 +5227,9 @@ const errors = ref({
   bearerToken: '',
   serviceAccountJson: '',
   azureEndpoint: '',
-  deploymentName: ''
+  deploymentName: '',
+  endpointUrl: '',
+  modelMappings: ''
 })
 
 // 计算是否可以进入下一步
@@ -5577,6 +5899,8 @@ const createAccount = async () => {
   errors.value.apiKey = ''
   errors.value.apiKeys = ''
   errors.value.serviceAccountJson = ''
+  errors.value.endpointUrl = ''
+  errors.value.modelMappings = ''
 
   let hasError = false
 
@@ -5625,6 +5949,19 @@ const createAccount = async () => {
     }
     if (!form.value.apiKey || form.value.apiKey.trim() === '') {
       errors.value.apiKey = '请填写 API 密钥'
+      hasError = true
+    }
+  } else if (form.value.platform === 'claude-openai-bridge') {
+    if (!form.value.endpointUrl || form.value.endpointUrl.trim() === '') {
+      errors.value.endpointUrl = '请填写 Endpoint URL'
+      hasError = true
+    }
+    if (!form.value.apiKey || form.value.apiKey.trim() === '') {
+      errors.value.apiKey = '请填写 API Key'
+      hasError = true
+    }
+    if (cleanBridgeMappings().length === 0) {
+      errors.value.modelMappings = '请至少配置一个模型映射'
       hasError = true
     }
   } else if (form.value.platform === 'bedrock') {
@@ -5901,6 +6238,18 @@ const createAccount = async () => {
       data.rateLimitDuration = 60 // 默认值60，不从用户输入获取
       data.dailyQuota = form.value.dailyQuota || 0
       data.quotaResetTime = form.value.quotaResetTime || '00:00'
+    } else if (form.value.platform === 'claude-openai-bridge') {
+      data.endpointUrl = form.value.endpointUrl
+      data.apiKey = form.value.apiKey
+      data.modelMappings = cleanBridgeMappings()
+      data.accountType = form.value.accountType
+      data.groupId = form.value.accountType === 'group' ? form.value.groupId : ''
+      data.groupIds = form.value.accountType === 'group' ? form.value.groupIds : []
+      data.expiresAt = form.value.expiresAt || null
+      data.priority = form.value.priority || 50
+      data.rateLimitDuration = form.value.rateLimitDuration || 60
+      data.dailyQuota = form.value.dailyQuota || 0
+      data.quotaResetTime = form.value.quotaResetTime || '00:00'
     } else if (form.value.platform === 'gemini-antigravity') {
       // Antigravity OAuth - set oauthProvider, submission happens below
       data.oauthProvider = 'antigravity'
@@ -5966,6 +6315,8 @@ const createAccount = async () => {
       result = await accountsStore.createDroidAccount(data)
     } else if (form.value.platform === 'openai-responses') {
       result = await accountsStore.createOpenAIResponsesAccount(data)
+    } else if (form.value.platform === 'claude-openai-bridge') {
+      result = await accountsStore.createClaudeOpenAIBridgeAccount(data)
     } else if (form.value.platform === 'bedrock') {
       result = await accountsStore.createBedrockAccount(data)
     } else if (form.value.platform === 'openai') {
@@ -6016,6 +6367,8 @@ const updateAccount = async () => {
   errors.value.apiKeys = ''
   errors.value.baseUrl = ''
   errors.value.serviceAccountJson = ''
+  errors.value.endpointUrl = ''
+  errors.value.modelMappings = ''
 
   // 验证账户名称
   if (!form.value.name || form.value.name.trim() === '') {
@@ -6028,6 +6381,17 @@ const updateAccount = async () => {
     const baseUrl = form.value.baseUrl?.trim() || ''
     if (!baseUrl) {
       errors.value.baseUrl = '请填写 API 基础地址'
+      return
+    }
+  }
+
+  if (form.value.platform === 'claude-openai-bridge') {
+    if (!form.value.endpointUrl || form.value.endpointUrl.trim() === '') {
+      errors.value.endpointUrl = '请填写 Endpoint URL'
+      return
+    }
+    if (cleanBridgeMappings().length === 0) {
+      errors.value.modelMappings = '请至少配置一个模型映射'
       return
     }
   }
@@ -6290,6 +6654,23 @@ const updateAccount = async () => {
       data.quotaResetTime = form.value.quotaResetTime || '00:00'
     }
 
+    // Claude OpenAI Bridge 特定更新
+    if (props.account.platform === 'claude-openai-bridge') {
+      data.endpointUrl = form.value.endpointUrl
+      if (form.value.apiKey && form.value.apiKey.trim()) {
+        data.apiKey = form.value.apiKey
+      }
+      data.modelMappings = cleanBridgeMappings()
+      data.accountType = form.value.accountType
+      data.groupId = form.value.accountType === 'group' ? form.value.groupId : ''
+      data.groupIds = form.value.accountType === 'group' ? form.value.groupIds : []
+      data.expiresAt = form.value.expiresAt || null
+      data.priority = form.value.priority || 50
+      data.rateLimitDuration = form.value.rateLimitDuration || 60
+      data.dailyQuota = form.value.dailyQuota || 0
+      data.quotaResetTime = form.value.quotaResetTime || '00:00'
+    }
+
     // Bedrock 特定更新
     if (props.account.platform === 'bedrock') {
       // 更新凭证类型
@@ -6371,6 +6752,8 @@ const updateAccount = async () => {
       await accountsStore.updateGcpVertexAccount(props.account.id, data)
     } else if (props.account.platform === 'openai-responses') {
       await accountsStore.updateOpenAIResponsesAccount(props.account.id, data)
+    } else if (props.account.platform === 'claude-openai-bridge') {
+      await accountsStore.updateClaudeOpenAIBridgeAccount(props.account.id, data)
     } else if (props.account.platform === 'bedrock') {
       await accountsStore.updateBedrockAccount(props.account.id, data)
     } else if (props.account.platform === 'openai') {
@@ -6498,6 +6881,7 @@ const filteredGroups = computed(() => {
   if (
     form.value.platform === 'claude-console' ||
     form.value.platform === 'claude-vertex' ||
+    form.value.platform === 'claude-openai-bridge' ||
     form.value.platform === 'ccr'
   ) {
     platformFilter = 'claude'
@@ -6575,6 +6959,7 @@ watch(
     if (
       newPlatform === 'claude-console' ||
       newPlatform === 'claude-vertex' ||
+      newPlatform === 'claude-openai-bridge' ||
       newPlatform === 'ccr' ||
       newPlatform === 'bedrock' ||
       newPlatform === 'openai-responses'
@@ -6582,6 +6967,12 @@ watch(
       form.value.addType = 'manual' // Claude Console、CCR、Bedrock 和 OpenAI-Responses 只支持手动模式
       if (newPlatform === 'openai-responses' && !form.value.apiVersion) {
         form.value.apiVersion = '2025-04-01-preview'
+      }
+      if (
+        newPlatform === 'claude-openai-bridge' &&
+        (!form.value.bridgeModelMappings || form.value.bridgeModelMappings.length === 0)
+      ) {
+        form.value.bridgeModelMappings = defaultBridgeMappings()
       }
     } else if (newPlatform === 'claude') {
       // 切换到 Claude 时，使用 oauth 作为默认方式
@@ -6815,6 +7206,23 @@ const convertMappingsToObject = () => {
   return Object.keys(mapping).length > 0 ? mapping : null
 }
 
+const addBridgeModelMapping = () => {
+  form.value.bridgeModelMappings.push({ sourceModel: '', targetModel: '', enabled: true })
+}
+
+const removeBridgeModelMapping = (index) => {
+  form.value.bridgeModelMappings.splice(index, 1)
+}
+
+const cleanBridgeMappings = () =>
+  (form.value.bridgeModelMappings || [])
+    .map((mapping) => ({
+      sourceModel: (mapping.sourceModel || '').trim(),
+      targetModel: (mapping.targetModel || '').trim(),
+      enabled: mapping.enabled !== false
+    }))
+    .filter((mapping) => mapping.sourceModel && mapping.targetModel)
+
 // 监听账户变化，更新表单
 watch(
   () => props.account,
@@ -6885,8 +7293,10 @@ watch(
         proxy: proxyConfig,
         // Claude Console 特定字段
         apiUrl: newAccount.apiUrl || '',
+        endpointUrl: newAccount.endpointUrl || '',
         apiKey: '', // 编辑模式不显示现有的 API Key
         priority: newAccount.priority || 50,
+        bridgeModelMappings: cloneBridgeMappings(newAccount.modelMappings),
         supportedModels: (() => {
           const models = newAccount.supportedModels
           if (!models) return []
