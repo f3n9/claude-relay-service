@@ -215,12 +215,10 @@ router.post('/', authenticateAdmin, async (req, res) => {
             )
           }
         }
-        return res
-          .status(500)
-          .json({
-            error: 'Failed to bind GCP Vertex account to groups',
-            message: groupError.message
-          })
+        return res.status(500).json({
+          error: 'Failed to bind GCP Vertex account to groups',
+          message: groupError.message
+        })
       }
     }
 
