@@ -12,6 +12,7 @@ const {
 } = require('../claudeOpenAIBridgeConverter')
 const { updateRateLimitCounters } = require('../../utils/rateLimitHelper')
 const { createRequestDetailMeta } = require('../../utils/requestDetailHelper')
+const { buildChatCompletionsUrl } = require('../../utils/claudeOpenAIBridgeEndpoint')
 
 const ACCOUNT_TYPE = 'claude-openai-bridge'
 
@@ -69,7 +70,7 @@ class ClaudeOpenAIBridgeRelayService {
   _createRequestOptions(account, body, stream) {
     const requestOptions = {
       method: 'POST',
-      url: account.endpointUrl,
+      url: buildChatCompletionsUrl(account.endpointUrl),
       headers: {
         Authorization: `Bearer ${account.apiKey}`,
         'Content-Type': 'application/json'

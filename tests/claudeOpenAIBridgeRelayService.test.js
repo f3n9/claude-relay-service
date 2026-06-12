@@ -245,6 +245,32 @@ describe('claudeOpenAIBridgeRelayService', () => {
     expect(bridgeAccountService.updateUsageQuota).toHaveBeenCalledWith('bridge-1', 0.001)
   })
 
+  it('posts to chat completions when the configured endpoint is an OpenAI-compatible v1 base URL', async () => {
+    axios.mockResolvedValue({
+      status: 200,
+      headers: {},
+      data: {
+        id: 'chatcmpl-1',
+        choices: [{ message: { role: 'assistant', content: 'ok' }, finish_reason: 'stop' }],
+        usage: { prompt_tokens: 1, completion_tokens: 1 }
+      }
+    })
+
+    await relayService.handleRequest(
+      createReq(),
+      createRes(),
+      createSelection({
+        account: {
+          endpointUrl: 'https://bc-openai-1.services.ai.azure.com/openai/v1'
+        }
+      })
+    )
+
+    expect(axios.mock.calls[0][0].url).toBe(
+      'https://bc-openai-1.services.ai.azure.com/openai/v1/chat/completions'
+    )
+  })
+
   it('converts streamed OpenAI SSE, records late terminal usage once, and marks account used', async () => {
     const upstream = createStream()
     axios.mockResolvedValue({

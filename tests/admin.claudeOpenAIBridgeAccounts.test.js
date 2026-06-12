@@ -109,7 +109,9 @@ describe('Claude OpenAI bridge admin routes', () => {
     const updateResponse = await request(app)
       .put('/admin/claude-openai-bridge/accounts/bridge-1')
       .send({ name: 'renamed' })
-    const deleteResponse = await request(app).delete('/admin/claude-openai-bridge/accounts/bridge-1')
+    const deleteResponse = await request(app).delete(
+      '/admin/claude-openai-bridge/accounts/bridge-1'
+    )
     const resetStatusResponse = await request(app).post(
       '/admin/claude-openai-bridge/accounts/bridge-1/reset-status'
     )
@@ -154,22 +156,28 @@ describe('Claude OpenAI bridge admin routes', () => {
     bridgeAccountService.getAccount.mockResolvedValue({ id: 'bridge-2', accountType: 'shared' })
     bridgeAccountService.updateAccount.mockResolvedValue({ success: true })
 
-    await request(app).post('/admin/claude-openai-bridge/accounts').send({
-      name: 'group bridge',
-      endpointUrl: 'https://bridge.example.com/v1',
-      apiKey: 'secret',
-      accountType: 'group',
-      groupIds: ['group-1', 'group-2']
-    })
-    await request(app).put('/admin/claude-openai-bridge/accounts/bridge-2').send({
-      accountType: 'group',
-      groupIds: ['group-3']
-    })
+    await request(app)
+      .post('/admin/claude-openai-bridge/accounts')
+      .send({
+        name: 'group bridge',
+        endpointUrl: 'https://bridge.example.com/v1',
+        apiKey: 'secret',
+        accountType: 'group',
+        groupIds: ['group-1', 'group-2']
+      })
+    await request(app)
+      .put('/admin/claude-openai-bridge/accounts/bridge-2')
+      .send({
+        accountType: 'group',
+        groupIds: ['group-3']
+      })
 
-    expect(accountGroupService.setAccountGroups).toHaveBeenNthCalledWith(1, 'bridge-2', [
-      'group-1',
-      'group-2'
-    ], 'claude')
+    expect(accountGroupService.setAccountGroups).toHaveBeenNthCalledWith(
+      1,
+      'bridge-2',
+      ['group-1', 'group-2'],
+      'claude'
+    )
     expect(accountGroupService.setAccountGroups).toHaveBeenNthCalledWith(
       2,
       'bridge-2',
@@ -186,7 +194,9 @@ describe('Claude OpenAI bridge admin routes', () => {
       .mockResolvedValueOnce({ id: 'bridge-1', schedulable: false })
     bridgeAccountService.updateAccount.mockResolvedValue({ success: true })
 
-    const toggleResponse = await request(app).put('/admin/claude-openai-bridge/accounts/bridge-1/toggle')
+    const toggleResponse = await request(app).put(
+      '/admin/claude-openai-bridge/accounts/bridge-1/toggle'
+    )
     const schedulableResponse = await request(app).put(
       '/admin/claude-openai-bridge/accounts/bridge-1/toggle-schedulable'
     )
@@ -219,7 +229,9 @@ describe('Claude OpenAI bridge admin routes', () => {
       endpointUrl: 'https://bridge.example.com/v1/chat/completions',
       apiKey: 'bridge-secret',
       proxy,
-      modelMappings: [{ sourceModel: 'claude-sonnet-4', targetModel: 'gpt-4.1-mini', enabled: true }]
+      modelMappings: [
+        { sourceModel: 'claude-sonnet-4', targetModel: 'gpt-4.1-mini', enabled: true }
+      ]
     })
     ProxyHelper.createProxyAgent.mockReturnValue(agent)
     axios.post.mockResolvedValue({
@@ -264,6 +276,32 @@ describe('Claude OpenAI bridge admin routes', () => {
     )
   })
 
+  it('tests an account against chat completions when the endpoint is an OpenAI-compatible v1 base URL', async () => {
+    const app = buildApp()
+
+    bridgeAccountService.getAccount.mockResolvedValue({
+      id: 'bridge-1',
+      name: 'Bridge 1',
+      endpointUrl: 'https://bc-openai-1.services.ai.azure.com/openai/v1',
+      apiKey: 'bridge-secret',
+      modelMappings: [
+        { sourceModel: 'claude-sonnet-4', targetModel: 'DeepSeek-V4-Flash', enabled: true }
+      ]
+    })
+    axios.post.mockResolvedValue({
+      data: {
+        choices: [{ message: { content: 'pong' } }]
+      }
+    })
+
+    const response = await request(app).post('/admin/claude-openai-bridge/accounts/bridge-1/test')
+
+    expect(response.status).toBe(200)
+    expect(axios.post.mock.calls[0][0]).toBe(
+      'https://bc-openai-1.services.ai.azure.com/openai/v1/chat/completions'
+    )
+  })
+
   it('tests an account with the first enabled mapping target model by default', async () => {
     const app = buildApp()
 
@@ -287,7 +325,9 @@ describe('Claude OpenAI bridge admin routes', () => {
   it('returns a consistent error response when account service throws', async () => {
     const app = buildApp()
 
-    bridgeAccountService.createAccount.mockRejectedValue(new Error('Endpoint URL and API Key are required'))
+    bridgeAccountService.createAccount.mockRejectedValue(
+      new Error('Endpoint URL and API Key are required')
+    )
 
     const response = await request(app).post('/admin/claude-openai-bridge/accounts').send({})
 

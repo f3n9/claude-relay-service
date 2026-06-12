@@ -6,6 +6,7 @@ const apiKeyService = require('../../services/apiKeyService')
 const accountGroupService = require('../../services/accountGroupService')
 const ProxyHelper = require('../../utils/proxyHelper')
 const logger = require('../../utils/logger')
+const { buildChatCompletionsUrl } = require('../../utils/claudeOpenAIBridgeEndpoint')
 
 const router = express.Router()
 
@@ -246,7 +247,7 @@ router.post('/claude-openai-bridge/accounts/:id/test', authenticateAdmin, async 
     }
 
     const response = await axios.post(
-      account.endpointUrl,
+      buildChatCompletionsUrl(account.endpointUrl),
       {
         model,
         stream: false,
