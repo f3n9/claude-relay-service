@@ -51,9 +51,8 @@ jest.mock('../src/services/requestBodyRuleService', () => ({
   validateAndNormalizeRules: jest.fn()
 }))
 
-const apiKeyService = require('../src/services/apiKeyService')
-const requestBodyRuleService = require('../src/services/requestBodyRuleService')
-require('../src/routes/admin/apiKeys')
+let apiKeyService
+let requestBodyRuleService
 
 function createResponse() {
   const res = {
@@ -79,6 +78,17 @@ function findPutHandler(path) {
 
 describe('admin api keys route payload rule updates', () => {
   beforeEach(() => {
+    jest.resetModules()
+    mockRouter.get.mockReset()
+    mockRouter.post.mockReset()
+    mockRouter.put.mockReset()
+    mockRouter.patch.mockReset()
+    mockRouter.delete.mockReset()
+
+    require('../src/routes/admin/apiKeys')
+    apiKeyService = require('../src/services/apiKeyService')
+    requestBodyRuleService = require('../src/services/requestBodyRuleService')
+
     apiKeyService.updateApiKey.mockReset()
     apiKeyService.updateApiKey.mockResolvedValue()
 

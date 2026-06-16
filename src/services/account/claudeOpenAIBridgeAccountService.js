@@ -439,6 +439,19 @@ async function checkAndClearRateLimit(accountId) {
   return true
 }
 
+async function checkAndResetStaleUsageWindow(accountId) {
+  const account = await getAccount(accountId)
+  if (!account || account.lastResetDate === redis.getDateStringInTimezone()) {
+    return false
+  }
+
+  await resetDailyUsageWindow(accountId, account, 0, redis.getDateStringInTimezone())
+  logger.info(
+    `Daily quota window reset for Claude OpenAI bridge account: ${account.name || accountId}`
+  )
+  return true
+}
+
 function findEnabledMapping(account, sourceModel) {
   return (account.modelMappings || []).find(
     (candidate) => candidate.enabled && candidate.sourceModel === sourceModel
@@ -508,6 +521,9 @@ async function selectAccountForModel(sourceModel, options = {}) {
   const recoveredIds = []
   for (const account of accounts) {
     if (await checkAndClearRateLimit(account.id)) {
+      recoveredIds.push(account.id)
+    }
+    if (await checkAndResetStaleUsageWindow(account.id)) {
       recoveredIds.push(account.id)
     }
   }

@@ -33,6 +33,10 @@ jest.mock('../src/services/accountGroupService', () => ({
   removeAccountFromAllGroups: jest.fn()
 }))
 
+jest.mock('../src/models/redis', () => ({
+  getAccountUsageStats: jest.fn()
+}))
+
 jest.mock('../src/utils/proxyHelper', () => ({
   createProxyAgent: jest.fn()
 }))
@@ -51,6 +55,7 @@ const axios = require('axios')
 const bridgeAccountService = require('../src/services/account/claudeOpenAIBridgeAccountService')
 const apiKeyService = require('../src/services/apiKeyService')
 const accountGroupService = require('../src/services/accountGroupService')
+const redis = require('../src/models/redis')
 const ProxyHelper = require('../src/utils/proxyHelper')
 const bridgeAdminRouter = require('../src/routes/admin/claudeOpenAIBridgeAccounts')
 
@@ -71,6 +76,11 @@ describe('Claude OpenAI bridge admin routes', () => {
     accountGroupService.setAccountGroups.mockResolvedValue()
     accountGroupService.removeAccountFromAllGroups.mockResolvedValue()
     apiKeyService.unbindAccountFromAllKeys.mockResolvedValue(0)
+    redis.getAccountUsageStats.mockResolvedValue({
+      daily: { requests: 0, tokens: 0, allTokens: 0 },
+      total: { requests: 0, tokens: 0, allTokens: 0 },
+      averages: { rpm: 0, tpm: 0 }
+    })
   })
 
   it('reads and updates bridge config through the account service', async () => {
@@ -121,7 +131,17 @@ describe('Claude OpenAI bridge admin routes', () => {
 
     expect(listResponse.body).toEqual({
       success: true,
-      data: [{ id: 'bridge-1', groupInfos: [] }]
+      data: [
+        {
+          id: 'bridge-1',
+          groupInfos: [],
+          usage: {
+            daily: { requests: 0, tokens: 0, allTokens: 0 },
+            total: { requests: 0, tokens: 0, allTokens: 0 },
+            averages: { rpm: 0, tpm: 0 }
+          }
+        }
+      ]
     })
     expect(createResponse.body).toEqual({
       success: true,
@@ -147,6 +167,30 @@ describe('Claude OpenAI bridge admin routes', () => {
     )
     expect(bridgeAccountService.resetAccountStatus).toHaveBeenCalledWith('bridge-1')
     expect(bridgeAccountService.resetUsage).toHaveBeenCalledWith('bridge-1')
+  })
+
+  it('returns usage stats for bridge account list rows', async () => {
+    const app = buildApp()
+
+    bridgeAccountService.getAllAccounts.mockResolvedValue([{ id: 'bridge-1', name: 'Bridge 1' }])
+    redis.getAccountUsageStats.mockResolvedValue({
+      daily: { requests: 3, allTokens: 1200, cost: 0.25 },
+      total: { requests: 8, allTokens: 3000 },
+      averages: { rpm: 0.5, tpm: 10 }
+    })
+
+    const response = await request(app).get('/admin/claude-openai-bridge/accounts')
+
+    expect(response.status).toBe(200)
+    expect(redis.getAccountUsageStats).toHaveBeenCalledWith('bridge-1', 'claude-openai-bridge')
+    expect(response.body.data[0]).toMatchObject({
+      id: 'bridge-1',
+      usage: {
+        daily: { requests: 3, allTokens: 1200, cost: 0.25 },
+        total: { requests: 8, allTokens: 3000 },
+        averages: { rpm: 0.5, tpm: 10 }
+      }
+    })
   })
 
   it('persists group membership when creating and updating group bridge accounts', async () => {

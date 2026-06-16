@@ -133,12 +133,71 @@ describe('claudeOpenAIBridgeConverter', () => {
       max_tokens: 1024,
       temperature: 0.2,
       top_p: 0.9,
-      presence_penalty: 0.1,
-      frequency_penalty: 0.2,
-      reasoning_effort: 'medium',
       stop: ['\n\nHuman:'],
       stream: false
     })
+  })
+
+  it('uses Claude OpenAI SDK compatible request fields and ignores unsupported OpenAI fields', () => {
+    const result = convertClaudeRequestToOpenAI(
+      {
+        messages: [{ role: 'user', content: 'Hello' }],
+        max_tokens: 1024,
+        max_completion_tokens: 2048,
+        temperature: 1.5,
+        top_p: 0.8,
+        stream: true,
+        stream_options: { include_usage: true },
+        parallel_tool_calls: false,
+        n: 3,
+        stop: ['STOP'],
+        logprobs: true,
+        metadata: { requestId: 'ignored' },
+        response_format: { type: 'json_object' },
+        prediction: { type: 'content', content: 'ignored' },
+        presence_penalty: 0.1,
+        frequency_penalty: 0.2,
+        seed: 123,
+        service_tier: 'default',
+        audio: { format: 'mp3' },
+        logit_bias: { '42': 1 },
+        store: true,
+        user: 'user-1',
+        modalities: ['text'],
+        top_logprobs: 2,
+        reasoning_effort: 'none'
+      },
+      'claude-sonnet-4-6'
+    )
+
+    expect(result).toMatchObject({
+      model: 'claude-sonnet-4-6',
+      messages: [{ role: 'user', content: 'Hello' }],
+      max_tokens: 1024,
+      max_completion_tokens: 2048,
+      temperature: 1,
+      top_p: 0.8,
+      stream: true,
+      stream_options: { include_usage: true },
+      parallel_tool_calls: false,
+      n: 1,
+      stop: ['STOP']
+    })
+    expect(result).not.toHaveProperty('logprobs')
+    expect(result).not.toHaveProperty('metadata')
+    expect(result).not.toHaveProperty('response_format')
+    expect(result).not.toHaveProperty('prediction')
+    expect(result).not.toHaveProperty('presence_penalty')
+    expect(result).not.toHaveProperty('frequency_penalty')
+    expect(result).not.toHaveProperty('seed')
+    expect(result).not.toHaveProperty('service_tier')
+    expect(result).not.toHaveProperty('audio')
+    expect(result).not.toHaveProperty('logit_bias')
+    expect(result).not.toHaveProperty('store')
+    expect(result).not.toHaveProperty('user')
+    expect(result).not.toHaveProperty('modalities')
+    expect(result).not.toHaveProperty('top_logprobs')
+    expect(result).not.toHaveProperty('reasoning_effort')
   })
 
   it('converts OpenAI non-stream text and tool calls to Claude response shape', () => {

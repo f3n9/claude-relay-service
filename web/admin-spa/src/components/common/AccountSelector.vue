@@ -157,13 +157,15 @@
                     ? 'Claude OAuth 专属账号'
                     : platform === 'claude-vertex'
                       ? 'GCP Vertex Claude 专属账号'
-                      : platform === 'openai'
-                        ? 'OpenAI 专属账号'
-                        : platform === 'droid'
-                          ? 'Droid 专属账号'
-                          : platform === 'gemini'
-                            ? 'Gemini OAuth 专属账号'
-                            : 'OAuth 专属账号'
+                      : platform === 'claude-openai-bridge'
+                        ? 'Claude OpenAI Bridge 专属账号'
+                        : platform === 'openai'
+                          ? 'OpenAI 专属账号'
+                          : platform === 'droid'
+                            ? 'Droid 专属账号'
+                            : platform === 'gemini'
+                              ? 'Gemini OAuth 专属账号'
+                              : 'OAuth 专属账号'
                 }}
               </div>
               <div
@@ -380,7 +382,15 @@ const props = defineProps({
     type: String,
     required: true,
     validator: (value) =>
-      ['claude', 'claude-vertex', 'gemini', 'openai', 'bedrock', 'droid'].includes(value)
+      [
+        'claude',
+        'claude-vertex',
+        'claude-openai-bridge',
+        'gemini',
+        'openai',
+        'bedrock',
+        'droid'
+      ].includes(value)
   },
   accounts: {
     type: Array,
@@ -604,6 +614,8 @@ const filteredOAuthAccounts = computed(() => {
     accounts = sortedAccounts.value.filter((a) => a.platform === 'claude-oauth')
   } else if (props.platform === 'claude-vertex') {
     accounts = sortedAccounts.value.filter((a) => a.platform === 'claude-vertex')
+  } else if (props.platform === 'claude-openai-bridge') {
+    accounts = sortedAccounts.value.filter((a) => a.platform === 'claude-openai-bridge')
   } else if (props.platform === 'openai') {
     // 对于 OpenAI，只显示 openai 类型的账号
     accounts = sortedAccounts.value.filter((a) => a.platform === 'openai')
@@ -690,6 +702,7 @@ const hasResults = computed(() => {
     filteredGroups.value.length > 0 ||
     filteredOAuthAccounts.value.length > 0 ||
     filteredConsoleAccounts.value.length > 0 ||
+    filteredVertexAccounts.value.length > 0 ||
     filteredOpenAIResponsesAccounts.value.length > 0 ||
     filteredGeminiApiAccounts.value.length > 0
   )

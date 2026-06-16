@@ -551,14 +551,14 @@ const startTest = () => {
     const useSSE = ['claude', 'claude-console', 'bedrock', 'gemini-api'].includes(
       props.account.platform
     )
-    state.sendTestRequest(
-      endpoint,
-      { model: selectedModel.value },
-      {
-        useSSE,
-        headers: authToken ? { Authorization: `Bearer ${authToken}` } : {}
-      }
-    )
+    const payload =
+      props.account.platform === 'claude-openai-bridge'
+        ? { targetModel: selectedModel.value }
+        : { model: selectedModel.value }
+    state.sendTestRequest(endpoint, payload, {
+      useSSE,
+      headers: authToken ? { Authorization: `Bearer ${authToken}` } : {}
+    })
   } else {
     const endpoint = `${APP_CONFIG.apiPrefix}/apiStats${apikeyServiceConfig.value.endpoint}`
     state.sendTestRequest(

@@ -481,6 +481,41 @@ describe('claudeOpenAIBridgeAccountService', () => {
     })
   })
 
+  it('resets stale quota-stop windows before selecting bridge accounts', async () => {
+    await service.updateConfig({ enabled: true })
+    const account = await service.createAccount({
+      endpointUrl: 'https://quota-recover.example.com/v1/chat/completions',
+      apiKey: 'quota-recover-key',
+      dailyQuota: 10,
+      dailyUsage: 10,
+      modelMappings: [
+        { sourceModel: 'deepseek-v4-flash', targetModel: 'QuotaRecoveredTarget', enabled: true }
+      ]
+    })
+
+    setRawAccountFields(account.id, {
+      dailyUsage: '10',
+      lastResetDate: '2026-06-10',
+      quotaStoppedAt: '2026-06-10T23:59:00.000Z',
+      status: 'quotaExceeded',
+      schedulable: 'false',
+      errorMessage: 'Daily quota exceeded'
+    })
+
+    const selection = await service.selectAccountForModel('deepseek-v4-flash')
+
+    expect(selection.account.id).toBe(account.id)
+    expect(selection.mapping.targetModel).toBe('QuotaRecoveredTarget')
+    expect(await service.getAccount(account.id)).toMatchObject({
+      dailyUsage: 0,
+      lastResetDate: '2026-06-11',
+      quotaStoppedAt: '',
+      status: 'active',
+      schedulable: true,
+      errorMessage: ''
+    })
+  })
+
   it('updates lastUsedAt and status/quota helper fields', async () => {
     const account = await service.createAccount({
       name: 'Protected',

@@ -4,6 +4,7 @@ const ccrAccountService = require('../../services/account/ccrAccountService')
 const claudeAccountService = require('../../services/account/claudeAccountService')
 const claudeConsoleAccountService = require('../../services/account/claudeConsoleAccountService')
 const gcpVertexAccountService = require('../../services/account/gcpVertexAccountService')
+const claudeOpenAIBridgeAccountService = require('../../services/account/claudeOpenAIBridgeAccountService')
 const geminiAccountService = require('../../services/account/geminiAccountService')
 const geminiApiAccountService = require('../../services/account/geminiApiAccountService')
 const openaiAccountService = require('../../services/account/openaiAccountService')
@@ -348,6 +349,7 @@ router.get('/accounts/:accountId/usage-history', authenticateAdmin, async (req, 
       'claude',
       'claude-console',
       'claude-vertex',
+      'claude-openai-bridge',
       'openai',
       'openai-responses',
       'gemini',
@@ -364,6 +366,7 @@ router.get('/accounts/:accountId/usage-history', authenticateAdmin, async (req, 
 
     const accountTypeMap = {
       'claude-vertex': 'claude-vertex',
+      'claude-openai-bridge': 'claude-openai-bridge',
       openai: 'openai',
       'openai-responses': 'openai-responses',
       'gemini-api': 'gemini-api',
@@ -375,6 +378,7 @@ router.get('/accounts/:accountId/usage-history', authenticateAdmin, async (req, 
       claude: 'claude-3-5-sonnet-20241022',
       'claude-console': 'claude-3-5-sonnet-20241022',
       'claude-vertex': 'claude-3-5-sonnet-20241022',
+      'claude-openai-bridge': 'claude-3-5-sonnet-20241022',
       openai: 'gpt-4o-mini-2024-07-18',
       'openai-responses': 'gpt-4o-mini-2024-07-18',
       gemini: 'gemini-1.5-flash',
@@ -397,6 +401,9 @@ router.get('/accounts/:accountId/usage-history', authenticateAdmin, async (req, 
           break
         case 'claude-vertex':
           accountData = await gcpVertexAccountService.getAccount(accountId)
+          break
+        case 'claude-openai-bridge':
+          accountData = await claudeOpenAIBridgeAccountService.getAccount(accountId)
           break
         case 'openai':
           accountData = await openaiAccountService.getAccount(accountId)

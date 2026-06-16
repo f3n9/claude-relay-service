@@ -34,6 +34,10 @@ jest.mock('../src/services/account/gcpVertexAccountService', () => ({
   getAccount: jest.fn()
 }))
 
+jest.mock('../src/services/account/claudeOpenAIBridgeAccountService', () => ({
+  getAccount: jest.fn()
+}))
+
 jest.mock('../src/services/account/bedrockAccountService', () => ({
   getAccount: jest.fn()
 }))
@@ -84,6 +88,7 @@ jest.mock('../src/services/pricingService', () => ({
 const redis = require('../src/models/redis')
 const CostCalculator = require('../src/utils/costCalculator')
 const gcpVertexAccountService = require('../src/services/account/gcpVertexAccountService')
+const claudeOpenAIBridgeAccountService = require('../src/services/account/claudeOpenAIBridgeAccountService')
 const apiKeyService = require('../src/services/apiKeyService')
 const router = require('../src/routes/admin/usageStats')
 
@@ -246,6 +251,65 @@ describe('Usage Stats Admin Routes', () => {
           history: expect.any(Array),
           summary: expect.any(Object),
           overview: expect.any(Object)
+        })
+      })
+    )
+  })
+
+  it('allows usage history for Claude OpenAI bridge platform', async () => {
+    const handler = getAccountUsageHistoryHandler()
+    const req = {
+      params: { accountId: 'bridge-1' },
+      query: { platform: 'claude-openai-bridge', days: '1' }
+    }
+    const res = createMockResponse()
+
+    const mockClient = {
+      hgetall: jest.fn().mockResolvedValue({
+        inputTokens: '10',
+        outputTokens: '5',
+        cacheCreateTokens: '0',
+        cacheReadTokens: '0',
+        requests: '1',
+        allTokens: '15'
+      })
+    }
+
+    claudeOpenAIBridgeAccountService.getAccount.mockResolvedValue({
+      id: 'bridge-1',
+      name: 'Bridge Account',
+      status: 'active',
+      isActive: true,
+      createdAt: '2026-02-01T00:00:00.000Z'
+    })
+    redis.getAccountUsageStats.mockResolvedValue({
+      daily: { requests: 1, allTokens: 15 },
+      total: { requests: 1, allTokens: 15 }
+    })
+    redis.getDateInTimezone.mockImplementation((date) => date)
+    redis.getDateStringInTimezone.mockReturnValue('2026-02-14')
+    redis.getClientSafe.mockReturnValue(mockClient)
+    redis.scanAndGetAllChunked.mockResolvedValue([])
+    CostCalculator.calculateCost.mockReturnValue({ costs: { total: 0.01 } })
+    CostCalculator.formatCost.mockImplementation((value) => `$${Number(value).toFixed(6)}`)
+
+    await handler(req, res)
+
+    expect(res.status).not.toHaveBeenCalledWith(400)
+    expect(claudeOpenAIBridgeAccountService.getAccount).toHaveBeenCalledWith('bridge-1')
+    expect(redis.getAccountUsageStats).toHaveBeenCalledWith('bridge-1', 'claude-openai-bridge')
+    expect(res.json).toHaveBeenCalledWith(
+      expect.objectContaining({
+        success: true,
+        data: expect.objectContaining({
+          history: expect.any(Array),
+          summary: expect.objectContaining({
+            totalRequests: 1,
+            totalTokens: 15
+          }),
+          overview: expect.objectContaining({
+            daily: { requests: 1, allTokens: 15 }
+          })
         })
       })
     )

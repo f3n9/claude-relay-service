@@ -1,10 +1,9 @@
-const PARAMS_TO_COPY = [
+const SIMPLE_PARAMS_TO_COPY = [
   'max_tokens',
-  'temperature',
+  'max_completion_tokens',
   'top_p',
-  'presence_penalty',
-  'frequency_penalty',
-  'reasoning_effort'
+  'stream_options',
+  'parallel_tool_calls'
 ]
 
 function convertClaudeRequestToOpenAI(claudeBody = {}, targetModel) {
@@ -38,17 +37,41 @@ function convertClaudeRequestToOpenAI(claudeBody = {}, targetModel) {
     body.tool_choice = _convertToolChoice(claudeBody.tool_choice)
   }
 
-  for (const param of PARAMS_TO_COPY) {
+  for (const param of SIMPLE_PARAMS_TO_COPY) {
     if (claudeBody[param] !== undefined) {
       body[param] = claudeBody[param]
     }
   }
 
+  if (claudeBody.temperature !== undefined) {
+    body.temperature = _normalizeOpenAITemperature(claudeBody.temperature)
+  }
+
+  if (claudeBody.n !== undefined) {
+    body.n = 1
+  }
+
   if (claudeBody.stop_sequences !== undefined) {
     body.stop = claudeBody.stop_sequences
+  } else if (claudeBody.stop !== undefined) {
+    body.stop = claudeBody.stop
   }
 
   return body
+}
+
+function _normalizeOpenAITemperature(value) {
+  const temperature = Number(value)
+  if (!Number.isFinite(temperature)) {
+    return value
+  }
+  if (temperature > 1) {
+    return 1
+  }
+  if (temperature < 0) {
+    return 0
+  }
+  return temperature
 }
 
 function convertOpenAIResponseToClaude(openaiResponse = {}, sourceModel) {

@@ -48,6 +48,7 @@ describe('AccountBalanceService', () => {
     expect(service.normalizePlatform('claude-official')).toBe('claude')
     expect(service.normalizePlatform('azure-openai')).toBe('azure_openai')
     expect(service.normalizePlatform('gemini-api')).toBe('gemini-api')
+    expect(service.getSupportedPlatforms()).toContain('claude-openai-bridge')
   })
 
   it('should build local quota/balance from dailyQuota and local dailyCost', async () => {
@@ -69,6 +70,41 @@ describe('AccountBalanceService', () => {
     expect(result.data.quota.percentage).toBeCloseTo(20, 6)
     expect(result.data.statistics.totalCost).toBeCloseTo(123.45, 6)
     expect(mockRedis.setLocalBalance).toHaveBeenCalled()
+  })
+
+  it('should support claude-openai-bridge local quota and usage balance', async () => {
+    const mockRedis = buildMockRedis()
+    mockRedis.getAccountUsageStats.mockResolvedValue({
+      total: { requests: 10 },
+      daily: { requests: 2, cost: 4.5 },
+      monthly: { requests: 5 }
+    })
+    const service = new AccountBalanceService({ redis: mockRedis, logger: mockLogger })
+
+    service.getAccount = jest.fn().mockResolvedValue({
+      id: 'bridge-1',
+      name: 'Bridge',
+      dailyQuota: 10,
+      quotaResetTime: '00:00'
+    })
+    service._computeMonthlyCost = jest.fn().mockResolvedValue(9)
+    service._computeTotalCost = jest.fn().mockResolvedValue(12)
+
+    const result = await service.getAccountBalance('bridge-1', 'claude-openai-bridge', {
+      queryApi: false,
+      useCache: true
+    })
+
+    expect(result).toMatchObject({
+      success: true,
+      data: {
+        accountId: 'bridge-1',
+        platform: 'claude-openai-bridge',
+        balance: { amount: 5.5, currency: 'USD' },
+        quota: { daily: 10, used: 4.5, remaining: 5.5, percentage: 45 },
+        source: 'local'
+      }
+    })
   })
 
   it('should use cached balance when account has no dailyQuota', async () => {

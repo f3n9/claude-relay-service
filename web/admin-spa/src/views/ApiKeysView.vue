@@ -501,7 +501,8 @@
                               v-if="
                                 key.claudeAccountId ||
                                 key.claudeConsoleAccountId ||
-                                key.claudeVertexAccountId
+                                key.claudeVertexAccountId ||
+                                key.claudeOpenAIBridgeAccountId
                               "
                               class="flex items-center gap-1 text-xs"
                             >
@@ -572,6 +573,7 @@
                                 !key.claudeAccountId &&
                                 !key.claudeConsoleAccountId &&
                                 !key.claudeVertexAccountId &&
+                                !key.claudeOpenAIBridgeAccountId &&
                                 !key.geminiAccountId &&
                                 !key.openaiAccountId &&
                                 !key.bedrockAccountId &&
@@ -1331,7 +1333,10 @@
                 <!-- Claude 绑定 -->
                 <div
                   v-if="
-                    key.claudeAccountId || key.claudeConsoleAccountId || key.claudeVertexAccountId
+                    key.claudeAccountId ||
+                    key.claudeConsoleAccountId ||
+                    key.claudeVertexAccountId ||
+                    key.claudeOpenAIBridgeAccountId
                   "
                   class="flex flex-wrap items-center gap-1 text-xs"
                 >
@@ -1399,6 +1404,7 @@
                     !key.claudeAccountId &&
                     !key.claudeConsoleAccountId &&
                     !key.claudeVertexAccountId &&
+                    !key.claudeOpenAIBridgeAccountId &&
                     !key.geminiAccountId &&
                     !key.openaiAccountId &&
                     !key.bedrockAccountId &&
@@ -1909,7 +1915,8 @@
                             v-if="
                               key.claudeAccountId ||
                               key.claudeConsoleAccountId ||
-                              key.claudeVertexAccountId
+                              key.claudeVertexAccountId ||
+                              key.claudeOpenAIBridgeAccountId
                             "
                             class="flex items-center gap-1 text-xs"
                           >
@@ -2275,6 +2282,7 @@ const apiKeyDateFilters = ref({})
 const defaultTime = ref([new Date(2000, 1, 1, 0, 0, 0), new Date(2000, 2, 1, 23, 59, 59)])
 const accounts = ref({
   claude: [],
+  claudeOpenAIBridge: [],
   gcpVertex: [],
   gemini: [],
   geminiApi: [], // 添加 Gemini-API 账号列表（用于传递给子组件初始化）
@@ -2481,6 +2489,7 @@ const loadAccounts = async (forceRefresh = false) => {
       claudeData,
       claudeConsoleData,
       gcpVertexData,
+      claudeOpenAIBridgeData,
       geminiData,
       geminiApiData,
       openaiData,
@@ -2492,6 +2501,7 @@ const loadAccounts = async (forceRefresh = false) => {
       httpApis.getClaudeAccountsApi(),
       httpApis.getClaudeConsoleAccountsApi(),
       httpApis.getGcpVertexAccountsApi(),
+      httpApis.getClaudeOpenAIBridgeAccountsApi(),
       httpApis.getGeminiAccountsApi(),
       httpApis.getGeminiApiAccountsApi(),
       httpApis.getOpenAIAccountsApi(),
@@ -2534,6 +2544,16 @@ const loadAccounts = async (forceRefresh = false) => {
       }))
     } else {
       accounts.value.gcpVertex = []
+    }
+
+    if (claudeOpenAIBridgeData.success) {
+      accounts.value.claudeOpenAIBridge = (claudeOpenAIBridgeData.data || []).map((account) => ({
+        ...account,
+        platform: 'claude-openai-bridge',
+        isDedicated: account.accountType === 'dedicated'
+      }))
+    } else {
+      accounts.value.claudeOpenAIBridge = []
     }
 
     // 合并 Gemini OAuth 和 Gemini API 账户
@@ -3057,6 +3077,11 @@ const getBoundAccountName = (accountId) => {
     return `${vertexAccount.name}`
   }
 
+  const bridgeAccount = accounts.value.claudeOpenAIBridge.find((acc) => acc.id === accountId)
+  if (bridgeAccount) {
+    return `${bridgeAccount.name}`
+  }
+
   // 处理 api: 前缀的 Gemini-API 账户
   if (accountId.startsWith('api:')) {
     const realAccountId = accountId.replace('api:', '')
@@ -3122,6 +3147,7 @@ const hasAnyBinding = (key) => {
     key.claudeAccountId ||
     key.claudeConsoleAccountId ||
     key.claudeVertexAccountId ||
+    key.claudeOpenAIBridgeAccountId ||
     key.geminiAccountId ||
     key.openaiAccountId ||
     key.bedrockAccountId ||
@@ -3185,6 +3211,22 @@ const getClaudeBindingInfo = (key) => {
       return `Vertex-🔒 专属-${info}`
     }
     return `Vertex-${info}`
+  }
+  if (key.claudeOpenAIBridgeAccountId) {
+    const info = getBoundAccountName(key.claudeOpenAIBridgeAccountId)
+    if (key.claudeOpenAIBridgeAccountId.startsWith('group:')) {
+      return `Bridge-${info}`
+    }
+    const account = accounts.value.claudeOpenAIBridge.find(
+      (acc) => acc.id === key.claudeOpenAIBridgeAccountId
+    )
+    if (!account) {
+      return `⚠️ Bridge-${info} (账户不存在)`
+    }
+    if (account.accountType === 'dedicated') {
+      return `Bridge-🔒 专属-${info}`
+    }
+    return `Bridge-${info}`
   }
   return ''
 }
@@ -4610,6 +4652,7 @@ const exportToExcel = () => {
           return ''
         })(),
         Claude控制台账户: key.claudeConsoleAccountId || '',
+        'Claude OpenAI Bridge专属账户': key.claudeOpenAIBridgeAccountId || '',
         Gemini专属账户: key.geminiAccountId || '',
         OpenAI专属账户: key.openaiAccountId || '',
         'Azure OpenAI专属账户': key.azureOpenaiAccountId || '',

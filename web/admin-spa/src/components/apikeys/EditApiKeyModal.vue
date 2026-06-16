@@ -784,6 +784,20 @@
               </div>
               <div>
                 <label class="mb-1 block text-sm font-medium text-gray-600 dark:text-gray-400"
+                  >Claude OpenAI Bridge 专属账号</label
+                >
+                <AccountSelector
+                  v-model="form.claudeOpenAIBridgeAccountId"
+                  :accounts="localAccounts.claudeOpenAIBridge"
+                  default-option-text="使用共享账号池"
+                  :disabled="form.permissions.length > 0 && !form.permissions.includes('claude')"
+                  :groups="localAccounts.claudeGroups"
+                  placeholder="请选择Bridge账号"
+                  platform="claude-openai-bridge"
+                />
+              </div>
+              <div>
+                <label class="mb-1 block text-sm font-medium text-gray-600 dark:text-gray-400"
                   >Gemini 专属账号</label
                 >
                 <AccountSelector
@@ -1036,6 +1050,7 @@ const props = defineProps({
     type: Object,
     default: () => ({
       claude: [],
+      claudeOpenAIBridge: [],
       gemini: [],
       openai: [],
       bedrock: [],
@@ -1092,6 +1107,7 @@ const handleCancelModal = () => {
 
 const localAccounts = ref({
   claude: [],
+  claudeOpenAIBridge: [],
   gemini: [],
   openai: [],
   bedrock: [],
@@ -1158,6 +1174,7 @@ const form = reactive({
   weeklyResetHour: 0,
   permissions: [], // 数组格式，空数组表示全部服务
   claudeAccountId: '',
+  claudeOpenAIBridgeAccountId: '',
   geminiAccountId: '',
   openaiAccountId: '',
   bedrockAccountId: '',
@@ -1394,6 +1411,12 @@ const updateApiKey = async () => {
       data.claudeVertexAccountId = null
     }
 
+    if (form.claudeOpenAIBridgeAccountId) {
+      data.claudeOpenAIBridgeAccountId = form.claudeOpenAIBridgeAccountId
+    } else {
+      data.claudeOpenAIBridgeAccountId = null
+    }
+
     // Gemini账户绑定
     if (form.geminiAccountId) {
       data.geminiAccountId = form.geminiAccountId
@@ -1460,6 +1483,7 @@ const refreshAccounts = async () => {
       claudeData,
       claudeConsoleData,
       gcpVertexData,
+      claudeOpenAIBridgeData,
       geminiData,
       geminiApiData,
       openaiData,
@@ -1471,6 +1495,7 @@ const refreshAccounts = async () => {
       httpApis.getClaudeAccountsApi(),
       httpApis.getClaudeConsoleAccountsApi(),
       httpApis.getGcpVertexAccountsApi(),
+      httpApis.getClaudeOpenAIBridgeAccountsApi(),
       httpApis.getGeminiAccountsApi(),
       httpApis.getGeminiApiAccountsApi(),
       httpApis.getOpenAIAccountsApi(),
@@ -1515,6 +1540,16 @@ const refreshAccounts = async () => {
     }
 
     localAccounts.value.claude = [...claudeAccounts, ...vertexAccounts]
+
+    if (claudeOpenAIBridgeData.success) {
+      localAccounts.value.claudeOpenAIBridge = (claudeOpenAIBridgeData.data || []).map(
+        (account) => ({
+          ...account,
+          platform: 'claude-openai-bridge',
+          isDedicated: account.accountType === 'dedicated'
+        })
+      )
+    }
 
     // 合并 Gemini OAuth 和 Gemini API 账号
     const geminiAccounts = []
@@ -1670,9 +1705,14 @@ onMounted(async () => {
       ...account,
       platform: account.platform || 'claude-vertex'
     }))
+    const bridgeAccounts = (props.accounts.claudeOpenAIBridge || []).map((account) => ({
+      ...account,
+      platform: account.platform || 'claude-openai-bridge'
+    }))
 
     localAccounts.value = {
       claude: [...(props.accounts.claude || []), ...vertexAccounts],
+      claudeOpenAIBridge: bridgeAccounts,
       gemini: geminiAccounts,
       openai: openaiAccounts,
       bedrock: props.accounts.bedrock || [],
@@ -1755,6 +1795,7 @@ onMounted(async () => {
   } else {
     form.claudeAccountId = props.apiKey.claudeAccountId || ''
   }
+  form.claudeOpenAIBridgeAccountId = props.apiKey.claudeOpenAIBridgeAccountId || ''
   form.geminiAccountId = props.apiKey.geminiAccountId || ''
 
   // 处理 OpenAI 账号 - 直接使用后端传来的值（已包含 responses: 前缀）

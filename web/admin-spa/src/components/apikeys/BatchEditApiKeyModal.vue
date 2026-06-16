@@ -396,6 +396,21 @@
               </div>
               <div>
                 <label class="mb-1 block text-sm font-medium text-gray-600 dark:text-gray-400"
+                  >Claude OpenAI Bridge 专属账号</label
+                >
+                <AccountSelector
+                  v-model="claudeOpenAIBridgeAccountSelectorValue"
+                  :accounts="localAccounts.claudeOpenAIBridge"
+                  default-option-text="请选择Bridge账号"
+                  :disabled="!isServiceSelectable('claude')"
+                  :groups="localAccounts.claudeGroups"
+                  placeholder="请选择Bridge账号"
+                  platform="claude-openai-bridge"
+                  :special-options="accountSpecialOptions"
+                />
+              </div>
+              <div>
+                <label class="mb-1 block text-sm font-medium text-gray-600 dark:text-gray-400"
                   >Gemini 专属账号</label
                 >
                 <AccountSelector
@@ -497,6 +512,7 @@ const props = defineProps({
     type: Object,
     default: () => ({
       claude: [],
+      claudeOpenAIBridge: [],
       gemini: [],
       openai: [],
       openaiResponses: [],
@@ -517,6 +533,7 @@ const loading = ref(false)
 const accountsLoading = ref(false)
 const localAccounts = ref({
   claude: [],
+  claudeOpenAIBridge: [],
   gemini: [],
   openai: [],
   bedrock: [],
@@ -552,6 +569,7 @@ const form = reactive({
   weeklyResetHour: '',
   permissions: '', // 空字符串表示不修改
   claudeAccountId: '',
+  claudeOpenAIBridgeAccountId: '',
   geminiAccountId: '',
   openaiAccountId: '',
   bedrockAccountId: '',
@@ -580,6 +598,9 @@ const createAccountSelectorModel = (field) =>
   })
 
 const claudeAccountSelectorValue = createAccountSelectorModel('claudeAccountId')
+const claudeOpenAIBridgeAccountSelectorValue = createAccountSelectorModel(
+  'claudeOpenAIBridgeAccountId'
+)
 const geminiAccountSelectorValue = createAccountSelectorModel('geminiAccountId')
 const openaiAccountSelectorValue = createAccountSelectorModel('openaiAccountId')
 const bedrockAccountSelectorValue = createAccountSelectorModel('bedrockAccountId')
@@ -622,6 +643,7 @@ const refreshAccounts = async () => {
       claudeData,
       claudeConsoleData,
       gcpVertexData,
+      claudeOpenAIBridgeData,
       geminiData,
       geminiApiData,
       openaiData,
@@ -633,6 +655,7 @@ const refreshAccounts = async () => {
       httpApis.getClaudeAccountsApi(),
       httpApis.getClaudeConsoleAccountsApi(),
       httpApis.getGcpVertexAccountsApi(),
+      httpApis.getClaudeOpenAIBridgeAccountsApi(),
       httpApis.getGeminiAccountsApi(),
       httpApis.getGeminiApiAccountsApi(), // 获取 Gemini-API 账号
       httpApis.getOpenAIAccountsApi(),
@@ -677,6 +700,16 @@ const refreshAccounts = async () => {
     }
 
     localAccounts.value.claude = [...claudeAccounts, ...vertexAccounts]
+
+    if (claudeOpenAIBridgeData.success) {
+      localAccounts.value.claudeOpenAIBridge = (claudeOpenAIBridgeData.data || []).map(
+        (account) => ({
+          ...account,
+          platform: 'claude-openai-bridge',
+          isDedicated: account.accountType === 'dedicated'
+        })
+      )
+    }
 
     // 合并 Gemini OAuth 和 Gemini API 账号
     const geminiAccounts = []
@@ -818,6 +851,14 @@ const batchUpdateApiKeys = async () => {
       }
     }
 
+    if (form.claudeOpenAIBridgeAccountId !== '') {
+      if (form.claudeOpenAIBridgeAccountId === 'SHARED_POOL') {
+        updates.claudeOpenAIBridgeAccountId = null
+      } else {
+        updates.claudeOpenAIBridgeAccountId = form.claudeOpenAIBridgeAccountId
+      }
+    }
+
     if (form.geminiAccountId !== '') {
       if (form.geminiAccountId === 'SHARED_POOL') {
         updates.geminiAccountId = null
@@ -929,9 +970,14 @@ onMounted(async () => {
       ...account,
       platform: account.platform || 'claude-vertex'
     }))
+    const bridgeAccounts = (props.accounts.claudeOpenAIBridge || []).map((account) => ({
+      ...account,
+      platform: account.platform || 'claude-openai-bridge'
+    }))
 
     localAccounts.value = {
       claude: [...(props.accounts.claude || []), ...vertexAccounts],
+      claudeOpenAIBridge: bridgeAccounts,
       gemini: geminiAccounts,
       openai: openaiAccounts,
       bedrock: props.accounts.bedrock || [],

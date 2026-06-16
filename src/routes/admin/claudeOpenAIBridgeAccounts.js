@@ -4,6 +4,7 @@ const { authenticateAdmin } = require('../../middleware/auth')
 const bridgeAccountService = require('../../services/account/claudeOpenAIBridgeAccountService')
 const apiKeyService = require('../../services/apiKeyService')
 const accountGroupService = require('../../services/accountGroupService')
+const redis = require('../../models/redis')
 const ProxyHelper = require('../../utils/proxyHelper')
 const logger = require('../../utils/logger')
 const { buildChatCompletionsUrl } = require('../../utils/claudeOpenAIBridgeEndpoint')
@@ -28,6 +29,28 @@ function isFalse(value) {
 function getDefaultTargetModel(account) {
   const mapping = (account.modelMappings || []).find((item) => item.enabled !== false)
   return mapping?.targetModel || ''
+}
+
+function emptyUsageStats() {
+  return {
+    daily: { tokens: 0, requests: 0, allTokens: 0 },
+    total: { tokens: 0, requests: 0, allTokens: 0 },
+    averages: { rpm: 0, tpm: 0 }
+  }
+}
+
+async function getBridgeAccountUsageStats(accountId) {
+  try {
+    const usageStats = await redis.getAccountUsageStats(accountId, 'claude-openai-bridge')
+    return {
+      daily: usageStats?.daily || emptyUsageStats().daily,
+      total: usageStats?.total || emptyUsageStats().total,
+      averages: usageStats?.averages || emptyUsageStats().averages
+    }
+  } catch (error) {
+    logger.warn(`Failed to get Claude OpenAI bridge usage stats for ${accountId}:`, error.message)
+    return emptyUsageStats()
+  }
 }
 
 router.get('/claude-openai-bridge/config', authenticateAdmin, async (req, res) => {
@@ -73,10 +96,18 @@ router.get('/claude-openai-bridge/accounts', authenticateAdmin, async (req, res)
     }
 
     const accountsWithGroups = await Promise.all(
-      accounts.map(async (account) => ({
-        ...account,
-        groupInfos: await accountGroupService.getAccountGroups(account.id)
-      }))
+      accounts.map(async (account) => {
+        const [groupInfos, usage] = await Promise.all([
+          accountGroupService.getAccountGroups(account.id),
+          getBridgeAccountUsageStats(account.id)
+        ])
+
+        return {
+          ...account,
+          groupInfos,
+          usage
+        }
+      })
     )
 
     return sendSuccess(res, accountsWithGroups)
