@@ -1979,54 +1979,6 @@
                 </p>
               </div>
 
-              <div>
-                <label class="mb-3 block text-sm font-semibold text-gray-700 dark:text-gray-300"
-                  >模型映射 *</label
-                >
-                <div class="space-y-2">
-                  <div
-                    v-for="(mapping, index) in form.bridgeModelMappings"
-                    :key="index"
-                    class="grid grid-cols-[1fr_1fr_auto_auto] items-center gap-2"
-                  >
-                    <input
-                      v-model="mapping.sourceModel"
-                      class="form-input min-w-0 border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200 dark:placeholder-gray-400"
-                      placeholder="deepseek-v4-flash"
-                      type="text"
-                    />
-                    <input
-                      v-model="mapping.targetModel"
-                      class="form-input min-w-0 border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200 dark:placeholder-gray-400"
-                      placeholder="DeepSeek-V4-Flash"
-                      type="text"
-                    />
-                    <label class="flex items-center gap-1 text-sm text-gray-600 dark:text-gray-300">
-                      <input v-model="mapping.enabled" type="checkbox" />
-                      启用
-                    </label>
-                    <button
-                      class="rounded-lg p-2 text-red-500 transition-colors hover:bg-red-50 dark:hover:bg-red-900/20"
-                      type="button"
-                      @click="removeBridgeModelMapping(index)"
-                    >
-                      <i class="fas fa-trash" />
-                    </button>
-                  </div>
-                </div>
-                <button
-                  class="mt-2 rounded-lg border-2 border-dashed border-gray-300 px-4 py-2 text-sm text-gray-600 transition-colors hover:border-gray-400 hover:text-gray-700 dark:border-gray-600 dark:text-gray-400 dark:hover:border-gray-500 dark:hover:text-gray-300"
-                  type="button"
-                  @click="addBridgeModelMapping"
-                >
-                  <i class="fas fa-plus mr-2" />
-                  添加映射
-                </button>
-                <p v-if="errors.modelMappings" class="mt-1 text-xs text-red-500">
-                  {{ errors.modelMappings }}
-                </p>
-              </div>
-
               <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div>
                   <label class="mb-3 block text-sm font-semibold text-gray-700 dark:text-gray-300"
@@ -4062,54 +4014,6 @@
               <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">留空表示不更新 API Key</p>
             </div>
 
-            <div>
-              <label class="mb-3 block text-sm font-semibold text-gray-700 dark:text-gray-300"
-                >模型映射</label
-              >
-              <div class="space-y-2">
-                <div
-                  v-for="(mapping, index) in form.bridgeModelMappings"
-                  :key="index"
-                  class="grid grid-cols-[1fr_1fr_auto_auto] items-center gap-2"
-                >
-                  <input
-                    v-model="mapping.sourceModel"
-                    class="form-input min-w-0 border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200 dark:placeholder-gray-400"
-                    placeholder="deepseek-v4-flash"
-                    type="text"
-                  />
-                  <input
-                    v-model="mapping.targetModel"
-                    class="form-input min-w-0 border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200 dark:placeholder-gray-400"
-                    placeholder="DeepSeek-V4-Flash"
-                    type="text"
-                  />
-                  <label class="flex items-center gap-1 text-sm text-gray-600 dark:text-gray-300">
-                    <input v-model="mapping.enabled" type="checkbox" />
-                    启用
-                  </label>
-                  <button
-                    class="rounded-lg p-2 text-red-500 transition-colors hover:bg-red-50 dark:hover:bg-red-900/20"
-                    type="button"
-                    @click="removeBridgeModelMapping(index)"
-                  >
-                    <i class="fas fa-trash" />
-                  </button>
-                </div>
-              </div>
-              <button
-                class="mt-2 rounded-lg border-2 border-dashed border-gray-300 px-4 py-2 text-sm text-gray-600 transition-colors hover:border-gray-400 hover:text-gray-700 dark:border-gray-600 dark:text-gray-400 dark:hover:border-gray-500 dark:hover:text-gray-300"
-                type="button"
-                @click="addBridgeModelMapping"
-              >
-                <i class="fas fa-plus mr-2" />
-                添加映射
-              </button>
-              <p v-if="errors.modelMappings" class="mt-1 text-xs text-red-500">
-                {{ errors.modelMappings }}
-              </p>
-            </div>
-
             <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div>
                 <label class="mb-3 block text-sm font-semibold text-gray-700 dark:text-gray-300"
@@ -5090,25 +4994,6 @@ const normalizeAccountCooldownOverride = (value) => {
 
 const toFormBoolean = (value) => value === true || value === 'true'
 
-const defaultBridgeMappings = () => [
-  { sourceModel: 'deepseek-v4-pro', targetModel: 'DeepSeek-V4-Pro', enabled: true },
-  { sourceModel: 'deepseek-v4-flash', targetModel: 'DeepSeek-V4-Flash', enabled: true },
-  { sourceModel: 'kimi-k2.6', targetModel: 'Kimi-K2.6', enabled: true },
-  { sourceModel: 'grok-4.3', targetModel: 'grok-4.3', enabled: true }
-]
-
-const cloneBridgeMappings = (mappings) => {
-  if (!Array.isArray(mappings) || mappings.length === 0) {
-    return defaultBridgeMappings()
-  }
-
-  return mappings.map((mapping) => ({
-    sourceModel: mapping.sourceModel || '',
-    targetModel: mapping.targetModel || '',
-    enabled: mapping.enabled !== false
-  }))
-}
-
 const cloneBridgeRoutingRules = (rules) => {
   if (!Array.isArray(rules)) {
     return []
@@ -5176,7 +5061,6 @@ const form = ref({
   endpointUrl: props.account?.endpointUrl || '',
   apiKey: props.account?.apiKey || '',
   priority: props.account?.priority || 50,
-  bridgeModelMappings: cloneBridgeMappings(props.account?.modelMappings),
   bridgeRoutingRules: cloneBridgeRoutingRules(props.account?.bridgeRoutingRules),
   endpointType: props.account?.endpointType || 'anthropic',
   // OpenAI-Responses 特定字段
@@ -6136,10 +6020,6 @@ const createAccount = async () => {
       errors.value.apiKey = '请填写 API Key'
       hasError = true
     }
-    if (cleanBridgeMappings().length === 0) {
-      errors.value.modelMappings = '请至少配置一个模型映射'
-      hasError = true
-    }
   } else if (form.value.platform === 'bedrock') {
     // Bedrock 验证 - 根据凭证类型进行不同验证
     if (form.value.credentialType === 'access_key') {
@@ -6420,7 +6300,6 @@ const createAccount = async () => {
     } else if (form.value.platform === 'claude-openai-bridge') {
       data.endpointUrl = form.value.endpointUrl
       data.apiKey = form.value.apiKey
-      data.modelMappings = cleanBridgeMappings()
       data.accountType = form.value.accountType
       data.groupId = form.value.accountType === 'group' ? form.value.groupId : ''
       data.groupIds = form.value.accountType === 'group' ? form.value.groupIds : []
@@ -6573,10 +6452,6 @@ const updateAccount = async () => {
   if (form.value.platform === 'claude-openai-bridge') {
     if (!form.value.endpointUrl || form.value.endpointUrl.trim() === '') {
       errors.value.endpointUrl = '请填写 Endpoint URL'
-      return
-    }
-    if (cleanBridgeMappings().length === 0) {
-      errors.value.modelMappings = '请至少配置一个模型映射'
       return
     }
   }
@@ -6845,7 +6720,6 @@ const updateAccount = async () => {
       if (form.value.apiKey && form.value.apiKey.trim()) {
         data.apiKey = form.value.apiKey
       }
-      data.modelMappings = cleanBridgeMappings()
       data.accountType = form.value.accountType
       data.groupId = form.value.accountType === 'group' ? form.value.groupId : ''
       data.groupIds = form.value.accountType === 'group' ? form.value.groupIds : []
@@ -7159,12 +7033,6 @@ watch(
       if (newPlatform === 'openai-responses' && !form.value.apiVersion) {
         form.value.apiVersion = '2025-04-01-preview'
       }
-      if (
-        newPlatform === 'claude-openai-bridge' &&
-        (!form.value.bridgeModelMappings || form.value.bridgeModelMappings.length === 0)
-      ) {
-        form.value.bridgeModelMappings = defaultBridgeMappings()
-      }
     } else if (newPlatform === 'claude') {
       // 切换到 Claude 时，使用 oauth 作为默认方式
       form.value.addType = 'oauth'
@@ -7397,23 +7265,6 @@ const convertMappingsToObject = () => {
   return Object.keys(mapping).length > 0 ? mapping : null
 }
 
-const addBridgeModelMapping = () => {
-  form.value.bridgeModelMappings.push({ sourceModel: '', targetModel: '', enabled: true })
-}
-
-const removeBridgeModelMapping = (index) => {
-  form.value.bridgeModelMappings.splice(index, 1)
-}
-
-const cleanBridgeMappings = () =>
-  (form.value.bridgeModelMappings || [])
-    .map((mapping) => ({
-      sourceModel: (mapping.sourceModel || '').trim(),
-      targetModel: (mapping.targetModel || '').trim(),
-      enabled: mapping.enabled !== false
-    }))
-    .filter((mapping) => mapping.sourceModel && mapping.targetModel)
-
 const addBridgeRoutingRule = () => {
   form.value.bridgeRoutingRules.push({
     sourceModel: '',
@@ -7510,7 +7361,6 @@ watch(
         endpointUrl: newAccount.endpointUrl || '',
         apiKey: '', // 编辑模式不显示现有的 API Key
         priority: newAccount.priority || 50,
-        bridgeModelMappings: cloneBridgeMappings(newAccount.modelMappings),
         bridgeRoutingRules: cloneBridgeRoutingRules(newAccount.bridgeRoutingRules),
         supportedModels: (() => {
           const models = newAccount.supportedModels

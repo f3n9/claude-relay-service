@@ -272,10 +272,7 @@ describe('Claude OpenAI bridge admin routes', () => {
       name: 'Bridge 1',
       endpointUrl: 'https://bridge.example.com/v1/chat/completions',
       apiKey: 'bridge-secret',
-      proxy,
-      modelMappings: [
-        { sourceModel: 'claude-sonnet-4', targetModel: 'gpt-4.1-mini', enabled: true }
-      ]
+      proxy
     })
     ProxyHelper.createProxyAgent.mockReturnValue(agent)
     axios.post.mockResolvedValue({
@@ -327,10 +324,7 @@ describe('Claude OpenAI bridge admin routes', () => {
       id: 'bridge-1',
       name: 'Bridge 1',
       endpointUrl: 'https://bc-openai-1.services.ai.azure.com/openai/v1',
-      apiKey: 'bridge-secret',
-      modelMappings: [
-        { sourceModel: 'claude-sonnet-4', targetModel: 'DeepSeek-V4-Flash', enabled: true }
-      ]
+      apiKey: 'bridge-secret'
     })
     axios.post.mockResolvedValue({
       data: {
@@ -338,7 +332,9 @@ describe('Claude OpenAI bridge admin routes', () => {
       }
     })
 
-    const response = await request(app).post('/admin/claude-openai-bridge/accounts/bridge-1/test')
+    const response = await request(app)
+      .post('/admin/claude-openai-bridge/accounts/bridge-1/test')
+      .send({ targetModel: 'DeepSeek-V4-Flash' })
 
     expect(response.status).toBe(200)
     expect(axios.post.mock.calls[0][0]).toBe(
@@ -346,24 +342,21 @@ describe('Claude OpenAI bridge admin routes', () => {
     )
   })
 
-  it('tests an account with the first enabled mapping target model by default', async () => {
+  it('requires an explicit target model when testing bridge accounts', async () => {
     const app = buildApp()
 
     bridgeAccountService.getAccount.mockResolvedValue({
       id: 'bridge-1',
       endpointUrl: 'https://bridge.example.com/v1/chat/completions',
-      apiKey: 'bridge-secret',
-      modelMappings: [
-        { sourceModel: 'disabled', targetModel: 'gpt-disabled', enabled: false },
-        { sourceModel: 'enabled', targetModel: 'gpt-enabled', enabled: true }
-      ]
+      apiKey: 'bridge-secret'
     })
     axios.post.mockResolvedValue({ data: { choices: [] } })
 
     const response = await request(app).post('/admin/claude-openai-bridge/accounts/bridge-1/test')
 
-    expect(response.status).toBe(200)
-    expect(axios.post.mock.calls[0][1].model).toBe('gpt-enabled')
+    expect(response.status).toBe(400)
+    expect(response.body).toEqual({ success: false, message: 'Target model is required' })
+    expect(axios.post).not.toHaveBeenCalled()
   })
 
   it('returns a consistent error response when account service throws', async () => {

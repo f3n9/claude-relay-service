@@ -49,10 +49,6 @@ jest.mock('../src/models/redis', () => {
   }
 })
 
-jest.mock('../src/services/accountGroupService', () => ({
-  getGroupMembers: jest.fn()
-}))
-
 jest.mock(
   '../config/config',
   () => ({
@@ -70,7 +66,6 @@ jest.mock('../src/utils/logger', () => ({
 }))
 
 const redis = require('../src/models/redis')
-const accountGroupService = require('../src/services/accountGroupService')
 const service = require('../src/services/account/claudeOpenAIBridgeAccountService')
 
 describe('claudeOpenAIBridgeAccountService', () => {
@@ -85,7 +80,6 @@ describe('claudeOpenAIBridgeAccountService', () => {
     redis.__sets.clear()
     redis.__values.clear()
     jest.clearAllMocks()
-    accountGroupService.getGroupMembers.mockResolvedValue([])
   })
 
   it('stores global enabled config with false default', async () => {
@@ -107,8 +101,7 @@ describe('claudeOpenAIBridgeAccountService', () => {
       groupIds: ['group-1', 'group-2'],
       expiresAt: '2026-07-01T00:00:00.000Z',
       modelMappings: [
-        { sourceModel: ' deepseek-v4-flash ', targetModel: ' DeepSeek-V4-Flash ', enabled: true },
-        { sourceModel: '', targetModel: 'Ignored', enabled: true }
+        { sourceModel: ' deepseek-v4-flash ', targetModel: ' DeepSeek-V4-Flash ', enabled: true }
       ],
       proxy: { type: 'http', host: '127.0.0.1', port: 8118 },
       dailyQuota: 12,
@@ -125,7 +118,6 @@ describe('claudeOpenAIBridgeAccountService', () => {
       dailyUsage: 0,
       schedulable: true,
       isActive: true,
-      mappingCount: 1,
       accountType: 'group',
       groupId: 'group-1',
       groupIds: ['group-1', 'group-2'],
@@ -139,20 +131,13 @@ describe('claudeOpenAIBridgeAccountService', () => {
     expect(raw.groupId).toBe('group-1')
     expect(raw.groupIds).toBe(JSON.stringify(['group-1', 'group-2']))
     expect(raw.expiresAt).toBe('2026-07-01T00:00:00.000Z')
-    expect(raw.modelMappings).toBe(
-      JSON.stringify([
-        { sourceModel: 'deepseek-v4-flash', targetModel: 'DeepSeek-V4-Flash', enabled: true }
-      ])
-    )
+    expect(raw.modelMappings).toBeUndefined()
     expect(redis.__sets.get('claude_openai_bridge_account:index').has(created.id)).toBe(true)
 
     const full = await service.getAccount(created.id)
     expect(full).toMatchObject({
       apiKey: 'secret-key',
       proxy: { type: 'http', host: '127.0.0.1', port: 8118 },
-      modelMappings: [
-        { sourceModel: 'deepseek-v4-flash', targetModel: 'DeepSeek-V4-Flash', enabled: true }
-      ],
       platform: 'claude-openai-bridge',
       priority: 10,
       dailyQuota: 12,
@@ -167,9 +152,10 @@ describe('claudeOpenAIBridgeAccountService', () => {
     expect(all).toHaveLength(1)
     expect(all[0]).toMatchObject({
       apiKey: '***',
-      mappingCount: 1,
       proxy: { type: 'http', host: '127.0.0.1', port: 8118 }
     })
+    expect(full.modelMappings).toBeUndefined()
+    expect(all[0].modelMappings).toBeUndefined()
   })
 
   it('updates accounts, filters inactive list results, and deletes hashes plus indexes', async () => {
@@ -206,9 +192,10 @@ describe('claudeOpenAIBridgeAccountService', () => {
       schedulable: false,
       priority: 5,
       dailyQuota: 42,
-      dailyUsage: 7,
-      modelMappings: [{ sourceModel: 'new-model', targetModel: 'NewModel', enabled: false }]
+      dailyUsage: 7
     })
+    expect(raw.modelMappings).toBeUndefined()
+    expect(detail.modelMappings).toBeUndefined()
 
     await service.updateAccount(account.id, {
       accountType: 'dedicated',
@@ -285,146 +272,21 @@ describe('claudeOpenAIBridgeAccountService', () => {
     })
   })
 
-  it('selects an eligible account by exact source model, priority, lastUsedAt, and createdAt', async () => {
-    await service.updateConfig({ enabled: true })
-    const olderSamePriority = await service.createAccount({
-      name: 'Older Same Priority',
-      endpointUrl: 'https://example.net/v1/chat/completions',
-      apiKey: 'key-c',
-      priority: 5,
-      modelMappings: [
-        { sourceModel: 'deepseek-v4-flash', targetModel: 'DeepSeek-V4-Flash-C', enabled: true }
-      ]
-    })
-    const laterSamePriority = await service.createAccount({
-      name: 'Later Same Priority',
-      endpointUrl: 'https://example.org/v1/chat/completions',
-      apiKey: 'key-b',
-      priority: 5,
-      modelMappings: [
-        { sourceModel: 'deepseek-v4-flash', targetModel: 'DeepSeek-V4-Flash-B', enabled: true }
-      ]
-    })
-    const lowerPriority = await service.createAccount({
-      name: 'Priority 20',
-      endpointUrl: 'https://example.com/v1/chat/completions',
-      apiKey: 'key-a',
-      priority: 20,
-      modelMappings: [
-        { sourceModel: 'deepseek-v4-flash', targetModel: 'DeepSeek-V4-Flash-A', enabled: true },
-        { sourceModel: 'disabled-model', targetModel: 'Disabled', enabled: false }
-      ]
-    })
-
-    setRawAccountFields(olderSamePriority.id, {
-      createdAt: '2026-06-11T08:00:00.000Z',
-      lastUsedAt: '2026-06-11T11:00:00.000Z'
-    })
-    setRawAccountFields(laterSamePriority.id, {
-      createdAt: '2026-06-11T09:00:00.000Z',
-      lastUsedAt: '2026-06-11T10:00:00.000Z'
-    })
-    setRawAccountFields(lowerPriority.id, {
-      createdAt: '2026-06-11T07:00:00.000Z',
-      lastUsedAt: '2026-06-11T09:00:00.000Z'
-    })
-
-    const olderLastUsedSelection = await service.selectAccountForModel('deepseek-v4-flash')
-
-    expect(olderLastUsedSelection.account.id).toBe(laterSamePriority.id)
-    expect(olderLastUsedSelection.mapping.targetModel).toBe('DeepSeek-V4-Flash-B')
-
-    setRawAccountFields(olderSamePriority.id, {
-      lastUsedAt: '2026-06-11T10:00:00.000Z'
-    })
-    setRawAccountFields(laterSamePriority.id, {
-      lastUsedAt: '2026-06-11T10:00:00.000Z'
-    })
-
-    const selection = await service.selectAccountForModel('deepseek-v4-flash')
-
-    expect(selection.account.id).toBe(olderSamePriority.id)
-    expect(selection.account.apiKey).toBe('key-c')
-    expect(selection.mapping).toEqual({
-      sourceModel: 'deepseek-v4-flash',
-      targetModel: 'DeepSeek-V4-Flash-C',
-      enabled: true
-    })
-
-    await expect(service.selectAccountForModel('DeepSeek-V4-Flash')).resolves.toBe(null)
-    await expect(service.selectAccountForModel('disabled-model')).resolves.toBe(null)
-
-    await service.updateAccount(olderSamePriority.id, { schedulable: false })
-    const fallback = await service.selectAccountForModel('deepseek-v4-flash')
-    expect(fallback.account.id).toBe(laterSamePriority.id)
-
-    await service.updateConfig({ enabled: false })
-    await expect(service.selectAccountForModel('deepseek-v4-flash')).resolves.toBe(null)
-  })
-
-  it('keeps dedicated accounts out of the shared pool but honors direct and group bindings', async () => {
-    await service.updateConfig({ enabled: true })
-    const dedicated = await service.createAccount({
-      name: 'Dedicated',
-      endpointUrl: 'https://dedicated.example.com/v1/chat/completions',
-      apiKey: 'dedicated-key',
-      accountType: 'dedicated',
-      priority: 1,
-      modelMappings: [
-        { sourceModel: 'deepseek-v4-pro', targetModel: 'DeepSeek-V4-Pro-Dedicated', enabled: true }
-      ]
-    })
-    await service.createAccount({
-      name: 'Shared',
-      endpointUrl: 'https://shared.example.com/v1/chat/completions',
-      apiKey: 'shared-key',
-      accountType: 'shared',
-      priority: 50,
-      modelMappings: [
-        { sourceModel: 'deepseek-v4-pro', targetModel: 'DeepSeek-V4-Pro-Shared', enabled: true }
-      ]
-    })
-
-    const sharedPoolSelection = await service.selectAccountForModel('deepseek-v4-pro')
-    expect(sharedPoolSelection.account.id).not.toBe(dedicated.id)
-    expect(sharedPoolSelection.mapping.targetModel).toBe('DeepSeek-V4-Pro-Shared')
-
-    const directBindingSelection = await service.selectAccountForModel('deepseek-v4-pro', {
-      boundAccountId: dedicated.id
-    })
-    expect(directBindingSelection.account.id).toBe(dedicated.id)
-    expect(directBindingSelection.mapping.targetModel).toBe('DeepSeek-V4-Pro-Dedicated')
-
-    accountGroupService.getGroupMembers.mockResolvedValue([dedicated.id])
-    const groupBindingSelection = await service.selectAccountForModel('deepseek-v4-pro', {
-      boundAccountId: 'group:bridge-group-1'
-    })
-    expect(groupBindingSelection.account.id).toBe(dedicated.id)
-    expect(accountGroupService.getGroupMembers).toHaveBeenCalledWith('bridge-group-1')
-  })
-
-  it('does not select accounts that are daily quota exhausted or quota stopped', async () => {
-    await service.updateConfig({ enabled: true })
+  it('returns only eligible bridge accounts for explicit source-account routing', async () => {
     const quotaExhausted = await service.createAccount({
       name: 'Quota Exhausted',
       endpointUrl: 'https://quota.example.com/v1/chat/completions',
       apiKey: 'quota-key',
       priority: 1,
       dailyQuota: 10,
-      dailyUsage: 10,
-      modelMappings: [
-        { sourceModel: 'deepseek-v4-flash', targetModel: 'QuotaTarget', enabled: true }
-      ]
+      dailyUsage: 10
     })
     const quotaStopped = await service.createAccount({
       name: 'Quota Stopped',
       endpointUrl: 'https://stopped.example.com/v1/chat/completions',
       apiKey: 'stopped-key',
       priority: 2,
-      dailyQuota: 0,
-      modelMappings: [
-        { sourceModel: 'deepseek-v4-flash', targetModel: 'StoppedTarget', enabled: true }
-      ]
+      dailyQuota: 0
     })
     const eligible = await service.createAccount({
       name: 'Eligible',
@@ -432,32 +294,28 @@ describe('claudeOpenAIBridgeAccountService', () => {
       apiKey: 'eligible-key',
       priority: 50,
       dailyQuota: 10,
-      dailyUsage: 9,
-      modelMappings: [
-        { sourceModel: 'deepseek-v4-flash', targetModel: 'EligibleTarget', enabled: true }
-      ]
+      dailyUsage: 9
     })
 
     await service.updateAccount(quotaStopped.id, { quotaStoppedAt: '2026-06-11T12:00:00.000Z' })
 
-    const selection = await service.selectAccountForModel('deepseek-v4-flash')
-    expect(selection.account.id).toBe(eligible.id)
-    expect(selection.mapping.targetModel).toBe('EligibleTarget')
+    await expect(service.getSchedulableAccount(quotaExhausted.id)).resolves.toBe(null)
+    await expect(service.getSchedulableAccount(quotaStopped.id)).resolves.toBe(null)
+    await expect(service.getSchedulableAccount(eligible.id)).resolves.toMatchObject({
+      id: eligible.id,
+      apiKey: 'eligible-key'
+    })
 
     await service.updateAccount(eligible.id, { dailyUsage: 10 })
 
-    await expect(service.selectAccountForModel('deepseek-v4-flash')).resolves.toBe(null)
+    await expect(service.getSchedulableAccount(eligible.id)).resolves.toBe(null)
     expect((await service.getAccount(quotaExhausted.id)).dailyUsage).toBe(10)
   })
 
-  it('recovers expired rate-limited accounts during model selection', async () => {
-    await service.updateConfig({ enabled: true })
+  it('recovers expired rate-limited accounts during explicit bridge account scheduling', async () => {
     const account = await service.createAccount({
       endpointUrl: 'https://recover.example.com/v1/chat/completions',
-      apiKey: 'recover-key',
-      modelMappings: [
-        { sourceModel: 'deepseek-v4-flash', targetModel: 'RecoveredTarget', enabled: true }
-      ]
+      apiKey: 'recover-key'
     })
 
     setRawAccountFields(account.id, {
@@ -468,10 +326,9 @@ describe('claudeOpenAIBridgeAccountService', () => {
       errorMessage: 'Rate limited until 2000-01-01T00:00:00.000Z'
     })
 
-    const selection = await service.selectAccountForModel('deepseek-v4-flash')
+    const selection = await service.getSchedulableAccount(account.id)
 
-    expect(selection.account.id).toBe(account.id)
-    expect(selection.mapping.targetModel).toBe('RecoveredTarget')
+    expect(selection.id).toBe(account.id)
     expect(await service.getAccount(account.id)).toMatchObject({
       status: 'active',
       schedulable: true,
@@ -481,16 +338,12 @@ describe('claudeOpenAIBridgeAccountService', () => {
     })
   })
 
-  it('resets stale quota-stop windows before selecting bridge accounts', async () => {
-    await service.updateConfig({ enabled: true })
+  it('resets stale quota-stop windows before explicit bridge account scheduling', async () => {
     const account = await service.createAccount({
       endpointUrl: 'https://quota-recover.example.com/v1/chat/completions',
       apiKey: 'quota-recover-key',
       dailyQuota: 10,
-      dailyUsage: 10,
-      modelMappings: [
-        { sourceModel: 'deepseek-v4-flash', targetModel: 'QuotaRecoveredTarget', enabled: true }
-      ]
+      dailyUsage: 10
     })
 
     setRawAccountFields(account.id, {
@@ -502,10 +355,9 @@ describe('claudeOpenAIBridgeAccountService', () => {
       errorMessage: 'Daily quota exceeded'
     })
 
-    const selection = await service.selectAccountForModel('deepseek-v4-flash')
+    const selection = await service.getSchedulableAccount(account.id)
 
-    expect(selection.account.id).toBe(account.id)
-    expect(selection.mapping.targetModel).toBe('QuotaRecoveredTarget')
+    expect(selection.id).toBe(account.id)
     expect(await service.getAccount(account.id)).toMatchObject({
       dailyUsage: 0,
       lastResetDate: '2026-06-11',
@@ -522,8 +374,7 @@ describe('claudeOpenAIBridgeAccountService', () => {
       endpointUrl: 'https://example.com/v1/chat/completions',
       apiKey: 'key',
       disableAutoProtection: false,
-      dailyUsage: 9,
-      modelMappings: [{ sourceModel: 'kimi-k2.6', targetModel: 'Kimi-K2.6', enabled: true }]
+      dailyUsage: 9
     })
 
     await service.markAccountUsed(account.id)
@@ -627,16 +478,12 @@ describe('claudeOpenAIBridgeAccountService', () => {
     })
   })
 
-  it('resetUsage clears quota stop state and makes quota-exhausted accounts selectable', async () => {
-    await service.updateConfig({ enabled: true })
+  it('resetUsage clears quota stop state and makes quota-exhausted accounts schedulable', async () => {
     const account = await service.createAccount({
       endpointUrl: 'https://quota-reset.example.com/v1/chat/completions',
       apiKey: 'quota-reset-key',
       dailyQuota: 10,
-      dailyUsage: 10,
-      modelMappings: [
-        { sourceModel: 'deepseek-v4-flash', targetModel: 'QuotaResetTarget', enabled: true }
-      ]
+      dailyUsage: 10
     })
     setRawAccountFields(account.id, {
       status: 'quotaExceeded',
@@ -645,7 +492,7 @@ describe('claudeOpenAIBridgeAccountService', () => {
       errorMessage: 'Daily quota exceeded'
     })
 
-    await expect(service.selectAccountForModel('deepseek-v4-flash')).resolves.toBe(null)
+    await expect(service.getSchedulableAccount(account.id)).resolves.toBe(null)
 
     await service.resetUsage(account.id)
 
@@ -657,8 +504,8 @@ describe('claudeOpenAIBridgeAccountService', () => {
       schedulable: true,
       errorMessage: ''
     })
-    const selection = await service.selectAccountForModel('deepseek-v4-flash')
-    expect(selection.account.id).toBe(account.id)
+    const selection = await service.getSchedulableAccount(account.id)
+    expect(selection.id).toBe(account.id)
   })
 
   it('records repeated same-day usage through Redis increments and applies quota status', async () => {
@@ -772,18 +619,4 @@ describe('claudeOpenAIBridgeAccountService', () => {
     })
   })
 
-  it('normalizes model mappings from arrays and serialized values', () => {
-    expect(
-      service._normalizeMappings(
-        JSON.stringify([
-          { sourceModel: ' source ', targetModel: ' Target ', enabled: 'false' },
-          { sourceModel: 'missing-target', enabled: true },
-          null
-        ])
-      )
-    ).toEqual([{ sourceModel: 'source', targetModel: 'Target', enabled: false }])
-
-    expect(service._normalizeMappings('not json')).toEqual([])
-    expect(service._normalizeMappings({ sourceModel: 'x' })).toEqual([])
-  })
 })

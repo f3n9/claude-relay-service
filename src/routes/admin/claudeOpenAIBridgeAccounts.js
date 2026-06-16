@@ -26,11 +26,6 @@ function isFalse(value) {
   return value === false || value === 'false'
 }
 
-function getDefaultTargetModel(account) {
-  const mapping = (account.modelMappings || []).find((item) => item.enabled !== false)
-  return mapping?.targetModel || ''
-}
-
 function emptyUsageStats() {
   return {
     daily: { tokens: 0, requests: 0, allTokens: 0 },
@@ -256,9 +251,9 @@ router.post('/claude-openai-bridge/accounts/:id/test', authenticateAdmin, async 
       return res.status(404).json({ success: false, message: 'Account not found' })
     }
 
-    const model = req.body?.targetModel || getDefaultTargetModel(account)
+    const model = String(req.body?.targetModel || '').trim()
     if (!model) {
-      return res.status(400).json({ success: false, message: 'No enabled target model configured' })
+      return res.status(400).json({ success: false, message: 'Target model is required' })
     }
 
     const proxyAgent = ProxyHelper.createProxyAgent(account.proxy)

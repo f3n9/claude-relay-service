@@ -1,7 +1,7 @@
 const { v4: uuidv4 } = require('uuid')
 const redis = require('../../models/redis')
 const logger = require('../../utils/logger')
-const { createEncryptor, sortAccountsByPriority } = require('../../utils/commonHelper')
+const { createEncryptor } = require('../../utils/commonHelper')
 
 const encryptor = createEncryptor('claude-openai-bridge-salt')
 
@@ -34,7 +34,6 @@ const MUTABLE_ACCOUNT_FIELDS = new Set([
   'quotaResetTime',
   'quotaStoppedAt',
   'disableAutoProtection',
-  'modelMappings',
   'lastUsedAt'
 ])
 
@@ -65,30 +64,6 @@ function isApiKeyUpdate(value) {
   }
   const normalized = String(value).trim()
   return normalized !== '' && !API_KEY_MASK_SENTINELS.has(normalized)
-}
-
-function normalizeMappings(modelMappings = []) {
-  let mappings = modelMappings
-
-  if (typeof mappings === 'string') {
-    try {
-      mappings = JSON.parse(mappings)
-    } catch {
-      mappings = []
-    }
-  }
-
-  if (!Array.isArray(mappings)) {
-    return []
-  }
-
-  return mappings
-    .map((mapping) => ({
-      sourceModel: String(mapping?.sourceModel || '').trim(),
-      targetModel: String(mapping?.targetModel || '').trim(),
-      enabled: normalizeBoolean(mapping?.enabled, true)
-    }))
-    .filter((mapping) => mapping.sourceModel && mapping.targetModel)
 }
 
 function serializeProxy(proxy) {
@@ -190,8 +165,7 @@ function isQuotaStopped(account) {
 }
 
 function maskAndFormatAccount(accountData, { includeSecret = false } = {}) {
-  const modelMappings = normalizeMappings(accountData.modelMappings)
-  return {
+  const formatted = {
     ...accountData,
     platform: PLATFORM,
     apiKey: includeSecret
@@ -204,8 +178,6 @@ function maskAndFormatAccount(accountData, { includeSecret = false } = {}) {
     groupId: accountData.groupId || '',
     groupIds: parseGroupIds(accountData.groupIds),
     expiresAt: accountData.expiresAt || null,
-    modelMappings,
-    mappingCount: modelMappings.filter((mapping) => mapping.enabled).length,
     isActive: normalizeBoolean(accountData.isActive, true),
     schedulable: normalizeBoolean(accountData.schedulable, true),
     disableAutoProtection: normalizeBoolean(accountData.disableAutoProtection, false),
@@ -214,6 +186,9 @@ function maskAndFormatAccount(accountData, { includeSecret = false } = {}) {
     dailyQuota: normalizeNumber(accountData.dailyQuota, 0),
     dailyUsage: normalizeNumber(accountData.dailyUsage, 0)
   }
+  delete formatted.modelMappings
+  delete formatted.mappingCount
+  return formatted
 }
 
 async function getConfig() {
@@ -279,7 +254,6 @@ async function createAccount(options = {}) {
     quotaResetTime: options.quotaResetTime || '00:00',
     quotaStoppedAt: '',
     disableAutoProtection: normalizeBoolean(options.disableAutoProtection, false).toString(),
-    modelMappings: JSON.stringify(normalizeMappings(options.modelMappings)),
     createdAt: now,
     updatedAt: now,
     lastUsedAt: options.lastUsedAt || ''
@@ -379,12 +353,6 @@ async function updateAccount(accountId, updates = {}) {
     normalizedUpdates.expiresAt = normalizedUpdates.expiresAt || ''
   }
 
-  if (normalizedUpdates.modelMappings !== undefined) {
-    normalizedUpdates.modelMappings = JSON.stringify(
-      normalizeMappings(normalizedUpdates.modelMappings)
-    )
-  }
-
   for (const field of ['isActive', 'schedulable', 'disableAutoProtection']) {
     if (normalizedUpdates[field] !== undefined) {
       normalizedUpdates[field] = normalizeBoolean(normalizedUpdates[field], false).toString()
@@ -452,60 +420,6 @@ async function checkAndResetStaleUsageWindow(accountId) {
   return true
 }
 
-function findEnabledMapping(account, sourceModel) {
-  return (account.modelMappings || []).find(
-    (candidate) => candidate.enabled && candidate.sourceModel === sourceModel
-  )
-}
-
-async function selectAccountFromCandidates(sourceModel, candidates) {
-  const eligibleAccounts = candidates
-    .filter(Boolean)
-    .filter(isAccountEligible)
-    .map((account) => {
-      const mapping = findEnabledMapping(account, sourceModel)
-      return mapping ? { ...account, matchedMapping: mapping } : null
-    })
-    .filter(Boolean)
-
-  if (eligibleAccounts.length === 0) {
-    return null
-  }
-
-  const [selected] = sortAccountsByPriority(eligibleAccounts)
-  const account = await getAccount(selected.id)
-
-  if (!account) {
-    return null
-  }
-
-  return {
-    account,
-    mapping: selected.matchedMapping
-  }
-}
-
-async function selectBoundAccountForModel(sourceModel, binding) {
-  if (!binding || typeof binding !== 'string') {
-    return null
-  }
-
-  if (binding.startsWith('group:')) {
-    const groupId = binding.substring(6)
-    const accountGroupService = require('../accountGroupService')
-    const memberIds = await accountGroupService.getGroupMembers(groupId)
-    if (!memberIds || memberIds.length === 0) {
-      return null
-    }
-
-    const accounts = await Promise.all(memberIds.map((accountId) => getAccount(accountId)))
-    return selectAccountFromCandidates(sourceModel, accounts)
-  }
-
-  const account = await getAccount(binding)
-  return selectAccountFromCandidates(sourceModel, [account])
-}
-
 async function getSchedulableAccount(accountId) {
   if (!accountId) {
     return null
@@ -520,39 +434,6 @@ async function getSchedulableAccount(accountId) {
   }
 
   return account
-}
-
-async function selectAccountForModel(sourceModel, options = {}) {
-  const config = await getConfig()
-  if (!config.enabled) {
-    return null
-  }
-
-  const boundSelection = await selectBoundAccountForModel(sourceModel, options.boundAccountId)
-  if (boundSelection) {
-    return boundSelection
-  }
-
-  const accounts = await getAllAccounts(true)
-  const recoveredIds = []
-  for (const account of accounts) {
-    if (await checkAndClearRateLimit(account.id)) {
-      recoveredIds.push(account.id)
-    }
-    if (await checkAndResetStaleUsageWindow(account.id)) {
-      recoveredIds.push(account.id)
-    }
-  }
-
-  const accountsForSelection =
-    recoveredIds.length === 0
-      ? accounts
-      : await Promise.all(accounts.map((account) => getAccount(account.id)))
-
-  return selectAccountFromCandidates(
-    sourceModel,
-    accountsForSelection.filter((account) => (account.accountType || 'shared') === 'shared')
-  )
 }
 
 async function markAccountUsed(accountId) {
@@ -747,7 +628,6 @@ module.exports = {
   getAllAccounts,
   updateAccount,
   deleteAccount,
-  selectAccountForModel,
   getSchedulableAccount,
   checkAndClearRateLimit,
   markAccountUsed,
@@ -757,6 +637,5 @@ module.exports = {
   resetAccountStatus,
   resetUsage,
   recordUsage,
-  updateUsageQuota: recordUsage,
-  _normalizeMappings: normalizeMappings
+  updateUsageQuota: recordUsage
 }
