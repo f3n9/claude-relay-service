@@ -2238,6 +2238,8 @@ class RedisClient {
       accountData = await this.client.hgetall(`openai:account:${accountId}`)
     } else if (accountType === 'openai-responses') {
       accountData = await this.client.hgetall(`openai_responses_account:${accountId}`)
+    } else if (accountType === 'claude-openai-bridge') {
+      accountData = await this.client.hgetall(`claude_openai_bridge_account:${accountId}`)
     } else if (accountType === 'claude-vertex') {
       const raw = await this.client.get(`claude_vertex_account:${accountId}`)
       if (raw) {

@@ -7,6 +7,7 @@ const config = require('../../../config/config')
 const LRUCache = require('../../utils/lruCache')
 const ProxyHelper = require('../../utils/proxyHelper')
 const { createEncryptor } = require('../../utils/commonHelper')
+const { normalizeBridgeRoutingRules } = require('../../utils/bridgeRoutingRules')
 
 class GcpVertexAccountService {
   constructor() {
@@ -143,10 +144,12 @@ class GcpVertexAccountService {
       schedulable = true,
       rateLimitDuration = 60,
       subscriptionExpiresAt = null,
-      proxy = null
+      proxy = null,
+      bridgeRoutingRules = []
     } = options
 
     const { raw, parsed } = this._parseServiceAccountJson(serviceAccountJson)
+    const normalizedBridgeRoutingRules = normalizeBridgeRoutingRules(bridgeRoutingRules)
 
     const accountId = uuidv4()
     const now = new Date().toISOString()
@@ -172,6 +175,7 @@ class GcpVertexAccountService {
       rateLimitAutoStopped: '',
       proxy: proxy ? JSON.stringify(proxy) : '',
       status: 'active',
+      bridgeRoutingRules: normalizedBridgeRoutingRules,
       createdAt: now,
       updatedAt: now
     }
@@ -214,6 +218,7 @@ class GcpVertexAccountService {
       proxy: accountData.proxy ? JSON.parse(accountData.proxy) : null,
       status: accountData.status || 'active',
       platform: 'claude-vertex',
+      bridgeRoutingRules: normalizeBridgeRoutingRules(accountData.bridgeRoutingRules),
       hasCredentials: !!accountData.serviceAccountJson
     }
   }
@@ -318,6 +323,9 @@ class GcpVertexAccountService {
     }
     if (updates.rateLimitDuration !== undefined) {
       next.rateLimitDuration = updates.rateLimitDuration
+    }
+    if (updates.bridgeRoutingRules !== undefined) {
+      next.bridgeRoutingRules = normalizeBridgeRoutingRules(updates.bridgeRoutingRules)
     }
     if (updates.proxy !== undefined) {
       next.proxy = updates.proxy ? JSON.stringify(updates.proxy) : ''

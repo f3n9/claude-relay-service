@@ -1,19 +1,3 @@
-const mockRouter = {
-  get: jest.fn(),
-  post: jest.fn(),
-  put: jest.fn(),
-  patch: jest.fn(),
-  delete: jest.fn()
-}
-
-jest.mock(
-  'express',
-  () => ({
-    Router: () => mockRouter
-  }),
-  { virtual: true }
-)
-
 jest.mock('../src/middleware/auth', () => ({
   authenticateAdmin: jest.fn((_req, _res, next) => next())
 }))
@@ -72,20 +56,17 @@ function createResponse() {
 }
 
 function findPutHandler(path) {
-  const route = mockRouter.put.mock.calls.find((call) => call[0] === path)
-  return route?.[2]
+  const router = require('../src/routes/admin/apiKeys')
+  const routeLayer = router.stack.find(
+    (layer) => layer.route && layer.route.path === path && layer.route.methods.put
+  )
+  return routeLayer.route.stack[routeLayer.route.stack.length - 1].handle
 }
 
 describe('admin api keys route payload rule updates', () => {
   beforeEach(() => {
     jest.resetModules()
-    mockRouter.get.mockReset()
-    mockRouter.post.mockReset()
-    mockRouter.put.mockReset()
-    mockRouter.patch.mockReset()
-    mockRouter.delete.mockReset()
 
-    require('../src/routes/admin/apiKeys')
     apiKeyService = require('../src/services/apiKeyService')
     requestBodyRuleService = require('../src/services/requestBodyRuleService')
 

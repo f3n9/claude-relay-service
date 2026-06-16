@@ -27,6 +27,9 @@ jest.mock('../src/services/account/openaiResponsesAccountService', () => ({
 jest.mock('../src/services/account/azureOpenaiAccountService', () => ({ getAccount: jest.fn() }))
 jest.mock('../src/services/account/droidAccountService', () => ({ getAccount: jest.fn() }))
 jest.mock('../src/services/account/bedrockAccountService', () => ({ getAccount: jest.fn() }))
+jest.mock('../src/services/account/claudeOpenAIBridgeAccountService', () => ({
+  getAccount: jest.fn()
+}))
 jest.mock('../src/utils/costCalculator', () => ({
   calculateCost: jest.fn()
 }))
@@ -37,6 +40,7 @@ const claudeAccountService = require('../src/services/account/claudeAccountServi
 const claudeConsoleAccountService = require('../src/services/account/claudeConsoleAccountService')
 const openaiAccountService = require('../src/services/account/openaiAccountService')
 const bedrockAccountService = require('../src/services/account/bedrockAccountService')
+const claudeOpenAIBridgeAccountService = require('../src/services/account/claudeOpenAIBridgeAccountService')
 const CostCalculator = require('../src/utils/costCalculator')
 const requestDetailService = require('../src/services/requestDetailService')
 
@@ -890,6 +894,63 @@ describe('requestDetailService', () => {
     expect(result.records).toHaveLength(1)
     expect(result.records[0].accountName).toBe('My Bedrock Account')
     expect(result.records[0].accountTypeName).toBe('AWS Bedrock')
+  })
+
+  test('resolves Claude OpenAI bridge account names and preserves bridge source metadata', async () => {
+    claudeRelayConfigService.getConfig.mockResolvedValue({
+      requestDetailCaptureEnabled: true,
+      requestDetailRetentionHours: 6,
+      requestDetailBodyPreviewEnabled: true
+    })
+
+    redis.getApiKey.mockResolvedValue({ name: 'Bridge Key' })
+    claudeOpenAIBridgeAccountService.getAccount.mockResolvedValue({
+      id: 'bridge-1',
+      name: 'Bridge Account'
+    })
+
+    redis.getClient.mockReturnValue({
+      zrangebyscore: jest.fn().mockResolvedValue(['req_bridge', '1775563200000']),
+      mget: jest.fn().mockResolvedValue([
+        JSON.stringify({
+          requestId: 'req_bridge',
+          timestamp: '2026-04-07T12:00:00.000Z',
+          endpoint: '/api/v1/messages',
+          method: 'POST',
+          apiKeyId: 'key_bridge',
+          accountId: 'bridge-1',
+          accountType: 'claude-openai-bridge',
+          model: 'deepseek-v4-flash',
+          inputTokens: 100,
+          outputTokens: 50,
+          cost: 0.5,
+          durationMs: 1200,
+          bridgeSourceAccountId: 'vertex-1',
+          bridgeSourceAccountType: 'claude-vertex',
+          bridgeSourceAccountName: 'Vertex Source',
+          bridgeAccountId: 'bridge-1',
+          bridgeAccountName: 'Bridge Account',
+          bridgeTargetModel: 'DeepSeek-V4-Flash'
+        })
+      ])
+    })
+
+    const result = await requestDetailService.listRequestDetails({
+      startDate: '2026-04-07T00:00:00.000Z',
+      endDate: '2026-04-07T23:59:59.000Z'
+    })
+
+    expect(claudeOpenAIBridgeAccountService.getAccount).toHaveBeenCalledWith('bridge-1')
+    expect(result.records).toHaveLength(1)
+    expect(result.records[0]).toMatchObject({
+      accountName: 'Bridge Account',
+      accountType: 'claude-openai-bridge',
+      accountTypeName: 'Claude OpenAI Bridge',
+      bridgeSourceAccountId: 'vertex-1',
+      bridgeSourceAccountType: 'claude-vertex',
+      bridgeSourceAccountName: 'Vertex Source',
+      bridgeTargetModel: 'DeepSeek-V4-Flash'
+    })
   })
 
   test('handles bedrock { success: false } wrapper gracefully', async () => {

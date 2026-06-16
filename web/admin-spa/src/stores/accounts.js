@@ -7,6 +7,7 @@ import * as httpApis from '@/utils/http_apis'
 const PLATFORM_CONFIG = {
   claude: { endpoint: 'claude-accounts', stateKey: 'claudeAccounts' },
   'claude-console': { endpoint: 'claude-console-accounts', stateKey: 'claudeConsoleAccounts' },
+  ccr: { endpoint: 'ccr-accounts', stateKey: 'ccrAccounts' },
   bedrock: { endpoint: 'bedrock-accounts', stateKey: 'bedrockAccounts' },
   'claude-vertex': { endpoint: 'gcp-vertex-accounts', stateKey: 'gcpVertexAccounts' },
   gemini: { endpoint: 'gemini-accounts', stateKey: 'geminiAccounts' },
@@ -26,6 +27,7 @@ const PLATFORM_CONFIG = {
 export const useAccountsStore = defineStore('accounts', () => {
   const claudeAccounts = ref([])
   const claudeConsoleAccounts = ref([])
+  const ccrAccounts = ref([])
   const bedrockAccounts = ref([])
   const gcpVertexAccounts = ref([])
   const geminiAccounts = ref([])
@@ -44,6 +46,7 @@ export const useAccountsStore = defineStore('accounts', () => {
   const stateMap = {
     claudeAccounts,
     claudeConsoleAccounts,
+    ccrAccounts,
     bedrockAccounts,
     gcpVertexAccounts,
     geminiAccounts,
@@ -77,6 +80,7 @@ export const useAccountsStore = defineStore('accounts', () => {
   const fetchClaudeAccounts = () => fetchAccounts(httpApis.getClaudeAccountsApi, claudeAccounts)
   const fetchClaudeConsoleAccounts = () =>
     fetchAccounts(httpApis.getClaudeConsoleAccountsApi, claudeConsoleAccounts)
+  const fetchCcrAccounts = () => fetchAccounts(httpApis.getCcrAccountsApi, ccrAccounts)
   const fetchBedrockAccounts = () => fetchAccounts(httpApis.getBedrockAccountsApi, bedrockAccounts)
   const fetchGcpVertexAccounts = () =>
     fetchAccounts(httpApis.getGcpVertexAccountsApi, gcpVertexAccounts)
@@ -107,6 +111,7 @@ export const useAccountsStore = defineStore('accounts', () => {
     await Promise.all([
       fetchClaudeAccounts(),
       fetchClaudeConsoleAccounts(),
+      fetchCcrAccounts(),
       fetchBedrockAccounts(),
       fetchGcpVertexAccounts(),
       fetchGeminiAccounts(),
@@ -125,6 +130,8 @@ export const useAccountsStore = defineStore('accounts', () => {
     mutateAccount(httpApis.createClaudeAccountApi, fetchClaudeAccounts, data)
   const createClaudeConsoleAccount = (data) =>
     mutateAccount(httpApis.createClaudeConsoleAccountApi, fetchClaudeConsoleAccounts, data)
+  const createCcrAccount = (data) =>
+    mutateAccount(httpApis.createCcrAccountApi, fetchCcrAccounts, data)
   const createBedrockAccount = (data) =>
     mutateAccount(httpApis.createBedrockAccountApi, fetchBedrockAccounts, data)
   const createGcpVertexAccount = (data) =>
@@ -153,6 +160,8 @@ export const useAccountsStore = defineStore('accounts', () => {
     mutateAccount(httpApis.updateClaudeAccountApi, fetchClaudeAccounts, id, data)
   const updateClaudeConsoleAccount = (id, data) =>
     mutateAccount(httpApis.updateClaudeConsoleAccountApi, fetchClaudeConsoleAccounts, id, data)
+  const updateCcrAccount = (id, data) =>
+    mutateAccount(httpApis.updateCcrAccountApi, fetchCcrAccounts, id, data)
   const updateBedrockAccount = (id, data) =>
     mutateAccount(httpApis.updateBedrockAccountApi, fetchBedrockAccounts, id, data)
   const updateGcpVertexAccount = (id, data) =>
@@ -205,6 +214,7 @@ export const useAccountsStore = defineStore('accounts', () => {
       const fetchMap = {
         claude: fetchClaudeAccounts,
         'claude-console': fetchClaudeConsoleAccounts,
+        ccr: fetchCcrAccounts,
         bedrock: fetchBedrockAccounts,
         'claude-vertex': fetchGcpVertexAccounts,
         gemini: fetchGeminiAccounts,
@@ -313,6 +323,7 @@ export const useAccountsStore = defineStore('accounts', () => {
   const reset = () => {
     claudeAccounts.value = []
     claudeConsoleAccounts.value = []
+    ccrAccounts.value = []
     bedrockAccounts.value = []
     gcpVertexAccounts.value = []
     geminiAccounts.value = []
@@ -331,6 +342,7 @@ export const useAccountsStore = defineStore('accounts', () => {
   return {
     claudeAccounts,
     claudeConsoleAccounts,
+    ccrAccounts,
     bedrockAccounts,
     gcpVertexAccounts,
     geminiAccounts,
@@ -346,6 +358,7 @@ export const useAccountsStore = defineStore('accounts', () => {
     sortOrder,
     fetchClaudeAccounts,
     fetchClaudeConsoleAccounts,
+    fetchCcrAccounts,
     fetchBedrockAccounts,
     fetchGcpVertexAccounts,
     fetchGeminiAccounts,
@@ -358,6 +371,7 @@ export const useAccountsStore = defineStore('accounts', () => {
     fetchAllAccounts,
     createClaudeAccount,
     createClaudeConsoleAccount,
+    createCcrAccount,
     createBedrockAccount,
     createGcpVertexAccount,
     createGeminiAccount,
@@ -370,6 +384,7 @@ export const useAccountsStore = defineStore('accounts', () => {
     createGeminiApiAccount,
     updateClaudeAccount,
     updateClaudeConsoleAccount,
+    updateCcrAccount,
     updateBedrockAccount,
     updateGcpVertexAccount,
     updateGeminiAccount,

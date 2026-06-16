@@ -117,11 +117,13 @@ async function getVertexRequestRegion(accountType, accountId) {
   }
 }
 
-async function selectClaudeOpenAIBridgeAccount(sourceModel, apiKeyData = {}) {
+async function resolveClaudeOpenAIBridgeSelection(sourceAccountId, sourceAccountType, sourceModel) {
   try {
-    const claudeOpenAIBridgeAccountService = require('../services/account/claudeOpenAIBridgeAccountService')
-    return await claudeOpenAIBridgeAccountService.selectAccountForModel(sourceModel, {
-      boundAccountId: apiKeyData?.claudeOpenAIBridgeAccountId || ''
+    const claudeOpenAIBridgeSourceRoutingService = require('../services/claudeOpenAIBridgeSourceRoutingService')
+    return await claudeOpenAIBridgeSourceRoutingService.resolveBridgeSelection({
+      sourceAccountId,
+      sourceAccountType,
+      sourceModel
     })
   } catch (error) {
     if (
@@ -133,6 +135,32 @@ async function selectClaudeOpenAIBridgeAccount(sourceModel, apiKeyData = {}) {
     }
     throw error
   }
+}
+
+async function maybeHandleClaudeOpenAIBridgeRequest(req, res, accountId, accountType, sourceModel) {
+  const bridgeSelection = await resolveClaudeOpenAIBridgeSelection(
+    accountId,
+    accountType,
+    sourceModel || ''
+  )
+  if (!bridgeSelection) {
+    return false
+  }
+
+  logger.api('🌉 /v1/messages selected account delegated to Claude OpenAI bridge', {
+    sourceAccountId: bridgeSelection.sourceAccount?.id || accountId,
+    sourceAccountType: bridgeSelection.sourceAccount?.type || accountType,
+    sourceAccountName: bridgeSelection.sourceAccount?.name || '',
+    sourceModel: bridgeSelection.mapping?.sourceModel || sourceModel || '',
+    targetModel: bridgeSelection.mapping?.targetModel || '',
+    bridgeAccountId: bridgeSelection.account?.id || '',
+    bridgeAccountName: bridgeSelection.account?.name || '',
+    stream: req.body.stream === true
+  })
+
+  const claudeOpenAIBridgeRelayService = require('../services/relay/claudeOpenAIBridgeRelayService')
+  await claudeOpenAIBridgeRelayService.handleRequest(req, res, bridgeSelection)
+  return true
 }
 
 /**
@@ -296,19 +324,6 @@ async function handleMessagesRequest(req, res) {
     if (forcedVendor === 'gemini-cli' || forcedVendor === 'antigravity') {
       const baseModel = (req.body.model || '').trim()
       return await handleAnthropicMessagesToGemini(req, res, { vendor: forcedVendor, baseModel })
-    }
-
-    const bridgeSelection = await selectClaudeOpenAIBridgeAccount(req.body.model || '', req.apiKey)
-    if (bridgeSelection) {
-      logger.api('🌉 /v1/messages matched Claude OpenAI bridge mapping', {
-        sourceModel: bridgeSelection.mapping?.sourceModel || req.body.model || '',
-        targetModel: bridgeSelection.mapping?.targetModel || '',
-        bridgeAccountId: bridgeSelection.account?.id || '',
-        bridgeAccountName: bridgeSelection.account?.name || '',
-        stream: req.body.stream === true
-      })
-      const claudeOpenAIBridgeRelayService = require('../services/relay/claudeOpenAIBridgeRelayService')
-      return await claudeOpenAIBridgeRelayService.handleRequest(req, res, bridgeSelection)
     }
 
     // 检查是否为流式请求
@@ -480,6 +495,7 @@ async function handleMessagesRequest(req, res) {
       }
 
       const vertexRequestRegion = await getVertexRequestRegion(accountType, accountId)
+
       // 🔗 在成功调度后建立会话绑定（仅 claude-official 类型）
       // claude-official 只接受：1) 新会话 2) 已绑定的会话
       if (
@@ -523,6 +539,12 @@ async function handleMessagesRequest(req, res) {
             return res.json(buildMockWarmupResponse(req.body.model))
           }
         }
+      }
+
+      if (
+        await maybeHandleClaudeOpenAIBridgeRequest(req, res, accountId, accountType, requestedModel)
+      ) {
+        return undefined
       }
 
       // 根据账号类型选择对应的转发服务并调用
@@ -1368,6 +1390,12 @@ async function handleMessagesRequest(req, res) {
           )
           return res.json(buildMockWarmupResponse(_requestBodyNonStream.model))
         }
+      }
+
+      if (
+        await maybeHandleClaudeOpenAIBridgeRequest(req, res, accountId, accountType, requestedModel)
+      ) {
+        return undefined
       }
 
       // 根据账号类型选择对应的转发服务

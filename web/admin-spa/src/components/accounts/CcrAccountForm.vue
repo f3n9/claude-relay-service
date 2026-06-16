@@ -227,6 +227,72 @@
             </button>
           </div>
 
+          <div
+            class="space-y-3 rounded-lg border border-indigo-200 bg-indigo-50 p-4 dark:border-indigo-700 dark:bg-indigo-900/20"
+          >
+            <div class="flex items-center justify-between gap-3">
+              <label class="block text-sm font-semibold text-gray-700 dark:text-gray-300">
+                Claude OpenAI Bridge 分流策略
+              </label>
+              <button
+                class="rounded-lg bg-indigo-100 px-3 py-1.5 text-xs font-medium text-indigo-700 transition-colors hover:bg-indigo-200 dark:bg-indigo-900/40 dark:text-indigo-300 dark:hover:bg-indigo-900/60"
+                type="button"
+                @click="addBridgeRoutingRule"
+              >
+                <i class="fas fa-plus mr-1" />
+                添加
+              </button>
+            </div>
+
+            <div class="space-y-2">
+              <div
+                v-for="(rule, index) in form.bridgeRoutingRules"
+                :key="index"
+                class="grid grid-cols-1 items-center gap-2 sm:grid-cols-[1fr_1fr_1fr_auto_auto]"
+              >
+                <input
+                  v-model="rule.sourceModel"
+                  class="form-input min-w-0 border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200 dark:placeholder-gray-400"
+                  placeholder="原模型"
+                  type="text"
+                />
+                <select
+                  v-model="rule.bridgeAccountId"
+                  class="form-input min-w-0 border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200"
+                >
+                  <option value="">选择 Bridge 账户</option>
+                  <option
+                    v-for="bridgeAccount in bridgeRoutingAccountOptions"
+                    :key="bridgeAccount.id"
+                    :value="bridgeAccount.id"
+                  >
+                    {{ bridgeAccount.name || bridgeAccount.id }}
+                  </option>
+                  <option v-if="bridgeRoutingAccountOptions.length === 0" disabled value="">
+                    暂无 Bridge 账户
+                  </option>
+                </select>
+                <input
+                  v-model="rule.targetModel"
+                  class="form-input min-w-0 border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200 dark:placeholder-gray-400"
+                  placeholder="新模型"
+                  type="text"
+                />
+                <label class="flex items-center gap-1 text-sm text-gray-600 dark:text-gray-300">
+                  <input v-model="rule.enabled" type="checkbox" />
+                  启用
+                </label>
+                <button
+                  class="rounded-lg p-2 text-red-500 transition-colors hover:bg-red-50 dark:hover:bg-red-900/20"
+                  type="button"
+                  @click="removeBridgeRoutingRule(index)"
+                >
+                  <i class="fas fa-trash" />
+                </button>
+              </div>
+            </div>
+          </div>
+
           <!-- 代理配置 -->
           <div>
             <ProxyConfig v-model="form.proxy" />
@@ -262,6 +328,7 @@ import { ref, computed, watch, onMounted } from 'vue'
 import { updateCcrAccountApi, createCcrAccountApi } from '@/utils/http_apis'
 import { showToast } from '@/utils/tools'
 import ProxyConfig from '@/components/accounts/ProxyConfig.vue'
+import { useAccountsStore } from '@/stores/accounts'
 
 const props = defineProps({
   account: {
@@ -272,6 +339,7 @@ const props = defineProps({
 
 const emit = defineEmits(['close', 'success'])
 
+const accountsStore = useAccountsStore()
 const show = ref(true)
 const isEdit = computed(() => !!props.account)
 const loading = ref(false)
@@ -287,13 +355,59 @@ const form = ref({
   dailyQuota: 0,
   quotaResetTime: '00:00',
   proxy: null,
-  supportedModels: {}
+  supportedModels: {},
+  bridgeRoutingRules: []
 })
 
 const enableRateLimit = ref(true)
 const errors = ref({})
 
 const modelMappings = ref([]) // [{from,to}]
+const bridgeRoutingAccountOptions = computed(() => accountsStore.claudeOpenAIBridgeAccounts || [])
+
+const cloneBridgeRoutingRules = (rules) => {
+  if (!Array.isArray(rules)) {
+    return []
+  }
+
+  return rules.map((rule) => ({
+    sourceModel: rule.sourceModel || '',
+    bridgeAccountId: rule.bridgeAccountId || '',
+    targetModel: rule.targetModel || '',
+    enabled: rule.enabled !== false
+  }))
+}
+
+const addBridgeRoutingRule = () => {
+  form.value.bridgeRoutingRules.push({
+    sourceModel: '',
+    bridgeAccountId: '',
+    targetModel: '',
+    enabled: true
+  })
+}
+
+const removeBridgeRoutingRule = (index) => {
+  form.value.bridgeRoutingRules.splice(index, 1)
+}
+
+const cleanBridgeRoutingRules = () =>
+  (form.value.bridgeRoutingRules || [])
+    .map((rule) => ({
+      sourceModel: (rule.sourceModel || '').trim(),
+      bridgeAccountId: (rule.bridgeAccountId || '').trim(),
+      targetModel: (rule.targetModel || '').trim(),
+      enabled: rule.enabled !== false
+    }))
+    .filter((rule) => rule.sourceModel && rule.bridgeAccountId && rule.targetModel)
+
+const loadBridgeRoutingAccounts = async () => {
+  try {
+    await accountsStore.fetchClaudeOpenAIBridgeAccounts?.()
+  } catch (error) {
+    showToast('加载 Claude OpenAI Bridge 账户失败', 'error')
+  }
+}
 
 const buildSupportedModels = () => {
   const map = {}
@@ -339,7 +453,8 @@ const submit = async () => {
         dailyQuota: Number(form.value.dailyQuota || 0),
         quotaResetTime: form.value.quotaResetTime || '00:00',
         proxy: form.value.proxy || null,
-        supportedModels: buildSupportedModels()
+        supportedModels: buildSupportedModels(),
+        bridgeRoutingRules: cleanBridgeRoutingRules()
       }
       if (form.value.apiKey && form.value.apiKey.trim().length > 0) {
         updates.apiKey = form.value.apiKey
@@ -365,7 +480,8 @@ const submit = async () => {
         proxy: form.value.proxy,
         accountType: 'shared',
         dailyQuota: Number(form.value.dailyQuota || 0),
-        quotaResetTime: form.value.quotaResetTime || '00:00'
+        quotaResetTime: form.value.quotaResetTime || '00:00',
+        bridgeRoutingRules: cleanBridgeRoutingRules()
       }
       const res = await createCcrAccountApi(payload)
       if (res.success) {
@@ -394,6 +510,7 @@ const populateFromAccount = () => {
   form.value.dailyQuota = Number(a.dailyQuota || 0)
   form.value.quotaResetTime = a.quotaResetTime || '00:00'
   form.value.proxy = a.proxy || null
+  form.value.bridgeRoutingRules = cloneBridgeRoutingRules(a.bridgeRoutingRules)
   enableRateLimit.value = form.value.rateLimitDuration > 0
 
   // supportedModels 对象转为数组
@@ -408,6 +525,7 @@ const populateFromAccount = () => {
 
 onMounted(() => {
   if (isEdit.value) populateFromAccount()
+  loadBridgeRoutingAccounts()
 })
 
 watch(

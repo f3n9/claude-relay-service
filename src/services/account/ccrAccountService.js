@@ -4,6 +4,10 @@ const redis = require('../../models/redis')
 const logger = require('../../utils/logger')
 const { createEncryptor } = require('../../utils/commonHelper')
 const upstreamErrorHelper = require('../../utils/upstreamErrorHelper')
+const {
+  normalizeBridgeRoutingRules,
+  parseBridgeRoutingRules
+} = require('../../utils/bridgeRoutingRules')
 
 class CcrAccountService {
   constructor() {
@@ -41,7 +45,8 @@ class CcrAccountService {
       schedulable = true, // 是否可被调度
       dailyQuota = 0, // 每日额度限制（美元），0表示不限制
       quotaResetTime = '00:00', // 额度重置时间（HH:mm格式）
-      disableAutoProtection = false // 是否关闭自动防护（429/401/400/529 不自动禁用）
+      disableAutoProtection = false, // 是否关闭自动防护（429/401/400/529 不自动禁用）
+      bridgeRoutingRules = [] // 选中该账号后按模型分流到 Claude OpenAI bridge 账号
     } = options
 
     // 验证必填字段
@@ -53,6 +58,7 @@ class CcrAccountService {
 
     // 处理 supportedModels，确保向后兼容
     const processedModels = this._processModelMapping(supportedModels)
+    const normalizedBridgeRoutingRules = normalizeBridgeRoutingRules(bridgeRoutingRules)
 
     const accountData = {
       id: accountId,
@@ -89,7 +95,8 @@ class CcrAccountService {
       lastResetDate: redis.getDateStringInTimezone(), // 最后重置日期（按配置时区）
       quotaResetTime, // 额度重置时间
       quotaStoppedAt: '', // 因额度停用的时间
-      disableAutoProtection: disableAutoProtection.toString() // 关闭自动防护
+      disableAutoProtection: disableAutoProtection.toString(), // 关闭自动防护
+      bridgeRoutingRules: JSON.stringify(normalizedBridgeRoutingRules)
     }
 
     const client = redis.getClientSafe()
@@ -126,7 +133,8 @@ class CcrAccountService {
       dailyUsage: 0,
       lastResetDate: accountData.lastResetDate,
       quotaResetTime,
-      quotaStoppedAt: null
+      quotaStoppedAt: null,
+      bridgeRoutingRules: normalizedBridgeRoutingRules
     }
   }
 
@@ -179,7 +187,8 @@ class CcrAccountService {
             lastResetDate: accountData.lastResetDate || '',
             quotaResetTime: accountData.quotaResetTime || '00:00',
             quotaStoppedAt: accountData.quotaStoppedAt || null,
-            disableAutoProtection: accountData.disableAutoProtection === 'true'
+            disableAutoProtection: accountData.disableAutoProtection === 'true',
+            bridgeRoutingRules: parseBridgeRoutingRules(accountData.bridgeRoutingRules)
           })
         }
       }
@@ -218,6 +227,7 @@ class CcrAccountService {
     logger.debug(`[DEBUG] Parsed supportedModels: ${JSON.stringify(parsedModels)}`)
 
     accountData.supportedModels = parsedModels
+    accountData.bridgeRoutingRules = parseBridgeRoutingRules(accountData.bridgeRoutingRules)
     accountData.priority = parseInt(accountData.priority) || 50
     {
       const _parsedDuration = parseInt(accountData.rateLimitDuration)
@@ -281,6 +291,11 @@ class CcrAccountService {
       }
       if (updates.rateLimitDuration !== undefined) {
         updatedData.rateLimitDuration = updates.rateLimitDuration.toString()
+      }
+      if (updates.bridgeRoutingRules !== undefined) {
+        updatedData.bridgeRoutingRules = JSON.stringify(
+          normalizeBridgeRoutingRules(updates.bridgeRoutingRules)
+        )
       }
       if (updates.proxy !== undefined) {
         updatedData.proxy = updates.proxy ? JSON.stringify(updates.proxy) : ''

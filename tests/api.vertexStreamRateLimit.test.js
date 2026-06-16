@@ -14,6 +14,10 @@ jest.mock('../src/services/account/claudeOpenAIBridgeAccountService', () => ({
   selectAccountForModel: jest.fn(async () => null)
 }))
 
+jest.mock('../src/services/claudeOpenAIBridgeSourceRoutingService', () => ({
+  resolveBridgeSelection: jest.fn(async () => null)
+}))
+
 jest.mock('../src/services/apiKeyService', () => ({
   hasPermission: jest.fn(),
   recordUsageWithDetails: jest.fn()

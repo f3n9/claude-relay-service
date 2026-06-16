@@ -2636,6 +2636,73 @@
               </div>
             </div>
 
+            <div
+              v-if="isSourceAccountBridgeRoutingSupported"
+              class="space-y-3 rounded-lg border border-indigo-200 bg-indigo-50 p-4 dark:border-indigo-700 dark:bg-indigo-900/20"
+            >
+              <div class="flex items-center justify-between gap-3">
+                <label class="block text-sm font-semibold text-gray-700 dark:text-gray-300">
+                  Claude OpenAI Bridge 分流策略
+                </label>
+                <button
+                  class="rounded-lg bg-indigo-100 px-3 py-1.5 text-xs font-medium text-indigo-700 transition-colors hover:bg-indigo-200 dark:bg-indigo-900/40 dark:text-indigo-300 dark:hover:bg-indigo-900/60"
+                  type="button"
+                  @click="addBridgeRoutingRule"
+                >
+                  <i class="fas fa-plus mr-1" />
+                  添加
+                </button>
+              </div>
+
+              <div class="space-y-2">
+                <div
+                  v-for="(rule, index) in form.bridgeRoutingRules"
+                  :key="index"
+                  class="grid grid-cols-1 items-center gap-2 sm:grid-cols-[1fr_1fr_1fr_auto_auto]"
+                >
+                  <input
+                    v-model="rule.sourceModel"
+                    class="form-input min-w-0 border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200 dark:placeholder-gray-400"
+                    placeholder="原模型"
+                    type="text"
+                  />
+                  <select
+                    v-model="rule.bridgeAccountId"
+                    class="form-input min-w-0 border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200"
+                  >
+                    <option value="">选择 Bridge 账户</option>
+                    <option
+                      v-for="bridgeAccount in bridgeRoutingAccountOptions"
+                      :key="bridgeAccount.id"
+                      :value="bridgeAccount.id"
+                    >
+                      {{ bridgeAccount.name || bridgeAccount.id }}
+                    </option>
+                    <option v-if="bridgeRoutingAccountOptions.length === 0" disabled value="">
+                      暂无 Bridge 账户
+                    </option>
+                  </select>
+                  <input
+                    v-model="rule.targetModel"
+                    class="form-input min-w-0 border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200 dark:placeholder-gray-400"
+                    placeholder="新模型"
+                    type="text"
+                  />
+                  <label class="flex items-center gap-1 text-sm text-gray-600 dark:text-gray-300">
+                    <input v-model="rule.enabled" type="checkbox" />
+                    启用
+                  </label>
+                  <button
+                    class="rounded-lg p-2 text-red-500 transition-colors hover:bg-red-50 dark:hover:bg-red-900/20"
+                    type="button"
+                    @click="removeBridgeRoutingRule(index)"
+                  >
+                    <i class="fas fa-trash" />
+                  </button>
+                </div>
+              </div>
+            </div>
+
             <!-- 代理设置 -->
             <ProxyConfig v-model="form.proxy" />
 
@@ -4619,6 +4686,73 @@
             </p>
           </div>
 
+          <div
+            v-if="isSourceAccountBridgeRoutingSupported"
+            class="space-y-3 rounded-lg border border-indigo-200 bg-indigo-50 p-4 dark:border-indigo-700 dark:bg-indigo-900/20"
+          >
+            <div class="flex items-center justify-between gap-3">
+              <label class="block text-sm font-semibold text-gray-700 dark:text-gray-300">
+                Claude OpenAI Bridge 分流策略
+              </label>
+              <button
+                class="rounded-lg bg-indigo-100 px-3 py-1.5 text-xs font-medium text-indigo-700 transition-colors hover:bg-indigo-200 dark:bg-indigo-900/40 dark:text-indigo-300 dark:hover:bg-indigo-900/60"
+                type="button"
+                @click="addBridgeRoutingRule"
+              >
+                <i class="fas fa-plus mr-1" />
+                添加
+              </button>
+            </div>
+
+            <div class="space-y-2">
+              <div
+                v-for="(rule, index) in form.bridgeRoutingRules"
+                :key="index"
+                class="grid grid-cols-1 items-center gap-2 sm:grid-cols-[1fr_1fr_1fr_auto_auto]"
+              >
+                <input
+                  v-model="rule.sourceModel"
+                  class="form-input min-w-0 border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200 dark:placeholder-gray-400"
+                  placeholder="原模型"
+                  type="text"
+                />
+                <select
+                  v-model="rule.bridgeAccountId"
+                  class="form-input min-w-0 border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200"
+                >
+                  <option value="">选择 Bridge 账户</option>
+                  <option
+                    v-for="bridgeAccount in bridgeRoutingAccountOptions"
+                    :key="bridgeAccount.id"
+                    :value="bridgeAccount.id"
+                  >
+                    {{ bridgeAccount.name || bridgeAccount.id }}
+                  </option>
+                  <option v-if="bridgeRoutingAccountOptions.length === 0" disabled value="">
+                    暂无 Bridge 账户
+                  </option>
+                </select>
+                <input
+                  v-model="rule.targetModel"
+                  class="form-input min-w-0 border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200 dark:placeholder-gray-400"
+                  placeholder="新模型"
+                  type="text"
+                />
+                <label class="flex items-center gap-1 text-sm text-gray-600 dark:text-gray-300">
+                  <input v-model="rule.enabled" type="checkbox" />
+                  启用
+                </label>
+                <button
+                  class="rounded-lg p-2 text-red-500 transition-colors hover:bg-red-50 dark:hover:bg-red-900/20"
+                  type="button"
+                  @click="removeBridgeRoutingRule(index)"
+                >
+                  <i class="fas fa-trash" />
+                </button>
+              </div>
+            </div>
+          </div>
+
           <!-- 代理设置 -->
           <ProxyConfig v-model="form.proxy" />
 
@@ -4736,6 +4870,14 @@ const autoProtectionPlatforms = [
   'gemini-api',
   'openai',
   'openai-responses'
+]
+
+const sourceAccountPlatformsWithBridgeRouting = [
+  'claude',
+  'claude-console',
+  'claude-vertex',
+  'bedrock',
+  'ccr'
 ]
 
 // OAuthFlow 组件引用
@@ -4967,6 +5109,37 @@ const cloneBridgeMappings = (mappings) => {
   }))
 }
 
+const cloneBridgeRoutingRules = (rules) => {
+  if (!Array.isArray(rules)) {
+    return []
+  }
+
+  return rules.map((rule) => ({
+    sourceModel: rule.sourceModel || '',
+    bridgeAccountId: rule.bridgeAccountId || '',
+    targetModel: rule.targetModel || '',
+    enabled: rule.enabled !== false
+  }))
+}
+
+const isSourceAccountBridgeRoutingSupported = computed(() =>
+  sourceAccountPlatformsWithBridgeRouting.includes(form.value.platform)
+)
+
+const bridgeRoutingAccountOptions = computed(() => accountsStore.claudeOpenAIBridgeAccounts || [])
+
+const loadBridgeRoutingAccounts = async () => {
+  if (!isSourceAccountBridgeRoutingSupported.value) {
+    return
+  }
+
+  try {
+    await accountsStore.fetchClaudeOpenAIBridgeAccounts?.()
+  } catch (error) {
+    showToast('加载 Claude OpenAI Bridge 账户失败', 'error')
+  }
+}
+
 // 表单数据
 const form = ref({
   platform: props.account?.platform || 'claude',
@@ -5004,6 +5177,7 @@ const form = ref({
   apiKey: props.account?.apiKey || '',
   priority: props.account?.priority || 50,
   bridgeModelMappings: cloneBridgeMappings(props.account?.modelMappings),
+  bridgeRoutingRules: cloneBridgeRoutingRules(props.account?.bridgeRoutingRules),
   endpointType: props.account?.endpointType || 'anthropic',
   // OpenAI-Responses 特定字段
   baseApi: props.account?.baseApi || '',
@@ -5616,6 +5790,7 @@ const buildClaudeAccountData = (tokenInfo, accountName, clientId) => {
     useUnifiedClientId: form.value.useUnifiedClientId || false,
     unifiedClientId: clientId,
     maxConcurrency: form.value.serialQueueEnabled ? 1 : 0,
+    bridgeRoutingRules: cleanBridgeRoutingRules(),
     subscriptionInfo: {
       accountType: form.value.subscriptionType || 'claude_max',
       hasClaudeMax: form.value.subscriptionType === 'claude_max',
@@ -5754,6 +5929,7 @@ const handleOAuthSuccess = async (tokenInfoOrList) => {
       data.useUnifiedClientId = form.value.useUnifiedClientId || false
       data.unifiedClientId = form.value.unifiedClientId || ''
       data.maxConcurrency = form.value.serialQueueEnabled ? 1 : 0
+      data.bridgeRoutingRules = cleanBridgeRoutingRules()
       Object.assign(data, buildClaudeTempUnavailablePolicyPayload())
       // 添加订阅类型信息
       data.subscriptionInfo = {
@@ -6117,6 +6293,7 @@ const createAccount = async () => {
       data.useUnifiedClientId = form.value.useUnifiedClientId || false
       data.unifiedClientId = form.value.unifiedClientId || ''
       data.maxConcurrency = form.value.serialQueueEnabled ? 1 : 0
+      data.bridgeRoutingRules = cleanBridgeRoutingRules()
       // 添加订阅类型信息
       data.subscriptionInfo = {
         accountType: form.value.subscriptionType || 'claude_max',
@@ -6215,6 +6392,7 @@ const createAccount = async () => {
       data.quotaResetTime = form.value.quotaResetTime || '00:00'
       // 并发控制字段
       data.maxConcurrentTasks = form.value.maxConcurrentTasks || 0
+      data.bridgeRoutingRules = cleanBridgeRoutingRules()
     } else if (form.value.platform === 'claude-vertex') {
       // GCP Vertex Claude 账户特定数据
       data.serviceAccountJson = form.value.serviceAccountJson?.trim()
@@ -6226,6 +6404,7 @@ const createAccount = async () => {
       data.anthropicVersion = form.value.anthropicVersion || 'vertex-2023-10-16'
       data.priority = form.value.priority || 50
       data.rateLimitDuration = form.value.enableRateLimit ? form.value.rateLimitDuration || 60 : 0
+      data.bridgeRoutingRules = cleanBridgeRoutingRules()
     } else if (form.value.platform === 'openai-responses') {
       // OpenAI-Responses 账户特定数据
       data.baseApi = form.value.baseApi
@@ -6284,6 +6463,7 @@ const createAccount = async () => {
       data.priority = form.value.priority || 50
       // 如果不启用限流，传递 0 表示不限流
       data.rateLimitDuration = form.value.enableRateLimit ? form.value.rateLimitDuration || 60 : 0
+      data.bridgeRoutingRules = cleanBridgeRoutingRules()
     } else if (form.value.platform === 'azure_openai') {
       // Azure OpenAI 账户特定数据
       data.azureEndpoint = form.value.azureEndpoint
@@ -6299,6 +6479,10 @@ const createAccount = async () => {
     }
 
     // 支持 disableAutoProtection 的平台才写入
+    if (isSourceAccountBridgeRoutingSupported.value) {
+      data.bridgeRoutingRules = cleanBridgeRoutingRules()
+    }
+
     if (autoProtectionPlatforms.includes(form.value.platform)) {
       data.disableAutoProtection = !!form.value.disableAutoProtection
     }
@@ -6306,9 +6490,10 @@ const createAccount = async () => {
     let result
     if (form.value.platform === 'claude') {
       result = await accountsStore.createClaudeAccount(data)
-    } else if (form.value.platform === 'claude-console' || form.value.platform === 'ccr') {
-      // CCR 使用 Claude Console 的后端 API
+    } else if (form.value.platform === 'claude-console') {
       result = await accountsStore.createClaudeConsoleAccount(data)
+    } else if (form.value.platform === 'ccr') {
+      result = await accountsStore.createCcrAccount(data)
     } else if (form.value.platform === 'claude-vertex') {
       result = await accountsStore.createGcpVertexAccount(data)
     } else if (form.value.platform === 'droid') {
@@ -6740,6 +6925,10 @@ const updateAccount = async () => {
     }
 
     // 支持 disableAutoProtection 的平台才写入
+    if (isSourceAccountBridgeRoutingSupported.value) {
+      data.bridgeRoutingRules = cleanBridgeRoutingRules()
+    }
+
     if (autoProtectionPlatforms.includes(props.account.platform)) {
       data.disableAutoProtection = !!form.value.disableAutoProtection
     }
@@ -6748,6 +6937,8 @@ const updateAccount = async () => {
       await accountsStore.updateClaudeAccount(props.account.id, data)
     } else if (props.account.platform === 'claude-console') {
       await accountsStore.updateClaudeConsoleAccount(props.account.id, data)
+    } else if (props.account.platform === 'ccr') {
+      await accountsStore.updateCcrAccount(props.account.id, data)
     } else if (props.account.platform === 'claude-vertex') {
       await accountsStore.updateGcpVertexAccount(props.account.id, data)
     } else if (props.account.platform === 'openai-responses') {
@@ -7223,6 +7414,29 @@ const cleanBridgeMappings = () =>
     }))
     .filter((mapping) => mapping.sourceModel && mapping.targetModel)
 
+const addBridgeRoutingRule = () => {
+  form.value.bridgeRoutingRules.push({
+    sourceModel: '',
+    bridgeAccountId: '',
+    targetModel: '',
+    enabled: true
+  })
+}
+
+const removeBridgeRoutingRule = (index) => {
+  form.value.bridgeRoutingRules.splice(index, 1)
+}
+
+const cleanBridgeRoutingRules = () =>
+  (form.value.bridgeRoutingRules || [])
+    .map((rule) => ({
+      sourceModel: (rule.sourceModel || '').trim(),
+      bridgeAccountId: (rule.bridgeAccountId || '').trim(),
+      targetModel: (rule.targetModel || '').trim(),
+      enabled: rule.enabled !== false
+    }))
+    .filter((rule) => rule.sourceModel && rule.bridgeAccountId && rule.targetModel)
+
 // 监听账户变化，更新表单
 watch(
   () => props.account,
@@ -7297,6 +7511,7 @@ watch(
         apiKey: '', // 编辑模式不显示现有的 API Key
         priority: newAccount.priority || 50,
         bridgeModelMappings: cloneBridgeMappings(newAccount.modelMappings),
+        bridgeRoutingRules: cloneBridgeRoutingRules(newAccount.bridgeRoutingRules),
         supportedModels: (() => {
           const models = newAccount.supportedModels
           if (!models) return []
@@ -7557,6 +7772,8 @@ onMounted(() => {
   if (isEdit.value && props.account?.platform === 'claude-console') {
     loadAccountUsage()
   }
+
+  loadBridgeRoutingAccounts()
 })
 
 // 监听平台变化，当切换到Claude平台时获取统一User-Agent信息
@@ -7565,6 +7782,9 @@ watch(
   (newPlatform) => {
     if (newPlatform === 'claude') {
       fetchUnifiedUserAgent()
+    }
+    if (sourceAccountPlatformsWithBridgeRouting.includes(newPlatform)) {
+      loadBridgeRoutingAccounts()
     }
   }
 )

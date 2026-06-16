@@ -11,6 +11,7 @@ const openaiResponsesAccountService = require('./account/openaiResponsesAccountS
 const azureOpenaiAccountService = require('./account/azureOpenaiAccountService')
 const droidAccountService = require('./account/droidAccountService')
 const bedrockAccountService = require('./account/bedrockAccountService')
+const claudeOpenAIBridgeAccountService = require('./account/claudeOpenAIBridgeAccountService')
 const CostCalculator = require('../utils/costCalculator')
 const {
   sanitizeRequestBodySnapshot,
@@ -36,6 +37,7 @@ const accountTypeNames = {
   claude: 'Claude官方',
   'claude-official': 'Claude官方',
   'claude-console': 'Claude Console',
+  'claude-openai-bridge': 'Claude OpenAI Bridge',
   ccr: 'Claude Console Relay',
   openai: 'OpenAI',
   'openai-responses': 'OpenAI Responses',
@@ -50,6 +52,7 @@ const accountTypeNames = {
 const accountServices = {
   claude: claudeAccountService,
   'claude-console': claudeConsoleAccountService,
+  'claude-openai-bridge': claudeOpenAIBridgeAccountService,
   ccr: ccrAccountService,
   openai: openaiAccountService,
   'openai-responses': openaiResponsesAccountService,

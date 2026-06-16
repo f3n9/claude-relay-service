@@ -23,6 +23,10 @@ const {
   normalizeOptionalNonNegativeInteger,
   normalizeTempUnavailablePolicyInput
 } = require('../../utils/tempUnavailablePolicy')
+const {
+  normalizeBridgeRoutingRules,
+  parseBridgeRoutingRules
+} = require('../../utils/bridgeRoutingRules')
 
 /**
  * Check if account is Pro (not Max)
@@ -103,7 +107,8 @@ class ClaudeAccountService {
       interceptWarmup = false, // 拦截预热请求（标题生成、Warmup等）
       disableTempUnavailable = false, // 是否禁用账号级临时冷却（temp_unavailable）
       tempUnavailable503TtlSeconds = null, // 账号级 503 冷却秒数（null 跟随全局）
-      tempUnavailable5xxTtlSeconds = null // 账号级 5xx 冷却秒数（null 跟随全局）
+      tempUnavailable5xxTtlSeconds = null, // 账号级 5xx 冷却秒数（null 跟随全局）
+      bridgeRoutingRules = [] // 选中该账号后按模型分流到 Claude OpenAI bridge 账号
     } = options
 
     const accountId = uuidv4()
@@ -114,6 +119,7 @@ class ClaudeAccountService {
     })
     const normalized503Ttl = normalizedTempUnavailablePolicy.tempUnavailable503TtlSeconds
     const normalized5xxTtl = normalizedTempUnavailablePolicy.tempUnavailable5xxTtlSeconds
+    const normalizedBridgeRoutingRules = normalizeBridgeRoutingRules(bridgeRoutingRules)
 
     let accountData
     const normalizedExtInfo = this._normalizeExtInfo(extInfo, claudeAiOauth)
@@ -163,7 +169,8 @@ class ClaudeAccountService {
         // 账号级临时冷却覆盖（空字符串表示跟随全局配置）
         disableTempUnavailable: normalizedTempUnavailablePolicy.disableTempUnavailable.toString(),
         tempUnavailable503TtlSeconds: normalized503Ttl !== null ? normalized503Ttl.toString() : '',
-        tempUnavailable5xxTtlSeconds: normalized5xxTtl !== null ? normalized5xxTtl.toString() : ''
+        tempUnavailable5xxTtlSeconds: normalized5xxTtl !== null ? normalized5xxTtl.toString() : '',
+        bridgeRoutingRules: JSON.stringify(normalizedBridgeRoutingRules)
       }
     } else {
       // 兼容旧格式
@@ -203,7 +210,8 @@ class ClaudeAccountService {
         // 账号级临时冷却覆盖（空字符串表示跟随全局配置）
         disableTempUnavailable: normalizedTempUnavailablePolicy.disableTempUnavailable.toString(),
         tempUnavailable503TtlSeconds: normalized503Ttl !== null ? normalized503Ttl.toString() : '',
-        tempUnavailable5xxTtlSeconds: normalized5xxTtl !== null ? normalized5xxTtl.toString() : ''
+        tempUnavailable5xxTtlSeconds: normalized5xxTtl !== null ? normalized5xxTtl.toString() : '',
+        bridgeRoutingRules: JSON.stringify(normalizedBridgeRoutingRules)
       }
     }
 
@@ -255,7 +263,8 @@ class ClaudeAccountService {
       interceptWarmup,
       disableTempUnavailable: normalizedTempUnavailablePolicy.disableTempUnavailable,
       tempUnavailable503TtlSeconds: normalized503Ttl,
-      tempUnavailable5xxTtlSeconds: normalized5xxTtl
+      tempUnavailable5xxTtlSeconds: normalized5xxTtl,
+      bridgeRoutingRules: normalizedBridgeRoutingRules
     }
   }
 
@@ -479,7 +488,10 @@ class ClaudeAccountService {
         return null
       }
 
-      return accountData
+      return {
+        ...accountData,
+        bridgeRoutingRules: parseBridgeRoutingRules(accountData.bridgeRoutingRules)
+      }
     } catch (error) {
       logger.error('❌ Failed to get Claude account:', error)
       return null
@@ -657,7 +669,8 @@ class ClaudeAccountService {
             tempUnavailable503TtlSeconds:
               normalizedTempUnavailablePolicy.tempUnavailable503TtlSeconds,
             tempUnavailable5xxTtlSeconds:
-              normalizedTempUnavailablePolicy.tempUnavailable5xxTtlSeconds
+              normalizedTempUnavailablePolicy.tempUnavailable5xxTtlSeconds,
+            bridgeRoutingRules: parseBridgeRoutingRules(account.bridgeRoutingRules)
           }
         })
       )
@@ -754,7 +767,8 @@ class ClaudeAccountService {
         'interceptWarmup',
         'disableTempUnavailable',
         'tempUnavailable503TtlSeconds',
-        'tempUnavailable5xxTtlSeconds'
+        'tempUnavailable5xxTtlSeconds',
+        'bridgeRoutingRules'
       ]
       const updatedData = { ...accountData }
       let shouldClearAutoStopFields = false
@@ -785,6 +799,8 @@ class ClaudeAccountService {
           } else if (field === 'subscriptionExpiresAt') {
             // 处理订阅到期时间，允许 null 值（永不过期）
             updatedData[field] = value ? value.toString() : ''
+          } else if (field === 'bridgeRoutingRules') {
+            updatedData[field] = JSON.stringify(normalizeBridgeRoutingRules(value))
           } else if (field === 'extInfo') {
             const normalized = this._normalizeExtInfo(value, updates.claudeAiOauth)
             updatedData.extInfo = normalized ? JSON.stringify(normalized) : ''

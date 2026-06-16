@@ -315,6 +315,59 @@ describe('Usage Stats Admin Routes', () => {
     )
   })
 
+  it('resolves Claude OpenAI bridge account info for API key usage records', async () => {
+    const handler = getApiKeyUsageRecordsHandler()
+    const req = {
+      params: { keyId: 'key-1' },
+      query: {}
+    }
+    const res = createMockResponse()
+
+    redis.getApiKey.mockResolvedValue({ id: 'key-1', name: 'Test Key' })
+    redis.getUsageRecords.mockResolvedValue([
+      {
+        timestamp: '2026-02-14T10:00:00.000Z',
+        model: 'deepseek-v4-flash',
+        accountId: 'bridge-1',
+        accountType: 'claude-openai-bridge',
+        inputTokens: 10,
+        outputTokens: 20,
+        bridgeSourceAccountId: 'vertex-1',
+        bridgeSourceAccountType: 'claude-vertex',
+        bridgeSourceAccountName: 'Vertex Source'
+      }
+    ])
+    claudeOpenAIBridgeAccountService.getAccount.mockResolvedValue({
+      id: 'bridge-1',
+      name: 'Bridge Account',
+      status: 'active'
+    })
+    CostCalculator.calculateCost.mockReturnValue({ costs: { total: 0 } })
+    CostCalculator.formatCost.mockReturnValue('$0.00')
+
+    await handler(req, res)
+
+    expect(claudeOpenAIBridgeAccountService.getAccount).toHaveBeenCalledWith('bridge-1')
+    expect(res.json).toHaveBeenCalledWith(
+      expect.objectContaining({
+        success: true,
+        data: expect.objectContaining({
+          records: [
+            expect.objectContaining({
+              accountId: 'bridge-1',
+              accountName: 'Bridge Account',
+              accountStatus: 'active',
+              accountType: 'claude-openai-bridge',
+              bridgeSourceAccountId: 'vertex-1',
+              bridgeSourceAccountType: 'claude-vertex',
+              bridgeSourceAccountName: 'Vertex Source'
+            })
+          ]
+        })
+      })
+    )
+  })
+
   it('returns real/rated/display costs for api key usage records in real mode', async () => {
     const handler = getApiKeyUsageRecordsHandler()
     const req = {

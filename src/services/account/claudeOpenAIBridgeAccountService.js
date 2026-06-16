@@ -506,6 +506,22 @@ async function selectBoundAccountForModel(sourceModel, binding) {
   return selectAccountFromCandidates(sourceModel, [account])
 }
 
+async function getSchedulableAccount(accountId) {
+  if (!accountId) {
+    return null
+  }
+
+  await checkAndClearRateLimit(accountId)
+  await checkAndResetStaleUsageWindow(accountId)
+
+  const account = await getAccount(accountId)
+  if (!account || !isAccountEligible(account)) {
+    return null
+  }
+
+  return account
+}
+
 async function selectAccountForModel(sourceModel, options = {}) {
   const config = await getConfig()
   if (!config.enabled) {
@@ -732,6 +748,7 @@ module.exports = {
   updateAccount,
   deleteAccount,
   selectAccountForModel,
+  getSchedulableAccount,
   checkAndClearRateLimit,
   markAccountUsed,
   markAccountRateLimited,

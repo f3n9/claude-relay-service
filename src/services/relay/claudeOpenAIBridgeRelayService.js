@@ -36,7 +36,7 @@ class ClaudeOpenAIBridgeRelayService {
       this._ensureStreamUsageOptions(targetBody, req.body)
     }
 
-    this._logHandoff(req, account, mapping, stream)
+    this._logHandoff(req, account, mapping, stream, selection.sourceAccount)
 
     const requestOptions = this._createRequestOptions(account, targetBody, stream)
 
@@ -48,10 +48,10 @@ class ClaudeOpenAIBridgeRelayService {
       }
 
       if (stream) {
-        return this._handleStreamResponse(response, req, res, account, mapping, targetBody)
+        return this._handleStreamResponse(response, req, res, selection, targetBody)
       }
 
-      return this._handleNormalResponse(response, req, res, account, mapping, targetBody)
+      return this._handleNormalResponse(response, req, res, selection, targetBody)
     } catch (error) {
       logger.error('Claude OpenAI bridge relay error', this._compactError(error))
       await this._markAccountErrorIfAutoProtectionEnabled(
@@ -112,11 +112,12 @@ class ClaudeOpenAIBridgeRelayService {
     }
   }
 
-  async _handleNormalResponse(response, req, res, account, mapping, bridgeRequestBody) {
+  async _handleNormalResponse(response, req, res, selection, bridgeRequestBody) {
+    const { account, mapping } = selection
     const claudeResponse = convertOpenAIResponseToClaude(response.data, mapping.sourceModel)
     const usage = claudeResponse.usage || {}
 
-    await this._recordUsage(req, account, mapping, usage, false, response.status, bridgeRequestBody)
+    await this._recordUsage(req, selection, usage, false, response.status, bridgeRequestBody)
     await bridgeAccountService.markAccountUsed(account.id)
 
     return res.status(response.status).json({
@@ -125,7 +126,8 @@ class ClaudeOpenAIBridgeRelayService {
     })
   }
 
-  async _handleStreamResponse(response, req, res, account, mapping, bridgeRequestBody) {
+  async _handleStreamResponse(response, req, res, selection, bridgeRequestBody) {
+    const { account, mapping } = selection
     if (!response.data || typeof response.data.on !== 'function') {
       await this._markAccountErrorIfAutoProtectionEnabled(
         account,
@@ -153,8 +155,7 @@ class ClaudeOpenAIBridgeRelayService {
 
       recordPromise = this._recordUsage(
         req,
-        account,
-        mapping,
+        selection,
         usage,
         true,
         res.statusCode,
@@ -419,7 +420,10 @@ class ClaudeOpenAIBridgeRelayService {
     res.setHeader('X-Accel-Buffering', 'no')
   }
 
-  async _recordUsage(req, account, mapping, usage, stream, statusCode, bridgeRequestBody) {
+  async _recordUsage(req, selection, usage, stream, statusCode, bridgeRequestBody) {
+    const account = selection?.account
+    const mapping = selection?.mapping
+    const sourceAccount = selection?.sourceAccount || {}
     const inputTokens = Number(usage?.input_tokens || 0)
     const outputTokens = Number(usage?.output_tokens || 0)
     const model = mapping.sourceModel
@@ -433,6 +437,11 @@ class ClaudeOpenAIBridgeRelayService {
       stream,
       statusCode
     })
+    requestMeta.bridgeSourceAccountId = sourceAccount.id || ''
+    requestMeta.bridgeSourceAccountType = sourceAccount.type || ''
+    requestMeta.bridgeSourceAccountName = sourceAccount.name || ''
+    requestMeta.bridgeAccountId = account.id
+    requestMeta.bridgeAccountName = account.name || account.id
     requestMeta.bridgeTargetModel = mapping.targetModel
     requestMeta.bridgeRequestBody = bridgeRequestBody
 
@@ -533,9 +542,12 @@ class ClaudeOpenAIBridgeRelayService {
     return errorData.error?.message || errorData.message || null
   }
 
-  _logHandoff(req, account, mapping, stream) {
+  _logHandoff(req, account, mapping, stream, sourceAccount = {}) {
     logger.info('Claude OpenAI bridge handoff', {
       sourceService: 'claude-messages',
+      sourceAccountId: sourceAccount.id || '',
+      sourceAccountType: sourceAccount.type || '',
+      sourceAccountName: sourceAccount.name || '',
       sourceModel: mapping.sourceModel,
       targetModel: mapping.targetModel,
       bridgeAccountId: account.id,

@@ -6,6 +6,7 @@ const config = require('../../../config/config')
 const bedrockRelayService = require('../relay/bedrockRelayService')
 const LRUCache = require('../../utils/lruCache')
 const upstreamErrorHelper = require('../../utils/upstreamErrorHelper')
+const { normalizeBridgeRoutingRules } = require('../../utils/bridgeRoutingRules')
 
 class BedrockAccountService {
   constructor() {
@@ -43,10 +44,12 @@ class BedrockAccountService {
       priority = 50, // 调度优先级 (1-100，数字越小优先级越高)
       schedulable = true, // 是否可被调度
       credentialType = 'access_key', // 'access_key', 'bearer_token'（默认为 access_key）
-      disableAutoProtection = false // 是否关闭自动防护（429/401/400/529 不自动禁用）
+      disableAutoProtection = false, // 是否关闭自动防护（429/401/400/529 不自动禁用）
+      bridgeRoutingRules = [] // 选中该账号后按模型分流到 Claude OpenAI bridge 账号
     } = options
 
     const accountId = uuidv4()
+    const normalizedBridgeRoutingRules = normalizeBridgeRoutingRules(bridgeRoutingRules)
 
     const accountData = {
       id: accountId,
@@ -67,7 +70,8 @@ class BedrockAccountService {
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
       type: 'bedrock', // 标识这是Bedrock账户
-      disableAutoProtection // 关闭自动防护
+      disableAutoProtection, // 关闭自动防护
+      bridgeRoutingRules: normalizedBridgeRoutingRules
     }
 
     // 加密存储AWS凭证
@@ -100,7 +104,8 @@ class BedrockAccountService {
         schedulable,
         credentialType,
         createdAt: accountData.createdAt,
-        type: 'bedrock'
+        type: 'bedrock',
+        bridgeRoutingRules: normalizedBridgeRoutingRules
       }
     }
   }
@@ -115,6 +120,7 @@ class BedrockAccountService {
       }
 
       const account = JSON.parse(accountData)
+      account.bridgeRoutingRules = normalizeBridgeRoutingRules(account.bridgeRoutingRules)
 
       // 根据凭证类型解密对应的凭证
       // 增强逻辑：优先按照 credentialType 解密，如果字段不存在则尝试解密实际存在的字段（兜底）
@@ -247,6 +253,7 @@ class BedrockAccountService {
             updatedAt: account.updatedAt,
             type: 'bedrock',
             platform: 'bedrock',
+            bridgeRoutingRules: normalizeBridgeRoutingRules(account.bridgeRoutingRules),
             // 根据凭证类型判断是否有凭证
             hasCredentials:
               account.credentialType === 'bearer_token'
@@ -316,6 +323,9 @@ class BedrockAccountService {
       if (updates.credentialType !== undefined) {
         account.credentialType = updates.credentialType
       }
+      if (updates.bridgeRoutingRules !== undefined) {
+        account.bridgeRoutingRules = normalizeBridgeRoutingRules(updates.bridgeRoutingRules)
+      }
 
       // 更新AWS凭证
       if (updates.awsCredentials !== undefined) {
@@ -371,7 +381,8 @@ class BedrockAccountService {
           schedulable: account.schedulable,
           credentialType: account.credentialType,
           updatedAt: account.updatedAt,
-          type: 'bedrock'
+          type: 'bedrock',
+          bridgeRoutingRules: normalizeBridgeRoutingRules(account.bridgeRoutingRules)
         }
       }
     } catch (error) {

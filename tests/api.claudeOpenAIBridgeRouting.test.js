@@ -1,5 +1,5 @@
-jest.mock('../src/services/account/claudeOpenAIBridgeAccountService', () => ({
-  selectAccountForModel: jest.fn()
+jest.mock('../src/services/claudeOpenAIBridgeSourceRoutingService', () => ({
+  resolveBridgeSelection: jest.fn()
 }))
 
 jest.mock('../src/services/relay/claudeOpenAIBridgeRelayService', () => ({
@@ -83,8 +83,12 @@ jest.mock('../src/services/relay/claudeConsoleRelayService', () => ({}))
 jest.mock('../src/services/relay/bedrockRelayService', () => ({}))
 jest.mock('../src/services/relay/ccrRelayService', () => ({}))
 jest.mock('../src/services/account/bedrockAccountService', () => ({}))
-jest.mock('../src/services/account/claudeAccountService', () => ({}))
-jest.mock('../src/services/account/claudeConsoleAccountService', () => ({}))
+jest.mock('../src/services/account/claudeAccountService', () => ({
+  getAccount: jest.fn(async () => ({ id: 'claude-account-1', interceptWarmup: 'false' }))
+}))
+jest.mock('../src/services/account/claudeConsoleAccountService', () => ({
+  getAccount: jest.fn(async () => ({ id: 'console-account-1', interceptWarmup: 'false' }))
+}))
 jest.mock('../src/services/account/gcpVertexAccountService', () => ({
   getAccount: jest.fn(async () => ({ id: 'vertex-account-1', location: 'global' }))
 }))
@@ -97,11 +101,14 @@ jest.mock('../src/utils/logger', () => ({
   debug: jest.fn()
 }))
 
-const bridgeAccountService = require('../src/services/account/claudeOpenAIBridgeAccountService')
+const bridgeSourceRoutingService = require('../src/services/claudeOpenAIBridgeSourceRoutingService')
 const bridgeRelayService = require('../src/services/relay/claudeOpenAIBridgeRelayService')
 const gcpVertexRelayService = require('../src/services/relay/gcpVertexRelayService')
 const unifiedClaudeScheduler = require('../src/services/scheduler/unifiedClaudeScheduler')
 const apiKeyService = require('../src/services/apiKeyService')
+const claudeRelayConfigService = require('../src/services/claudeRelayConfigService')
+const claudeAccountService = require('../src/services/account/claudeAccountService')
+const warmupInterceptor = require('../src/utils/warmupInterceptor')
 const { handleAnthropicMessagesToGemini } = require('../src/services/anthropicGeminiBridgeService')
 
 function getMessagesHandler() {
@@ -160,12 +167,26 @@ describe('API /v1/messages Claude OpenAI bridge routing', () => {
   beforeEach(() => {
     jest.clearAllMocks()
     apiKeyService.hasPermission.mockReturnValue(true)
-    bridgeAccountService.selectAccountForModel.mockResolvedValue(null)
+    bridgeSourceRoutingService.resolveBridgeSelection.mockResolvedValue(null)
     bridgeRelayService.handleRequest.mockResolvedValue(undefined)
     unifiedClaudeScheduler.selectAccountForApiKey.mockResolvedValue({
       accountId: 'vertex-account-1',
       accountType: 'claude-vertex'
     })
+    claudeRelayConfigService.isGlobalSessionBindingEnabled.mockResolvedValue(false)
+    claudeRelayConfigService.extractOriginalSessionId.mockReturnValue(null)
+    claudeRelayConfigService.validateNewSession.mockResolvedValue({
+      binding: null,
+      isNewSession: false
+    })
+    claudeRelayConfigService.setOriginalSessionBinding.mockResolvedValue(undefined)
+    claudeAccountService.getAccount.mockResolvedValue({
+      id: 'claude-account-1',
+      interceptWarmup: 'false'
+    })
+    warmupInterceptor.isWarmupRequest.mockReturnValue(false)
+    warmupInterceptor.buildMockWarmupResponse.mockReturnValue({ id: 'warmup-response' })
+    warmupInterceptor.sendMockWarmupStream.mockReturnValue(undefined)
     gcpVertexRelayService.relayRequest.mockResolvedValue({
       statusCode: 200,
       headers: { 'content-type': 'application/json' },
@@ -175,7 +196,7 @@ describe('API /v1/messages Claude OpenAI bridge routing', () => {
     handleAnthropicMessagesToGemini.mockResolvedValue(undefined)
   })
 
-  it('routes matching source models to the Claude OpenAI bridge without normal Claude scheduling', async () => {
+  it('routes matching source models to the Claude OpenAI bridge after normal Claude scheduling selects a source account', async () => {
     const selection = {
       account: {
         id: 'bridge-account-1',
@@ -186,7 +207,7 @@ describe('API /v1/messages Claude OpenAI bridge routing', () => {
         targetModel: 'gpt-4.1-mini'
       }
     }
-    bridgeAccountService.selectAccountForModel.mockResolvedValue(selection)
+    bridgeSourceRoutingService.resolveBridgeSelection.mockResolvedValue(selection)
 
     const req = createReq({
       body: {
@@ -199,12 +220,18 @@ describe('API /v1/messages Claude OpenAI bridge routing', () => {
 
     await getMessagesHandler()(req, res)
 
-    expect(bridgeAccountService.selectAccountForModel).toHaveBeenCalledWith(
+    expect(unifiedClaudeScheduler.selectAccountForApiKey).toHaveBeenCalledWith(
+      req.apiKey,
+      'test-session-hash',
       'claude-sonnet-4-bridge',
-      { boundAccountId: '' }
+      null
     )
+    expect(bridgeSourceRoutingService.resolveBridgeSelection).toHaveBeenCalledWith({
+      sourceAccountId: 'vertex-account-1',
+      sourceAccountType: 'claude-vertex',
+      sourceModel: 'claude-sonnet-4-bridge'
+    })
     expect(bridgeRelayService.handleRequest).toHaveBeenCalledWith(req, res, selection)
-    expect(unifiedClaudeScheduler.selectAccountForApiKey).not.toHaveBeenCalled()
     expect(gcpVertexRelayService.relayRequest).not.toHaveBeenCalled()
   })
 
@@ -214,10 +241,11 @@ describe('API /v1/messages Claude OpenAI bridge routing', () => {
 
     await getMessagesHandler()(req, res)
 
-    expect(bridgeAccountService.selectAccountForModel).toHaveBeenCalledWith(
-      'claude-sonnet-4-bridge',
-      { boundAccountId: '' }
-    )
+    expect(bridgeSourceRoutingService.resolveBridgeSelection).toHaveBeenCalledWith({
+      sourceAccountId: 'vertex-account-1',
+      sourceAccountType: 'claude-vertex',
+      sourceModel: 'claude-sonnet-4-bridge'
+    })
     expect(bridgeRelayService.handleRequest).not.toHaveBeenCalled()
     expect(unifiedClaudeScheduler.selectAccountForApiKey).toHaveBeenCalledWith(
       req.apiKey,
@@ -228,7 +256,27 @@ describe('API /v1/messages Claude OpenAI bridge routing', () => {
     expect(gcpVertexRelayService.relayRequest).toHaveBeenCalled()
   })
 
-  it('passes API key bridge account binding into bridge account selection', async () => {
+  it('does not let a rule on another account affect the selected source account request', async () => {
+    unifiedClaudeScheduler.selectAccountForApiKey.mockResolvedValue({
+      accountId: 'selected-claude-account',
+      accountType: 'claude-official'
+    })
+    bridgeSourceRoutingService.resolveBridgeSelection.mockResolvedValue(null)
+
+    const req = createReq()
+    const res = createRes()
+
+    await getMessagesHandler()(req, res)
+
+    expect(bridgeSourceRoutingService.resolveBridgeSelection).toHaveBeenCalledWith({
+      sourceAccountId: 'selected-claude-account',
+      sourceAccountType: 'claude-official',
+      sourceModel: 'claude-sonnet-4-bridge'
+    })
+    expect(bridgeRelayService.handleRequest).not.toHaveBeenCalled()
+  })
+
+  it('does not use API key bridge account binding before normal Claude account selection', async () => {
     const selection = {
       account: {
         id: 'bridge-account-1',
@@ -239,7 +287,7 @@ describe('API /v1/messages Claude OpenAI bridge routing', () => {
         targetModel: 'gpt-4.1-mini'
       }
     }
-    bridgeAccountService.selectAccountForModel.mockResolvedValue(selection)
+    bridgeSourceRoutingService.resolveBridgeSelection.mockResolvedValue(selection)
 
     const req = createReq({
       apiKey: {
@@ -254,11 +302,95 @@ describe('API /v1/messages Claude OpenAI bridge routing', () => {
 
     await getMessagesHandler()(req, res)
 
-    expect(bridgeAccountService.selectAccountForModel).toHaveBeenCalledWith(
+    expect(unifiedClaudeScheduler.selectAccountForApiKey).toHaveBeenCalledWith(
+      req.apiKey,
+      'test-session-hash',
       'claude-sonnet-4-bridge',
-      { boundAccountId: 'bridge-account-1' }
+      null
+    )
+    expect(bridgeSourceRoutingService.resolveBridgeSelection).toHaveBeenCalledWith({
+      sourceAccountId: 'vertex-account-1',
+      sourceAccountType: 'claude-vertex',
+      sourceModel: 'claude-sonnet-4-bridge'
+    })
+    expect(bridgeRelayService.handleRequest).toHaveBeenCalledWith(req, res, selection)
+  })
+
+  it('creates a new session binding for the selected official source account before bridge relay', async () => {
+    const selection = {
+      account: {
+        id: 'bridge-account-1',
+        name: 'Bridge Account'
+      },
+      mapping: {
+        sourceModel: 'claude-sonnet-4-bridge',
+        targetModel: 'gpt-4.1-mini'
+      }
+    }
+    claudeRelayConfigService.isGlobalSessionBindingEnabled.mockResolvedValue(true)
+    claudeRelayConfigService.extractOriginalSessionId.mockReturnValue('session-1')
+    claudeRelayConfigService.validateNewSession.mockResolvedValue({
+      valid: true,
+      binding: null,
+      isNewSession: true
+    })
+    unifiedClaudeScheduler.selectAccountForApiKey.mockResolvedValue({
+      accountId: 'selected-claude-account',
+      accountType: 'claude-official'
+    })
+    bridgeSourceRoutingService.resolveBridgeSelection.mockResolvedValue(selection)
+
+    const req = createReq()
+    const res = createRes()
+
+    await getMessagesHandler()(req, res)
+
+    expect(claudeRelayConfigService.setOriginalSessionBinding).toHaveBeenCalledWith(
+      'session-1',
+      'selected-claude-account',
+      'claude-official'
     )
     expect(bridgeRelayService.handleRequest).toHaveBeenCalledWith(req, res, selection)
+    expect(
+      claudeRelayConfigService.setOriginalSessionBinding.mock.invocationCallOrder[0]
+    ).toBeLessThan(bridgeRelayService.handleRequest.mock.invocationCallOrder[0])
+  })
+
+  it('intercepts official account warmup requests before bridge relay', async () => {
+    const selection = {
+      account: {
+        id: 'bridge-account-1',
+        name: 'Bridge Account'
+      },
+      mapping: {
+        sourceModel: 'claude-sonnet-4-bridge',
+        targetModel: 'gpt-4.1-mini'
+      }
+    }
+    unifiedClaudeScheduler.selectAccountForApiKey.mockResolvedValue({
+      accountId: 'selected-claude-account',
+      accountType: 'claude-official'
+    })
+    claudeAccountService.getAccount.mockResolvedValue({
+      id: 'selected-claude-account',
+      name: 'Official Source',
+      interceptWarmup: 'true'
+    })
+    warmupInterceptor.isWarmupRequest.mockReturnValue(true)
+    warmupInterceptor.buildMockWarmupResponse.mockReturnValue({ id: 'warmup-response' })
+    bridgeSourceRoutingService.resolveBridgeSelection.mockResolvedValue(selection)
+
+    const req = createReq()
+    const res = createRes()
+
+    await getMessagesHandler()(req, res)
+
+    expect(warmupInterceptor.buildMockWarmupResponse).toHaveBeenCalledWith(
+      'claude-sonnet-4-bridge'
+    )
+    expect(res.json).toHaveBeenCalledWith({ id: 'warmup-response' })
+    expect(bridgeSourceRoutingService.resolveBridgeSelection).not.toHaveBeenCalled()
+    expect(bridgeRelayService.handleRequest).not.toHaveBeenCalled()
   })
 
   it('bypasses bridge selection for forced Gemini vendors', async () => {
@@ -274,7 +406,7 @@ describe('API /v1/messages Claude OpenAI bridge routing', () => {
 
     await getMessagesHandler()(req, res)
 
-    expect(bridgeAccountService.selectAccountForModel).not.toHaveBeenCalled()
+    expect(bridgeSourceRoutingService.resolveBridgeSelection).not.toHaveBeenCalled()
     expect(handleAnthropicMessagesToGemini).toHaveBeenCalledWith(req, res, {
       vendor: 'gemini-cli',
       baseModel: 'gemini-2.5-pro'
@@ -314,7 +446,7 @@ describe('API /v1/messages Claude OpenAI bridge routing', () => {
     await getMessagesHandler()(req, res)
 
     expect(res.status).toHaveBeenCalledWith(overrides.expectedStatus)
-    expect(bridgeAccountService.selectAccountForModel).not.toHaveBeenCalled()
+    expect(bridgeSourceRoutingService.resolveBridgeSelection).not.toHaveBeenCalled()
     expect(bridgeRelayService.handleRequest).not.toHaveBeenCalled()
     expect(unifiedClaudeScheduler.selectAccountForApiKey).not.toHaveBeenCalled()
   })

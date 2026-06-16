@@ -628,7 +628,8 @@ router.post('/claude-accounts', authenticateAdmin, async (req, res) => {
       interceptWarmup,
       disableTempUnavailable,
       tempUnavailable503TtlSeconds,
-      tempUnavailable5xxTtlSeconds
+      tempUnavailable5xxTtlSeconds,
+      bridgeRoutingRules
     } = req.body
 
     if (!name) {
@@ -688,7 +689,8 @@ router.post('/claude-accounts', authenticateAdmin, async (req, res) => {
       interceptWarmup: interceptWarmup === true, // 拦截预热请求：默认为false
       disableTempUnavailable: normalizedTempUnavailablePolicy.disableTempUnavailable,
       tempUnavailable503TtlSeconds: normalizedTempUnavailablePolicy.tempUnavailable503TtlSeconds,
-      tempUnavailable5xxTtlSeconds: normalizedTempUnavailablePolicy.tempUnavailable5xxTtlSeconds
+      tempUnavailable5xxTtlSeconds: normalizedTempUnavailablePolicy.tempUnavailable5xxTtlSeconds,
+      bridgeRoutingRules
     })
 
     // 如果是分组类型，将账户添加到分组

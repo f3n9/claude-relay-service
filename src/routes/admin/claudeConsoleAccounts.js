@@ -134,7 +134,8 @@ router.post('/claude-console-accounts', authenticateAdmin, async (req, res) => {
       maxConcurrentTasks,
       disableAutoProtection,
       interceptWarmup,
-      passThrough
+      passThrough,
+      bridgeRoutingRules
     } = req.body
 
     if (!name || !apiUrl || !apiKey) {
@@ -190,7 +191,8 @@ router.post('/claude-console-accounts', authenticateAdmin, async (req, res) => {
           : 0,
       disableAutoProtection: normalizedDisableAutoProtection,
       interceptWarmup: interceptWarmup === true || interceptWarmup === 'true',
-      passThrough: passThrough === true || passThrough === 'true'
+      passThrough: passThrough === true || passThrough === 'true',
+      bridgeRoutingRules
     })
 
     // 如果是分组类型，将账户添加到分组（CCR 归属 Claude 平台分组）

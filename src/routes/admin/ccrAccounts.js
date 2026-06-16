@@ -124,7 +124,8 @@ router.post('/', authenticateAdmin, async (req, res) => {
       accountType,
       groupId,
       dailyQuota,
-      quotaResetTime
+      quotaResetTime,
+      bridgeRoutingRules
     } = req.body
 
     if (!name || !apiUrl || !apiKey) {
@@ -161,7 +162,8 @@ router.post('/', authenticateAdmin, async (req, res) => {
       proxy,
       accountType: accountType || 'shared',
       dailyQuota: dailyQuota || 0,
-      quotaResetTime: quotaResetTime || '00:00'
+      quotaResetTime: quotaResetTime || '00:00',
+      bridgeRoutingRules
     })
 
     // 如果是分组类型，将账户添加到分组

@@ -138,6 +138,7 @@ const accountTypeNames = {
   claude: 'Claude官方',
   'claude-official': 'Claude官方',
   'claude-console': 'Claude Console',
+  'claude-openai-bridge': 'Claude OpenAI Bridge',
   ccr: 'Claude Console Relay',
   openai: 'OpenAI',
   'openai-responses': 'OpenAI Responses',
@@ -2872,6 +2873,10 @@ router.get('/api-keys/:keyId/usage-records', authenticateAdmin, async (req, res)
       { type: 'claude', getter: (id) => claudeAccountService.getAccount(id) },
       { type: 'claude-console', getter: (id) => claudeConsoleAccountService.getAccount(id) },
       { type: 'claude-vertex', getter: (id) => gcpVertexAccountService.getAccount(id) },
+      {
+        type: 'claude-openai-bridge',
+        getter: (id) => claudeOpenAIBridgeAccountService.getAccount(id)
+      },
       { type: 'ccr', getter: (id) => ccrAccountService.getAccount(id) },
       { type: 'openai', getter: (id) => openaiAccountService.getAccount(id) },
       { type: 'openai-responses', getter: (id) => openaiResponsesAccountService.getAccount(id) },
@@ -2902,7 +2907,10 @@ router.get('/api-keys/:keyId/usage-records', authenticateAdmin, async (req, res)
 
       for (const service of servicesToTry) {
         try {
-          const account = await service.getter(id)
+          let account = await service.getter(id)
+          if (account && typeof account === 'object' && 'success' in account) {
+            account = account.success ? account.data : null
+          }
           if (account) {
             const info = {
               id,
@@ -3103,6 +3111,12 @@ router.get('/api-keys/:keyId/usage-records', authenticateAdmin, async (req, res)
         accountStatus: accountInfo?.status ?? null,
         accountType: resolvedAccountType,
         accountTypeName: accountTypeNames[resolvedAccountType] || '未知渠道',
+        bridgeSourceAccountId: record.bridgeSourceAccountId || null,
+        bridgeSourceAccountType: record.bridgeSourceAccountType || null,
+        bridgeSourceAccountName: record.bridgeSourceAccountName || null,
+        bridgeAccountId: record.bridgeAccountId || null,
+        bridgeAccountName: record.bridgeAccountName || null,
+        bridgeTargetModel: record.bridgeTargetModel || null,
         usageCaptureState: record.usageCaptureState || record.usage_capture_state || null,
         requestRegion: record.requestRegion || record.request_region || null,
         inputTokens: displayUsage.input_tokens,

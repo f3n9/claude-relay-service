@@ -6,6 +6,10 @@ const logger = require('../../utils/logger')
 const config = require('../../../config/config')
 const LRUCache = require('../../utils/lruCache')
 const upstreamErrorHelper = require('../../utils/upstreamErrorHelper')
+const {
+  normalizeBridgeRoutingRules,
+  parseBridgeRoutingRules
+} = require('../../utils/bridgeRoutingRules')
 
 class ClaudeConsoleAccountService {
   constructor() {
@@ -71,7 +75,8 @@ class ClaudeConsoleAccountService {
       maxConcurrentTasks = 0, // 最大并发任务数，0表示无限制
       disableAutoProtection = false, // 是否关闭自动防护（429/401/400/529 不自动禁用）
       interceptWarmup = false, // 拦截预热请求（标题生成、Warmup等）
-      passThrough = false // 直通模式：请求/响应不做任何修改（仅替换认证信息）
+      passThrough = false, // 直通模式：请求/响应不做任何修改（仅替换认证信息）
+      bridgeRoutingRules = [] // 选中该账号后按模型分流到 Claude OpenAI bridge 账号
     } = options
 
     // 验证必填字段
@@ -83,6 +88,7 @@ class ClaudeConsoleAccountService {
 
     // 处理 supportedModels，确保向后兼容
     const processedModels = this._processModelMapping(supportedModels)
+    const normalizedBridgeRoutingRules = normalizeBridgeRoutingRules(bridgeRoutingRules)
 
     const accountData = {
       id: accountId,
@@ -122,7 +128,8 @@ class ClaudeConsoleAccountService {
       maxConcurrentTasks: maxConcurrentTasks.toString(), // 最大并发任务数，0表示无限制
       disableAutoProtection: disableAutoProtection.toString(), // 关闭自动防护
       interceptWarmup: interceptWarmup.toString(), // 拦截预热请求
-      passThrough: passThrough === true || passThrough === 'true' ? 'true' : 'false' // 直通模式
+      passThrough: passThrough === true || passThrough === 'true' ? 'true' : 'false', // 直通模式
+      bridgeRoutingRules: JSON.stringify(normalizedBridgeRoutingRules)
     }
 
     const client = redis.getClientSafe()
@@ -164,6 +171,7 @@ class ClaudeConsoleAccountService {
       disableAutoProtection, // 新增：返回自动防护开关
       interceptWarmup, // 新增：返回预热请求拦截开关
       passThrough: passThrough === true || passThrough === 'true', // 新增：返回直通模式开关
+      bridgeRoutingRules: normalizedBridgeRoutingRules,
       activeTaskCount: 0 // 新增：新建账户当前并发数为0
     }
   }
@@ -236,7 +244,8 @@ class ClaudeConsoleAccountService {
             // 拦截预热请求
             interceptWarmup: accountData.interceptWarmup === 'true',
             // 直通模式
-            passThrough: accountData.passThrough === 'true'
+            passThrough: accountData.passThrough === 'true',
+            bridgeRoutingRules: parseBridgeRoutingRules(accountData.bridgeRoutingRules)
           })
         }
       }
@@ -275,6 +284,7 @@ class ClaudeConsoleAccountService {
     logger.debug(`[DEBUG] Parsed supportedModels: ${JSON.stringify(parsedModels)}`)
 
     accountData.supportedModels = parsedModels
+    accountData.bridgeRoutingRules = parseBridgeRoutingRules(accountData.bridgeRoutingRules)
     accountData.priority = parseInt(accountData.priority) || 50
     {
       const _parsedDuration = parseInt(accountData.rateLimitDuration)
@@ -346,6 +356,11 @@ class ClaudeConsoleAccountService {
       }
       if (updates.rateLimitDuration !== undefined) {
         updatedData.rateLimitDuration = updates.rateLimitDuration.toString()
+      }
+      if (updates.bridgeRoutingRules !== undefined) {
+        updatedData.bridgeRoutingRules = JSON.stringify(
+          normalizeBridgeRoutingRules(updates.bridgeRoutingRules)
+        )
       }
       if (updates.proxy !== undefined) {
         updatedData.proxy = updates.proxy ? JSON.stringify(updates.proxy) : ''

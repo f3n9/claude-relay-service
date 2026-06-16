@@ -126,7 +126,8 @@ router.post('/', authenticateAdmin, async (req, res) => {
       groupIds,
       rateLimitDuration,
       subscriptionExpiresAt,
-      proxy
+      proxy,
+      bridgeRoutingRules
     } = mappedBody
 
     const normalizedAccountType = accountType || 'shared'
@@ -168,7 +169,8 @@ router.post('/', authenticateAdmin, async (req, res) => {
       accountType: normalizedAccountType,
       rateLimitDuration: rateLimitDuration ?? 60,
       subscriptionExpiresAt,
-      proxy
+      proxy,
+      bridgeRoutingRules
     })
 
     if (!result.success) {

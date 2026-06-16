@@ -126,7 +126,8 @@ router.post('/', authenticateAdmin, async (req, res) => {
       defaultModel,
       priority,
       accountType,
-      credentialType
+      credentialType,
+      bridgeRoutingRules
     } = req.body
 
     if (!name) {
@@ -161,7 +162,8 @@ router.post('/', authenticateAdmin, async (req, res) => {
       defaultModel,
       priority: priority || 50,
       accountType: accountType || 'shared',
-      credentialType: credentialType || 'access_key'
+      credentialType: credentialType || 'access_key',
+      bridgeRoutingRules
     })
 
     if (!result.success) {

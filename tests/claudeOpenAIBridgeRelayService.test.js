@@ -119,6 +119,12 @@ function createSelection(overrides = {}) {
       sourceModel: 'claude-sonnet-4-bridge',
       targetModel: 'gpt-4.1-mini',
       ...overrides.mapping
+    },
+    sourceAccount: {
+      id: 'vertex-source-1',
+      type: 'claude-vertex',
+      name: 'Vertex Source',
+      ...overrides.sourceAccount
     }
   }
 }
@@ -222,6 +228,11 @@ describe('claudeOpenAIBridgeRelayService', () => {
       expect.objectContaining({
         requestId: 'req-meta-1',
         requestBody: req.body,
+        bridgeSourceAccountId: 'vertex-source-1',
+        bridgeSourceAccountType: 'claude-vertex',
+        bridgeSourceAccountName: 'Vertex Source',
+        bridgeAccountId: 'bridge-1',
+        bridgeAccountName: 'Bridge Account',
         bridgeTargetModel: 'gpt-4.1-mini',
         bridgeRequestBody: expect.objectContaining({
           model: 'gpt-4.1-mini',
@@ -350,6 +361,11 @@ describe('claudeOpenAIBridgeRelayService', () => {
       expect.objectContaining({
         requestId: 'req-meta-1',
         requestBody: req.body,
+        bridgeSourceAccountId: 'vertex-source-1',
+        bridgeSourceAccountType: 'claude-vertex',
+        bridgeSourceAccountName: 'Vertex Source',
+        bridgeAccountId: 'bridge-1',
+        bridgeAccountName: 'Bridge Account',
         bridgeTargetModel: 'gpt-4.1-mini',
         bridgeRequestBody: expect.objectContaining({
           model: 'gpt-4.1-mini',
@@ -784,6 +800,11 @@ describe('claudeOpenAIBridgeRelayService', () => {
       expect.objectContaining({
         requestId: 'req-meta-1',
         requestBody: req.body,
+        bridgeSourceAccountId: 'vertex-source-1',
+        bridgeSourceAccountType: 'claude-vertex',
+        bridgeSourceAccountName: 'Vertex Source',
+        bridgeAccountId: 'bridge-1',
+        bridgeAccountName: 'Bridge Account',
         bridgeTargetModel: 'gpt-4.1-mini',
         bridgeRequestBody: expect.objectContaining({
           model: 'gpt-4.1-mini',
