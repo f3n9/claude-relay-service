@@ -8,6 +8,7 @@ const redis = require('../../models/redis')
 const ProxyHelper = require('../../utils/proxyHelper')
 const logger = require('../../utils/logger')
 const { buildChatCompletionsUrl } = require('../../utils/claudeOpenAIBridgeEndpoint')
+const { applyTokenLimitForModel } = require('../../utils/openAIChatCompletionParams')
 
 const router = express.Router()
 
@@ -272,14 +273,18 @@ router.post('/claude-openai-bridge/accounts/:id/test', authenticateAdmin, async 
       axiosOptions.proxy = false
     }
 
-    const response = await axios.post(
-      buildChatCompletionsUrl(account.endpointUrl),
+    const requestBody = applyTokenLimitForModel(
       {
         model,
         stream: false,
-        max_tokens: 32,
         messages: [{ role: 'user', content: 'Say "Hello" in one word.' }]
       },
+      { max_tokens: 32 },
+      model
+    )
+    const response = await axios.post(
+      buildChatCompletionsUrl(account.endpointUrl),
+      requestBody,
       axiosOptions
     )
 

@@ -342,6 +342,29 @@ describe('Claude OpenAI bridge admin routes', () => {
     )
   })
 
+  it('uses max_completion_tokens when testing GPT-5+ bridge target models', async () => {
+    const app = buildApp()
+
+    bridgeAccountService.getAccount.mockResolvedValue({
+      id: 'bridge-1',
+      name: 'Bridge 1',
+      endpointUrl: 'https://bridge.example.com/v1/chat/completions',
+      apiKey: 'bridge-secret'
+    })
+    axios.post.mockResolvedValue({ data: { choices: [] } })
+
+    const response = await request(app)
+      .post('/admin/claude-openai-bridge/accounts/bridge-1/test')
+      .send({ targetModel: 'gpt-5.6-mini' })
+
+    expect(response.status).toBe(200)
+    expect(axios.post.mock.calls[0][1]).toMatchObject({
+      model: 'gpt-5.6-mini',
+      max_completion_tokens: 32
+    })
+    expect(axios.post.mock.calls[0][1]).not.toHaveProperty('max_tokens')
+  })
+
   it('requires an explicit target model when testing bridge accounts', async () => {
     const app = buildApp()
 

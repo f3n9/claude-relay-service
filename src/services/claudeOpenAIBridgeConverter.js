@@ -1,6 +1,6 @@
+const { applyTokenLimitForModel } = require('../utils/openAIChatCompletionParams')
+
 const SIMPLE_PARAMS_TO_COPY = [
-  'max_tokens',
-  'max_completion_tokens',
   'top_p',
   'stream_options',
   'parallel_tool_calls'
@@ -42,6 +42,8 @@ function convertClaudeRequestToOpenAI(claudeBody = {}, targetModel) {
       body[param] = claudeBody[param]
     }
   }
+
+  applyTokenLimitForModel(body, claudeBody, targetModel)
 
   if (claudeBody.temperature !== undefined) {
     body.temperature = _normalizeOpenAITemperature(claudeBody.temperature)

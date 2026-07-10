@@ -200,6 +200,52 @@ describe('claudeOpenAIBridgeConverter', () => {
     expect(result).not.toHaveProperty('reasoning_effort')
   })
 
+  it.each([
+    'gpt-5',
+    'gpt-5.x',
+    'gpt-5.6-mini',
+    'GPT-6-preview',
+    'openai/gpt-7.2-pro',
+    'gpt-10.1'
+  ])(
+    'uses max_completion_tokens for GPT-5+ target model %s',
+    (targetModel) => {
+      const result = convertClaudeRequestToOpenAI(
+        {
+          messages: [{ role: 'user', content: 'Hello' }],
+          max_tokens: 1024
+        },
+        targetModel
+      )
+
+      expect(result.max_completion_tokens).toBe(1024)
+      expect(result).not.toHaveProperty('max_tokens')
+    }
+  )
+
+  it('preserves an explicit max_completion_tokens value for GPT-5+ target models', () => {
+    const result = convertClaudeRequestToOpenAI(
+      {
+        max_tokens: 1024,
+        max_completion_tokens: 2048
+      },
+      'gpt-5.6-codex'
+    )
+
+    expect(result.max_completion_tokens).toBe(2048)
+    expect(result).not.toHaveProperty('max_tokens')
+  })
+
+  it.each(['gpt-4.1-mini', 'DeepSeek-V4-Flash', 'agpt-6-preview'])(
+    'keeps max_tokens for non GPT-5+ target model %s',
+    (targetModel) => {
+      const result = convertClaudeRequestToOpenAI({ max_tokens: 1024 }, targetModel)
+
+      expect(result.max_tokens).toBe(1024)
+      expect(result).not.toHaveProperty('max_completion_tokens')
+    }
+  )
+
   it('converts OpenAI non-stream text and tool calls to Claude response shape', () => {
     const result = convertOpenAIResponseToClaude(
       {
