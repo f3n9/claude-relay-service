@@ -44,7 +44,8 @@ jest.mock('../src/utils/logger', () => ({
 jest.mock('../src/utils/modelHelper', () => ({
   parseVendorPrefixedModel: jest.fn(),
   isOpus45OrNewer: jest.fn(),
-  isClaudeFamilyModel: jest.fn()
+  isClaudeFamilyModel: jest.fn(),
+  getRateLimitModelFamily: jest.fn(() => null)
 }))
 
 jest.mock('../src/utils/commonHelper', () => ({

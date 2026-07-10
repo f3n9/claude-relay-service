@@ -9,10 +9,12 @@ const logger = require('../../utils/logger')
 const {
   parseVendorPrefixedModel,
   isOpus45OrNewer,
-  isClaudeFamilyModel
+  isClaudeFamilyModel,
+  getRateLimitModelFamily
 } = require('../../utils/modelHelper')
 const { isSchedulable, sortAccountsByPriority } = require('../../utils/commonHelper')
 const upstreamErrorHelper = require('../../utils/upstreamErrorHelper')
+const config = require('../../../config/config')
 
 /**
  * Check if account is Pro (not Max)
@@ -244,10 +246,8 @@ class UnifiedClaudeScheduler {
       logger.debug(
         `🔍 Model parsing - Original: ${requestedModel}, Vendor: ${vendor}, Effective: ${effectiveModel}`
       )
-      const isOpusRequest =
-        effectiveModel && typeof effectiveModel === 'string'
-          ? effectiveModel.toLowerCase().includes('opus')
-          : false
+      // 请求模型所属的限流家族（opus/sonnet/haiku/fable）；null 表示未知模型
+      const requestedModelFamily = getRateLimitModelFamily(effectiveModel)
 
       // 如果是 CCR 前缀，只在 CCR 账户池中选择
       if (vendor === 'ccr') {
@@ -329,51 +329,91 @@ class UnifiedClaudeScheduler {
             )
           }
 
-          // 普通专属账户
+          // 普通专属账户不可用时默认不回退共享池，避免破坏 API Key 绑定语义。
           const boundAccount = await redis.getClaudeAccount(boundClaudeAccountId)
-          if (boundAccount && boundAccount.isActive === 'true' && boundAccount.status !== 'error') {
-            // 检查是否临时不可用
+          const allowDedicatedFallback = config.claude?.dedicatedAccountFallback === true
+          const dedicatedUnavailableError = (reason) => {
+            const error = new Error(`Dedicated Claude account is unavailable (${reason})`)
+            error.code = 'CLAUDE_DEDICATED_UNAVAILABLE'
+            error.accountId = boundClaudeAccountId
+            error.reason = reason
+            return error
+          }
+
+          if (!boundAccount || boundAccount.isActive !== 'true' || boundAccount.status === 'error') {
+            logger.warn(
+              `⚠️ Bound Claude OAuth account ${boundClaudeAccountId} is not available (isActive: ${boundAccount?.isActive}, status: ${boundAccount?.status})`
+            )
+            if (!allowDedicatedFallback) {
+              throw dedicatedUnavailableError('inactive_or_error')
+            }
+          } else {
+            const rateLimitAutoStopped = boundAccount.rateLimitAutoStopped === 'true'
+            const isRateLimited = await claudeAccountService.isAccountRateLimited(boundAccount.id)
+            if (
+              isRateLimited ||
+              (rateLimitAutoStopped && !isSchedulable(boundAccount.schedulable))
+            ) {
+              const rateInfo = await claudeAccountService.getAccountRateLimitInfo(boundAccount.id)
+              const error = new Error('Dedicated Claude account is rate limited')
+              error.code = 'CLAUDE_DEDICATED_RATE_LIMITED'
+              error.accountId = boundAccount.id
+              error.rateLimitEndAt = rateInfo?.rateLimitEndAt || boundAccount.rateLimitEndAt || null
+              throw error
+            }
+
+            if (requestedModelFamily) {
+              await claudeAccountService.clearExpiredModelRateLimit(
+                boundAccount.id,
+                requestedModelFamily
+              )
+              const isModelRateLimited = await claudeAccountService.isAccountModelRateLimited(
+                boundAccount.id,
+                requestedModelFamily
+              )
+              if (isModelRateLimited) {
+                const info = await claudeAccountService.getAccountModelRateLimitInfo(
+                  boundAccount.id,
+                  requestedModelFamily
+                )
+                const error = new Error(
+                  `Dedicated Claude account reached its ${requestedModelFamily} model limit`
+                )
+                error.code = 'CLAUDE_DEDICATED_RATE_LIMITED'
+                error.accountId = boundAccount.id
+                error.rateLimitEndAt = info?.resetAt || null
+                error.modelFamily = requestedModelFamily
+                throw error
+              }
+            }
+
             const isTempUnavailable = await this.isAccountTemporarilyUnavailable(
               boundAccount.id,
               'claude-official'
             )
             if (isTempUnavailable) {
               logger.warn(
-                `⏱️ Bound Claude OAuth account ${boundAccount.id} is temporarily unavailable, falling back to pool`
+                `⏱️ Bound Claude OAuth account ${boundAccount.id} is temporarily unavailable`
               )
-            } else {
-              const isRateLimited = await claudeAccountService.isAccountRateLimited(boundAccount.id)
-              if (isRateLimited) {
-                const rateInfo = await claudeAccountService.getAccountRateLimitInfo(boundAccount.id)
-                const error = new Error('Dedicated Claude account is rate limited')
-                error.code = 'CLAUDE_DEDICATED_RATE_LIMITED'
-                error.accountId = boundAccount.id
-                error.rateLimitEndAt =
-                  rateInfo?.rateLimitEndAt || boundAccount.rateLimitEndAt || null
-                throw error
+              if (!allowDedicatedFallback) {
+                throw dedicatedUnavailableError('temporarily_unavailable')
               }
-
-              if (!isSchedulable(boundAccount.schedulable)) {
-                logger.warn(
-                  `⚠️ Bound Claude OAuth account ${boundClaudeAccountId} is not schedulable (schedulable: ${boundAccount?.schedulable}), falling back to pool`
-                )
-              } else {
-                if (isOpusRequest) {
-                  await claudeAccountService.clearExpiredOpusRateLimit(boundAccount.id)
-                }
-                logger.info(
-                  `🎯 Using bound dedicated Claude OAuth account: ${boundAccount.name} (${boundClaudeAccountId}) for API key ${apiKeyData.name}`
-                )
-                return {
-                  accountId: boundClaudeAccountId,
-                  accountType: 'claude-official'
-                }
+            } else if (!isSchedulable(boundAccount.schedulable)) {
+              logger.warn(
+                `⚠️ Bound Claude OAuth account ${boundClaudeAccountId} is not schedulable (schedulable: ${boundAccount.schedulable})`
+              )
+              if (!allowDedicatedFallback) {
+                throw dedicatedUnavailableError('not_schedulable')
+              }
+            } else {
+              logger.info(
+                `🎯 Using bound dedicated Claude OAuth account: ${boundAccount.name} (${boundClaudeAccountId}) for API key ${apiKeyData.name}`
+              )
+              return {
+                accountId: boundClaudeAccountId,
+                accountType: 'claude-official'
               }
             }
-          } else {
-            logger.warn(
-              `⚠️ Bound Claude OAuth account ${boundClaudeAccountId} is not available (isActive: ${boundAccount?.isActive}, status: ${boundAccount?.status}), falling back to pool`
-            )
           }
         }
       }
@@ -596,10 +636,8 @@ class UnifiedClaudeScheduler {
   // 📋 获取所有可用账户（合并官方和Console）
   async _getAllAvailableAccounts(apiKeyData, requestedModel = null, includeCcr = false) {
     const availableAccounts = []
-    const isOpusRequest =
-      requestedModel && typeof requestedModel === 'string'
-        ? requestedModel.toLowerCase().includes('opus')
-        : false
+    // 请求模型所属的限流家族（opus/sonnet/haiku/fable）
+    const requestedModelFamily = getRateLimitModelFamily(requestedModel)
 
     // 如果API Key绑定了专属账户，优先返回
     // 1. 检查Claude OAuth账户绑定
@@ -674,7 +712,19 @@ class UnifiedClaudeScheduler {
             throw error
           }
 
-          if (!isSchedulable(boundAccount.schedulable)) {
+          // 请求模型所属家族的独立限流（opus/sonnet/haiku/fable）
+          const boundModelRateLimited = requestedModelFamily
+            ? await claudeAccountService.isAccountModelRateLimited(
+                boundAccount.id,
+                requestedModelFamily
+              )
+            : false
+
+          if (boundModelRateLimited) {
+            logger.warn(
+              `⏱️ Bound Claude OAuth account ${apiKeyData.claudeAccountId} hit its ${requestedModelFamily} limit in pool selection, falling back to shared pool`
+            )
+          } else if (!isSchedulable(boundAccount.schedulable)) {
             logger.warn(
               `⚠️ Bound Claude OAuth account ${apiKeyData.claudeAccountId} is not schedulable (schedulable: ${boundAccount?.schedulable})`
             )
@@ -877,11 +927,14 @@ class UnifiedClaudeScheduler {
           continue
         }
 
-        if (isOpusRequest) {
-          const isOpusRateLimited = await claudeAccountService.isAccountOpusRateLimited(account.id)
-          if (isOpusRateLimited) {
+        if (requestedModelFamily) {
+          const isModelRateLimited = await claudeAccountService.isAccountModelRateLimited(
+            account.id,
+            requestedModelFamily
+          )
+          if (isModelRateLimited) {
             logger.info(
-              `🚫 Skipping account ${account.name} (${account.id}) due to active Opus limit`
+              `🚫 Skipping account ${account.name} (${account.id}) due to active ${requestedModelFamily} limit`
             )
             continue
           }
@@ -1304,14 +1357,16 @@ class UnifiedClaudeScheduler {
           return false
         }
 
-        if (
-          requestedModel &&
-          typeof requestedModel === 'string' &&
-          requestedModel.toLowerCase().includes('opus')
-        ) {
-          const isOpusRateLimited = await claudeAccountService.isAccountOpusRateLimited(accountId)
-          if (isOpusRateLimited) {
-            logger.info(`🚫 Account ${accountId} skipped due to active Opus limit (session check)`)
+        const sessionModelFamily = getRateLimitModelFamily(requestedModel)
+        if (sessionModelFamily) {
+          const isModelRateLimited = await claudeAccountService.isAccountModelRateLimited(
+            accountId,
+            sessionModelFamily
+          )
+          if (isModelRateLimited) {
+            logger.info(
+              `🚫 Account ${accountId} skipped due to active ${sessionModelFamily} limit (session check)`
+            )
             return false
           }
         }
@@ -1843,10 +1898,8 @@ class UnifiedClaudeScheduler {
       }
 
       const availableAccounts = []
-      const isOpusRequest =
-        requestedModel && typeof requestedModel === 'string'
-          ? requestedModel.toLowerCase().includes('opus')
-          : false
+      // 请求模型所属的限流家族（opus/sonnet/haiku/fable）
+      const requestedModelFamily = getRateLimitModelFamily(requestedModel)
 
       // 获取所有成员账户的详细信息
       for (const memberId of memberIds) {
@@ -1933,13 +1986,14 @@ class UnifiedClaudeScheduler {
             continue
           }
 
-          if (accountType === 'claude-official' && isOpusRequest) {
-            const isOpusRateLimited = await claudeAccountService.isAccountOpusRateLimited(
-              account.id
+          if (accountType === 'claude-official' && requestedModelFamily) {
+            const isModelRateLimited = await claudeAccountService.isAccountModelRateLimited(
+              account.id,
+              requestedModelFamily
             )
-            if (isOpusRateLimited) {
+            if (isModelRateLimited) {
               logger.info(
-                `🚫 Skipping group member ${account.name} (${account.id}) due to active Opus limit`
+                `🚫 Skipping group member ${account.name} (${account.id}) due to active ${requestedModelFamily} limit`
               )
               continue
             }
