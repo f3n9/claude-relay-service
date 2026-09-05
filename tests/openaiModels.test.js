@@ -78,6 +78,7 @@ test.each(['/openai/models', '/openai/v1/models'])(
       slug: 'gpt-example',
       display_name: 'Example',
       context_window: 123456,
+      default_reasoning_level: 'high',
       supported_reasoning_levels: [{ effort: 'high', description: 'High' }],
       model_messages: { instructions_template: 'upstream instructions' }
     }
@@ -170,7 +171,7 @@ test('filters both formats using the key denylist and OAuth account supported mo
   })
   const res = await getModels()
   expect(res.status).toBe(200)
-  expect(res.body.models).toEqual([{ slug: 'allowed' }])
+  expect(res.body.models).toEqual([expect.objectContaining({ slug: 'allowed' })])
   expect(res.body.data).toEqual([{ id: 'allowed' }])
 })
 
@@ -270,7 +271,9 @@ test('real HTTP forwards discovery to the API account and does not relay client 
       .set('Cookie', 'private-cookie')
       .set('x-api-key', 'relay-secret')
     expect(res.status).toBe(200)
-    expect(res.body.models).toEqual([{ slug: 'deployment-1', context_window: 500000 }])
+    expect(res.body.models).toEqual([
+      expect.objectContaining({ slug: 'deployment-1', context_window: 500000 })
+    ])
     expect(received).toHaveLength(1)
     expect(received[0].query).toEqual({
       'api-version': '2025-04-01-preview',
@@ -334,3 +337,37 @@ test.each(['openai', 'openai-responses'])(
     }
   }
 )
+
+test('supplements Azure standard models with reasoning options on both aliases', async () => {
+  scheduler.selectAccountForApiKey.mockResolvedValue({
+    accountId: 'api-1',
+    accountType: 'openai-responses'
+  })
+  apiAccounts.getAccount.mockResolvedValue({
+    id: 'api-1',
+    apiKey: 'provider-secret',
+    baseApi: 'https://provider.services.ai.azure.com/openai/v1'
+  })
+  const data = [
+    { id: 'gpt-5.6-sol', object: 'model' },
+    { id: 'custom-deployment', object: 'model' }
+  ]
+  axios.get.mockResolvedValue({ status: 200, data: { object: 'list', data } })
+  for (const path of ['/openai/models', '/openai/v1/models']) {
+    const res = await getModels(path)
+    expect(res.status).toBe(200)
+    expect(res.body.data).toEqual(data)
+    expect(res.body.models[0].supported_reasoning_levels.map((level) => level.effort)).toEqual([
+      'none',
+      'low',
+      'medium',
+      'high',
+      'xhigh',
+      'max'
+    ])
+    expect(res.body.models[0].default_reasoning_level).toBe('medium')
+    expect(res.body.models[1].supported_reasoning_levels.map((level) => level.effort)).toEqual([
+      'medium'
+    ])
+  }
+})

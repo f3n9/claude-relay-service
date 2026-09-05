@@ -1,15 +1,14 @@
 const { matchesModelDiscoveryPatterns } = require('./modelDiscoveryPatterns')
+const { getModelReasoning, supplementModelReasoning } = require('./openaiModelReasoning')
 
-// OpenAI /v1/models contains identifiers, not Codex capability metadata. Supply
-// conservative protocol defaults only; never infer context windows or reasoning
-// levels from a model name. Native Codex entries are preserved unchanged.
+// Standard model catalogs usually omit Codex capability metadata. Supplement
+// reasoning from documented profiles, leaving unrelated capabilities conservative.
 function toCodexModel(model, priority) {
   return {
     slug: model.id,
     display_name: model.id,
     description: '',
-    default_reasoning_level: null,
-    supported_reasoning_levels: [],
+    ...getModelReasoning(model.id, model),
     shell_type: 'shell_command',
     visibility: 'list',
     supported_in_api: true,
@@ -52,7 +51,7 @@ function normalizeModelCatalog(payload, apiKey, supportedModels = [], modelDisco
     (supported.length === 0 || supported.includes(id)) &&
     matchesModelDiscoveryPatterns(id, modelDiscoveryPatterns)
   const models = hasCodexModels
-    ? payload.models.filter((model) => allowed(model.slug))
+    ? payload.models.filter((model) => allowed(model.slug)).map(supplementModelReasoning)
     : payload.data.filter((model) => allowed(model.id)).map(toCodexModel)
   const data = hasOpenAIModels
     ? payload.data.filter((model) => allowed(model.id))
