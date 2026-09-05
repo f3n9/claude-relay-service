@@ -23,6 +23,7 @@ const {
 } = require('../utils/requestDetailHelper')
 const requestBodyRuleService = require('../services/requestBodyRuleService')
 const { handleEmbeddingsRequest: handleAzureEmbeddingsRequest } = require('./azureOpenaiRoutes')
+const { normalizeModelCatalog } = require('../utils/openaiModelCatalog')
 
 // Codex CLI 系统提示词（非 Codex CLI 客户端请求时注入，统一端点也使用）
 const CODEX_CLI_INSTRUCTIONS =
@@ -1372,9 +1373,10 @@ async function handleImages(req, res) {
     res.flush?.()
   }
   const recordImageUsage = async (usage, model, imageUsages = []) => {
-    if (!usage) {
+    if (!usage && !imageUsages.length) {
       return
     }
+    usage = usage || {}
     try {
       const inputTokens = usage.input_tokens || 0
       const outputTokens = usage.output_tokens || 0
@@ -1468,6 +1470,18 @@ async function handleImages(req, res) {
         }
       })
     }
+    const isModelBlocked = (model) =>
+      (apiKeyData.enableModelRestriction === true ||
+        apiKeyData.enableModelRestriction === 'true') &&
+      Array.isArray(apiKeyData.restrictedModels) &&
+      apiKeyData.restrictedModels.includes(model)
+    const rejectBlockedModel = () =>
+      res.status(403).json({
+        error: { message: 'Model is restricted for this API key', type: 'permission_denied' }
+      })
+    if (isModelBlocked(imageModel)) {
+      return rejectBlockedModel()
+    }
     if (body.n !== undefined && (!Number.isInteger(body.n) || body.n < 1 || body.n > 10)) {
       return res.status(400).json({
         error: { message: 'n must be an integer between 1 and 10', type: 'invalid_request_error' }
@@ -1499,6 +1513,9 @@ async function handleImages(req, res) {
       return
     }
     const apiAccount = accountType === 'openai-responses'
+    if (!apiAccount && isModelBlocked('gpt-5.4-mini')) {
+      return rejectBlockedModel()
+    }
     let url
     let payload
     let headers
@@ -1715,6 +1732,117 @@ async function handleImages(req, res) {
     upstream?.data?.destroy?.()
   }
 }
+
+async function handleModels(req, res) {
+  res.setHeader('Cache-Control', 'private, no-store')
+  if (!checkOpenAIPermissions(req.apiKey)) {
+    return res.status(403).json({
+      error: {
+        message: 'This API key does not have permission to access OpenAI',
+        type: 'permission_denied',
+        code: 'permission_denied'
+      }
+    })
+  }
+
+  const controller = new AbortController()
+  const disconnect = () => controller.abort()
+  req.once('aborted', disconnect)
+  res.once('close', disconnect)
+  try {
+    const sessionId = req.headers.session_id || req.headers['x-session-id'] || null
+    const { account, accountId, accountType, accessToken, proxy } = await getOpenAIAuthToken(
+      req.apiKey,
+      sessionId
+    )
+    if (controller.signal.aborted) {
+      return
+    }
+
+    const apiAccount = accountType === 'openai-responses'
+    const target = new URL(
+      apiAccount ? account.baseApi : 'https://chatgpt.com/backend-api/codex/models'
+    )
+    if (apiAccount) {
+      const prefix = target.pathname.replace(/\/+$/, '')
+      // Match Responses routing for compatible providers (including /openai/models).
+      // The public OpenAI API always exposes /v1/models.
+      const version =
+        !prefix.endsWith('/v1') &&
+        (req.path.startsWith('/v1/') || target.hostname === 'api.openai.com')
+          ? '/v1'
+          : ''
+      target.pathname = `${prefix}${version}/models`
+      if (target.hostname === 'api.openai.com') {
+        target.searchParams.delete('api-version')
+      } else if (account.apiVersion) {
+        target.searchParams.set('api-version', account.apiVersion)
+      }
+    }
+    // Forward only discovery parameters, never client credentials or arbitrary URLs.
+    if (typeof req.query.client_version === 'string') {
+      target.searchParams.set('client_version', req.query.client_version)
+    }
+    const headers = {
+      authorization: `Bearer ${apiAccount ? account.apiKey : accessToken}`,
+      accept: 'application/json'
+    }
+    if (!apiAccount) {
+      headers['chatgpt-account-id'] = account.accountId || account.chatgptUserId || accountId
+    }
+    for (const name of ['user-agent', 'originator', 'version', 'openai-beta', 'session_id']) {
+      if (typeof req.headers[name] === 'string') {
+        headers[name] = req.headers[name]
+      }
+    }
+    if (account.userAgent) {
+      headers['user-agent'] = account.userAgent
+    }
+    const options = {
+      headers,
+      timeout: Math.min(config.requestTimeout || 30000, 30000),
+      signal: controller.signal,
+      maxRedirects: 0,
+      validateStatus: () => true
+    }
+    const proxyAgent = createProxyAgent(proxy)
+    if (proxyAgent) {
+      options.httpAgent = proxyAgent
+      options.httpsAgent = proxyAgent
+      options.proxy = false
+    }
+
+    const upstream = await axios.get(target.toString(), options)
+    if (upstream.status < 200 || upstream.status >= 300) {
+      const error = new Error('Upstream model discovery failed')
+      error.statusCode = upstream.status >= 400 ? upstream.status : 502
+      throw error
+    }
+    return res.json(
+      normalizeModelCatalog(upstream.data, req.apiKey, apiAccount ? [] : account.supportedModels)
+    )
+  } catch (error) {
+    if (controller.signal.aborted || res.destroyed) {
+      return
+    }
+    const status =
+      error.statusCode || (error.code === 'ECONNABORTED' || error.code === 'ETIMEDOUT' ? 504 : 502)
+    // Discovery failure must not disable an otherwise working inference account.
+    logger.warn('OpenAI model discovery failed', { status, code: error.code })
+    return res.status(status).json({
+      error: {
+        message: 'Unable to retrieve models from the selected OpenAI account',
+        type: 'upstream_error'
+      }
+    })
+  } finally {
+    req.removeListener('aborted', disconnect)
+    res.removeListener('close', disconnect)
+  }
+}
+
+router.get('/models', authenticateApiKey, handleModels)
+router.get('/v1/models', authenticateApiKey, handleModels)
 
 router.post('/images/generations', authenticateApiKey, handleImages)
 router.post('/v1/images/generations', authenticateApiKey, handleImages)

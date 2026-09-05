@@ -7,6 +7,8 @@ image model is `gpt-image-2`.
 OpenAI API accounts (`openai-responses`) call the provider's native Images API.
 OAuth accounts use the Codex Responses image tool with `gpt-5.4-mini` as the
 outer model. Providers must support the requested model and endpoint.
+API key model restrictions apply to the requested image model and, for OAuth
+accounts, the outer Codex model before sending the generation request.
 
 ## Streaming
 
@@ -54,5 +56,7 @@ details cannot reconstruct mixed-input costs; use stored monetary totals.
 Codex `response.usage` describes the outer model. Separately reported image tool
 usage is billed at image rates. If Codex omits tool usage, the service logs that
 image cost is unavailable and records only the reported outer-model usage.
+If only image tool usage is reported, it is still recorded without inventing
+outer-model tokens.
 It does not invent image token counts. Native Images API accounts are the path
 for image-token billing based on the official Images usage response.

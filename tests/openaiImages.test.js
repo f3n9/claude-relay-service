@@ -388,6 +388,55 @@ test('rejects missing permissions before scheduling', async () => {
   expect(scheduler.selectAccountForApiKey).not.toHaveBeenCalled()
 })
 
+test('rejects API key blocked image models before scheduling', async () => {
+  const req = request({ model: 'gpt-image-2' })
+  req.apiKey.enableModelRestriction = true
+  req.apiKey.restrictedModels = ['gpt-image-2']
+  const res = response()
+  await handleImages(req, res)
+  expect(res.statusCode).toBe(403)
+  expect(scheduler.selectAccountForApiKey).not.toHaveBeenCalled()
+  expect(axios.post).not.toHaveBeenCalled()
+})
+
+test('rejects a blocked OAuth outer model before sending the image request', async () => {
+  const req = request()
+  req.apiKey.enableModelRestriction = true
+  req.apiKey.restrictedModels = ['gpt-5.4-mini']
+  const res = response()
+  await handleImages(req, res)
+  expect(res.statusCode).toBe(403)
+  expect(axios.post).not.toHaveBeenCalled()
+})
+
+test('an API image account does not use the OAuth outer model restriction', async () => {
+  scheduler.selectAccountForApiKey.mockResolvedValue({
+    accountId: 'api-1',
+    accountType: 'openai-responses'
+  })
+  axios.post.mockResolvedValue({ status: 200, data: { data: [{ b64_json: 'IMAGE' }] } })
+  const req = request()
+  req.apiKey.enableModelRestriction = true
+  req.apiKey.restrictedModels = ['gpt-5.4-mini']
+  const res = response()
+  await handleImages(req, res)
+  expect(res.statusCode).toBe(200)
+  expect(axios.post).toHaveBeenCalledTimes(1)
+})
+
+test('records image tool usage even when the OAuth response omits outer usage', async () => {
+  const usage = { input_tokens: 100, output_tokens: 1000 }
+  const event = completed([{ ...imageItem(), usage }])
+  delete event.response.usage
+  streamResponse([event])
+  const res = response()
+  await handleImages(request(), res)
+  expect(res.statusCode).toBe(200)
+  expect(apiKeys.recordUsage).toHaveBeenCalledTimes(1)
+  expect(apiKeys.recordUsage.mock.calls[0].slice(1, 6)).toEqual([0, 0, 0, 0, 'gpt-5.4-mini'])
+  expect(apiKeys.recordUsage.mock.calls[0][10]).toEqual({ model: 'gpt-image-2', usages: [usage] })
+})
+
 test('marks OAuth HTTP errors and preserves the original status', async () => {
   const stream = new PassThrough()
   stream.end(JSON.stringify({ error: { message: 'expired token' } }))
