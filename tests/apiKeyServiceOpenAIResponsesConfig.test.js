@@ -62,6 +62,99 @@ const CostCalculator = require('../src/utils/costCalculator')
 const apiKeyService = require('../src/services/apiKeyService')
 
 describe('apiKeyService openai responses config', () => {
+  test('adds Codex image tool cost without counting another request', async () => {
+    const rate = jest
+      .spyOn(apiKeyService, 'calculateRatedCost')
+      .mockImplementation(async (_key, _service, cost) => cost)
+    const capture = jest.spyOn(apiKeyService, '_captureRequestDetail').mockResolvedValue()
+    const imageCost = require('../src/utils/openaiImagePricing').calculateImageCost
+    CostCalculator.calculateCost.mockImplementation((usage, model) =>
+      model.startsWith('gpt-image-')
+        ? imageCost(usage, model)
+        : { costs: { input: 0.001, output: 0.002, cacheRead: 0, total: 0.003 } }
+    )
+    try {
+      const result = await apiKeyService.recordUsage(
+        'key-1',
+        10,
+        20,
+        0,
+        0,
+        'gpt-5.4-mini',
+        'oauth-1',
+        'openai',
+        null,
+        null,
+        { model: 'gpt-image-2', usages: [{ input_tokens: 100, output_tokens: 1000 }] }
+      )
+      expect(result.realCost).toBeCloseTo(0.0335, 10)
+      expect(redis.incrementTokenUsage).toHaveBeenCalledTimes(1)
+      expect(redis.addUsageRecord).toHaveBeenCalledTimes(1)
+      expect(redis.addUsageRecord).toHaveBeenCalledWith(
+        'key-1',
+        expect.objectContaining({ totalTokens: 1130, inputTokens: 110, outputTokens: 1020 })
+      )
+    } finally {
+      rate.mockRestore()
+      capture.mockRestore()
+      CostCalculator.calculateCost.mockReset()
+    }
+  })
+  test('records official image costs, multiplied costs and token breakdown in Redis', async () => {
+    jest.clearAllMocks()
+    const realCalculator = jest.requireActual('../src/utils/costCalculator')
+    CostCalculator.calculateCost.mockImplementation(
+      realCalculator.calculateCost.bind(realCalculator)
+    )
+    const usage = {
+      input_tokens: 1000,
+      output_tokens: 1000,
+      input_tokens_details: {
+        text_tokens: 400,
+        image_tokens: 600,
+        cached_tokens: 300,
+        cached_tokens_details: { text_tokens: 100, image_tokens: 200 }
+      }
+    }
+    const rate = jest.spyOn(apiKeyService, 'calculateRatedCost').mockResolvedValue(0.07045)
+    const capture = jest.spyOn(apiKeyService, '_captureRequestDetail').mockResolvedValue()
+    try {
+      const result = await apiKeyService.recordUsage(
+        'key-1',
+        700,
+        1000,
+        0,
+        300,
+        'gpt-image-2',
+        'api-1',
+        'openai-responses',
+        null,
+        { stream: true },
+        usage
+      )
+      expect(result.realCost).toBeCloseTo(0.035225, 10)
+      expect(result.ratedCost).toBeCloseTo(0.07045, 10)
+      expect(redis.incrementDailyCost).toHaveBeenCalledWith(
+        'key-1',
+        0.07045,
+        expect.closeTo(0.035225, 10)
+      )
+      expect(redis.addUsageRecord).toHaveBeenCalledWith(
+        'key-1',
+        expect.objectContaining({
+          totalTokens: 2000,
+          stream: true,
+          realCost: 0.035225,
+          cost: 0.07045,
+          imageTokenDetails: expect.objectContaining({ cachedImages: 200, imageOutput: 1000 })
+        })
+      )
+    } finally {
+      rate.mockRestore()
+      capture.mockRestore()
+      CostCalculator.calculateCost.mockReset()
+    }
+  })
   beforeEach(() => {
     jest.clearAllMocks()
     redis.getApiKey.mockResolvedValue({

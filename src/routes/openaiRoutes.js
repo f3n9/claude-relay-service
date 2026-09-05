@@ -1197,13 +1197,253 @@ async function handleEmbeddings(req, res) {
   return handleAzureEmbeddingsRequest(req, res)
 }
 
-// 注册两个路由路径，都使用相同的处理函数
-// OpenAI-compatible images endpoint. Bridges /v1/images/generations to the
-// Codex responses backend via the image_generation tool (gpt-image-*). See #1239.
+// API accounts use the Images API; OAuth accounts use the Codex image tool.
+function imagesUpstreamError(error, statusCode = 502) {
+  const detail = error && typeof error === 'object' ? error : { message: String(error) }
+  const code = detail.code || detail.type
+  if (['usage_limit_reached', 'rate_limit_exceeded', 'rate_limit_error'].includes(code)) {
+    statusCode = 429
+  } else if (['invalid_api_key', 'unauthorized', 'authentication_error'].includes(code)) {
+    statusCode = 401
+  }
+  return Object.assign(new Error(detail.message || 'Image generation failed'), {
+    statusCode,
+    upstreamData: { error: detail }
+  })
+}
+
+async function consumeImageEvents(stream, processEvent) {
+  const { StringDecoder } = require('string_decoder')
+  const decoder = new StringDecoder('utf8')
+  let buffer = ''
+  const processLine = async (line) => {
+    if (!line.startsWith('data:')) {
+      return
+    }
+    const data = line.slice(5).trim()
+    if (!data || data === '[DONE]') {
+      return
+    }
+    await processEvent(JSON.parse(data))
+  }
+  for await (const chunk of stream) {
+    buffer += decoder.write(chunk)
+    let index
+    while ((index = buffer.indexOf('\n')) !== -1) {
+      const line = buffer.slice(0, index)
+      buffer = buffer.slice(index + 1)
+      await processLine(line)
+    }
+  }
+  buffer += decoder.end()
+  if (buffer.trim()) {
+    await processLine(buffer)
+  }
+}
+
+async function readCodexImages(stream, onPreview = null) {
+  const items = new Map()
+  let completed = null
+  await consumeImageEvents(stream, async (event) => {
+    if (event.error || ['error', 'response.failed', 'response.incomplete'].includes(event.type)) {
+      throw imagesUpstreamError(
+        event.error ||
+          event.response?.error || {
+            code: event.code,
+            message: event.message || 'Image generation did not complete',
+            resets_in_seconds: event.resets_in_seconds,
+            type: 'upstream_error'
+          }
+      )
+    }
+    if (
+      event.type === 'response.output_item.done' &&
+      event.item?.type === 'image_generation_call'
+    ) {
+      items.set(event.item.id || event.output_index, event.item)
+    }
+    if (event.type === 'response.image_generation_call.partial_image' && onPreview) {
+      await onPreview({
+        type: 'image_generation.partial_image',
+        b64_json: event.partial_image_b64,
+        partial_image_index: event.partial_image_index,
+        created_at: Math.floor(Date.now() / 1000)
+      })
+    }
+    if (event.type === 'response.completed' && event.response) {
+      if (event.response.status && event.response.status !== 'completed') {
+        throw imagesUpstreamError(event.response.error || { message: 'Image generation failed' })
+      }
+      completed = event.response
+    }
+  })
+  if (!completed) {
+    throw imagesUpstreamError({ message: 'Image generation ended before completion' })
+  }
+  // The completed output is authoritative. Partial image indices count previews,
+  // not generated images; never return them as final results.
+  const output = Array.isArray(completed.output)
+    ? completed.output.filter((item) => item.type === 'image_generation_call')
+    : [...items.values()]
+  if (
+    !output.length ||
+    output.some(
+      (item) =>
+        typeof item.result !== 'string' ||
+        !item.result ||
+        (item.status && item.status !== 'completed')
+    )
+  ) {
+    throw imagesUpstreamError({ message: 'no final image produced by upstream' })
+  }
+  const meta = output[0]
+  return {
+    model: completed.model,
+    usage: completed.usage,
+    imageUsages: output.map((item) => item.usage || items.get(item.id)?.usage).filter(Boolean),
+    response: {
+      created: completed.created_at || Math.floor(Date.now() / 1000),
+      data: output.map((item) => ({ b64_json: item.result })),
+      size: meta.size,
+      quality: meta.quality,
+      background: meta.background,
+      output_format: meta.output_format
+    }
+  }
+}
+
+async function readImagesErrorBody(data) {
+  if (!data || typeof data[Symbol.asyncIterator] !== 'function') {
+    return data
+  }
+  const chunks = []
+  let bytes = 0
+  const timer = setTimeout(() => data.destroy(new Error('Image error response timed out')), 5000)
+  try {
+    for await (const chunk of data) {
+      bytes += chunk.length
+      if (bytes > 1024 * 1024) {
+        throw new Error('Image error response too large')
+      }
+      chunks.push(chunk)
+    }
+    const text = Buffer.concat(chunks).toString('utf8')
+    try {
+      return JSON.parse(text)
+    } catch (_) {
+      return { error: { message: getSafeMessage(text), type: 'upstream_error' } }
+    }
+  } finally {
+    clearTimeout(timer)
+    data.destroy()
+  }
+}
+
 async function handleImages(req, res) {
   const apiKeyData = req.apiKey || {}
+  const controller = new AbortController()
+  let upstream = null
   let accountId = null
+  let accountType = null
+  let account = null
   let sessionHash = null
+  const streaming = req.body?.stream === true
+  const writeEvent = async (event) => {
+    if (controller.signal.aborted || res.destroyed) {
+      return
+    }
+    if (!res.headersSent) {
+      res.setHeader('Content-Type', 'text/event-stream; charset=utf-8')
+      res.setHeader('Cache-Control', 'no-cache')
+      res.setHeader('X-Accel-Buffering', 'no')
+      res.flushHeaders()
+    }
+    if (!res.write(`event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`)) {
+      await new Promise((resolve) => {
+        const done = () => {
+          res.removeListener('drain', done)
+          res.removeListener('close', done)
+          resolve()
+        }
+        res.once('drain', done)
+        res.once('close', done)
+      })
+    }
+    res.flush?.()
+  }
+  const recordImageUsage = async (usage, model, imageUsages = []) => {
+    if (!usage) {
+      return
+    }
+    try {
+      const inputTokens = usage.input_tokens || 0
+      const outputTokens = usage.output_tokens || 0
+      const cacheReadTokens = extractOpenAICacheReadTokens(usage)
+      const actualInputTokens = Math.max(0, inputTokens - cacheReadTokens)
+      const costs = await apiKeyService.recordUsage(
+        apiKeyData.id,
+        actualInputTokens,
+        outputTokens,
+        0,
+        cacheReadTokens,
+        model,
+        accountId,
+        accountType,
+        null,
+        createRequestDetailMeta(req, {
+          requestBody: req.body,
+          stream: streaming,
+          statusCode: upstream.status
+        }),
+        model.startsWith('gpt-image-')
+          ? usage
+          : imageUsages.length
+            ? { model: req.body.model || 'gpt-image-2', usages: imageUsages }
+            : null
+      )
+      const toolTokens = imageUsages.reduce(
+        (sum, toolUsage) => ({
+          input:
+            sum.input + (toolUsage.input_tokens || 0) - extractOpenAICacheReadTokens(toolUsage),
+          output: sum.output + (toolUsage.output_tokens || 0),
+          cache: sum.cache + extractOpenAICacheReadTokens(toolUsage)
+        }),
+        { input: 0, output: 0, cache: 0 }
+      )
+      await applyRateLimitTracking(
+        req,
+        {
+          inputTokens: actualInputTokens + toolTokens.input,
+          outputTokens: outputTokens + toolTokens.output,
+          cacheCreateTokens: 0,
+          cacheReadTokens: cacheReadTokens + toolTokens.cache
+        },
+        model,
+        'openai-images',
+        accountType,
+        costs
+      )
+      if (accountType === 'openai-responses') {
+        await openaiResponsesAccountService.updateAccountUsage(
+          accountId,
+          inputTokens + outputTokens
+        )
+        if (Number(account.dailyQuota) > 0) {
+          await openaiResponsesAccountService.updateUsageQuota(accountId, costs.realCost)
+        }
+      }
+    } catch (error) {
+      logger.error('Failed to record OpenAI images usage:', error)
+    }
+  }
+  const disconnect = () => {
+    if (!res.writableEnded) {
+      controller.abort()
+      upstream?.data?.destroy?.()
+    }
+  }
+  res.once('close', disconnect)
+  req.once('aborted', disconnect)
   try {
     if (!checkOpenAIPermissions(apiKeyData)) {
       logger.security(
@@ -1217,356 +1457,262 @@ async function handleImages(req, res) {
         }
       })
     }
-
     const body = req.body || {}
     const prompt = typeof body.prompt === 'string' ? body.prompt.trim() : ''
-    if (!prompt) {
-      return res
-        .status(400)
-        .json({ error: { message: 'prompt is required', type: 'invalid_request_error' } })
-    }
-    const imageModel = (body.model || 'gpt-image-2').toString().trim()
-    if (!/^gpt-image-/i.test(imageModel)) {
+    const imageModel = String(body.model || 'gpt-image-2').trim()
+    if (!prompt || !/^gpt-image-/i.test(imageModel)) {
       return res.status(400).json({
         error: {
-          message: `images endpoint requires a gpt-image-* model, got "${imageModel}"`,
+          message: !prompt ? 'prompt is required' : 'images endpoint requires a gpt-image-* model',
           type: 'invalid_request_error'
         }
       })
     }
-    // OpenAI Images API 约定：n 为 1-10 的整数
     if (body.n !== undefined && (!Number.isInteger(body.n) || body.n < 1 || body.n > 10)) {
       return res.status(400).json({
         error: { message: 'n must be an integer between 1 and 10', type: 'invalid_request_error' }
       })
     }
-    const n = body.n || 1
-    const sessionId = req.headers['session_id'] || req.body?.session_id || null
-    sessionHash = sessionId ? crypto.createHash('sha256').update(sessionId).digest('hex') : null
-
-    const authResult = await getOpenAIAuthToken(apiKeyData, sessionId, 'gpt-5.4-mini')
-    const { accessToken, accountType, proxy, account } = authResult
-    ;({ accountId } = authResult)
-    if (accountType === 'openai-responses' || !accessToken) {
+    if (body.stream !== undefined && typeof body.stream !== 'boolean') {
+      return res
+        .status(400)
+        .json({ error: { message: 'stream must be a boolean', type: 'invalid_request_error' } })
+    }
+    if (
+      body.partial_images !== undefined &&
+      (!Number.isInteger(body.partial_images) || body.partial_images < 0 || body.partial_images > 3)
+    ) {
       return res.status(400).json({
         error: {
-          message: 'images bridge requires an OpenAI OAuth (Codex) account',
+          message: 'partial_images must be an integer between 0 and 3',
           type: 'invalid_request_error'
         }
       })
     }
-
-    const tool = { type: 'image_generation', action: 'generate', model: imageModel }
-    if (body.size) {
-      tool.size = String(body.size)
+    const sessionId = req.headers.session_id || body.session_id || null
+    sessionHash = sessionId ? crypto.createHash('sha256').update(sessionId).digest('hex') : null
+    // The scheduler filters OAuth accounts by the outer Codex model; API accounts
+    // support provider-defined models and receive imageModel directly below.
+    const auth = await getOpenAIAuthToken(apiKeyData, sessionId, 'gpt-5.4-mini')
+    ;({ accountId, accountType, account } = auth)
+    if (controller.signal.aborted || req.aborted || res.destroyed) {
+      return
     }
-    if (body.quality) {
-      tool.quality = String(body.quality)
+    const apiAccount = accountType === 'openai-responses'
+    let url
+    let payload
+    let headers
+    if (apiAccount) {
+      const target = new URL(account.baseApi)
+      const prefix = target.pathname.replace(/\/+$/, '')
+      target.pathname = `${prefix}${prefix.endsWith('/v1') ? '' : '/v1'}/images/generations`
+      // Public OpenAI has no api-version parameter. Preserve the existing account
+      // option for compatible providers that require it.
+      if (target.hostname !== 'api.openai.com' && account.apiVersion) {
+        target.searchParams.set('api-version', account.apiVersion)
+      }
+      url = target.toString()
+      payload = { ...body, prompt, model: imageModel, stream: streaming }
+      delete payload.session_id
+      headers = { authorization: `Bearer ${account.apiKey}`, 'content-type': 'application/json' }
+      if (account.userAgent || req.headers['user-agent']) {
+        headers['user-agent'] = account.userAgent || req.headers['user-agent']
+      }
+    } else {
+      const tool = { type: 'image_generation', action: 'generate', model: imageModel }
+      for (const field of [
+        'size',
+        'quality',
+        'background',
+        'output_format',
+        'moderation',
+        'output_compression',
+        'n',
+        'partial_images'
+      ]) {
+        if (body[field] !== undefined) {
+          tool[field] = body[field]
+        }
+      }
+      url = 'https://chatgpt.com/backend-api/codex/responses'
+      payload = {
+        instructions: '',
+        stream: true,
+        reasoning: { effort: 'medium', summary: 'auto' },
+        parallel_tool_calls: true,
+        include: ['reasoning.encrypted_content'],
+        model: 'gpt-5.4-mini',
+        store: false,
+        tool_choice: { type: 'image_generation' },
+        input: [{ type: 'message', role: 'user', content: [{ type: 'input_text', text: prompt }] }],
+        tools: [tool]
+      }
+      headers = {
+        authorization: `Bearer ${auth.accessToken}`,
+        'chatgpt-account-id': account.accountId || account.chatgptUserId || accountId,
+        accept: 'text/event-stream',
+        'content-type': 'application/json',
+        originator: 'codex_cli_rs',
+        'user-agent': 'codex_cli_rs/0.144.5',
+        version: '0.144.5'
+      }
     }
-    if (body.background) {
-      tool.background = String(body.background)
-    }
-    if (body.output_format) {
-      tool.output_format = String(body.output_format)
-    }
-    if (body.moderation) {
-      tool.moderation = String(body.moderation)
-    }
-    if (Number.isInteger(body.output_compression)) {
-      tool.output_compression = body.output_compression
-    }
-    if (n !== 1) {
-      tool.n = n
-    }
-
-    const payload = {
-      instructions: '',
-      stream: true,
-      reasoning: { effort: 'medium', summary: 'auto' },
-      parallel_tool_calls: true,
-      include: ['reasoning.encrypted_content'],
-      model: 'gpt-5.4-mini',
-      store: false,
-      tool_choice: { type: 'image_generation' },
-      input: [{ type: 'message', role: 'user', content: [{ type: 'input_text', text: prompt }] }],
-      tools: [tool]
-    }
-
-    const headers = {
-      authorization: `Bearer ${accessToken}`,
-      'chatgpt-account-id': (account && (account.accountId || account.chatgptUserId)) || accountId,
-      host: 'chatgpt.com',
-      accept: 'text/event-stream',
-      'content-type': 'application/json',
-      originator: 'codex_cli_rs',
-      'user-agent': 'codex_cli_rs/0.144.5',
-      version: '0.144.5'
-    }
-    const proxyAgent = createProxyAgent(proxy)
-    const axiosConfig = {
+    const options = {
       headers,
       timeout: config.requestTimeout || 600000,
       validateStatus: () => true,
-      responseType: 'stream'
+      responseType: apiAccount && !streaming ? 'json' : 'stream',
+      signal: controller.signal
     }
-    if (proxyAgent) {
-      axiosConfig.httpAgent = proxyAgent
-      axiosConfig.httpsAgent = proxyAgent
-      axiosConfig.proxy = false
+    const agent = createProxyAgent(auth.proxy)
+    if (agent) {
+      options.httpAgent = agent
+      options.httpsAgent = agent
+      options.proxy = false
     }
-
-    const upstream = await axios.post(
-      'https://chatgpt.com/backend-api/codex/responses',
-      payload,
-      axiosConfig
-    )
+    upstream = await axios.post(url, payload, options)
+    if (controller.signal.aborted) {
+      upstream.data?.destroy?.()
+      return
+    }
     if (upstream.status < 200 || upstream.status >= 300) {
-      // 先收集完整的错误响应体（上游以流返回）
-      const chunks = []
-      await new Promise((resolve) => {
-        upstream.data.on('data', (chunk) => chunks.push(chunk))
-        upstream.data.on('end', resolve)
-        upstream.data.on('error', resolve)
-        // 设置超时防止无限等待
-        setTimeout(resolve, 5000)
-      })
-      const rawBody = Buffer.concat(chunks).toString()
-      let errorData = null
+      let data
       try {
-        errorData = JSON.parse(rawBody)
-      } catch (parseError) {
-        logger.debug('Failed to parse images upstream error response:', parseError.message)
+        data = await readImagesErrorBody(upstream.data)
+      } catch (readError) {
+        // A truncated error body must not hide a 401/429 HTTP status.
+        data = { error: { message: getSafeMessage(readError), type: 'upstream_error' } }
       }
-
-      if (upstream.status === 429) {
-        logger.warn(`🚫 Rate limit detected for OpenAI account ${accountId} (images bridge)`)
-        const resetsInSeconds =
-          (errorData && errorData.error && errorData.error.resets_in_seconds) || null
-
-        // 标记账户为限流状态
-        await unifiedOpenAIScheduler.markAccountRateLimited(
-          accountId,
-          'openai',
-          sessionHash,
-          resetsInSeconds
-        )
-
-        const errorResponse = errorData || {
-          error: {
-            type: 'usage_limit_reached',
-            message: 'The usage limit has been reached',
-            resets_in_seconds: resetsInSeconds
-          }
-        }
-        return res.status(429).json(errorResponse)
-      }
-
-      if (upstream.status === 401 || upstream.status === 402) {
-        const statusLabel = upstream.status === 401 ? '401错误' : '402错误'
-        const extraHint = upstream.status === 402 ? '，可能欠费' : ''
-        let reason = `OpenAI账号认证失败（${statusLabel}${extraHint}）`
-        const messageCandidate =
-          errorData && errorData.error && typeof errorData.error.message === 'string'
-            ? errorData.error.message.trim()
-            : null
-        if (messageCandidate) {
-          reason = `${reason}：${messageCandidate}`
-        }
-        logger.warn(`🔐 ${statusLabel} detected for OpenAI account ${accountId} (images bridge)`)
-
-        try {
-          await unifiedOpenAIScheduler.markAccountUnauthorized(
-            accountId,
-            'openai',
-            sessionHash,
-            reason
-          )
-        } catch (markError) {
-          logger.error('❌ Failed to mark OpenAI account unauthorized (images bridge):', markError)
-        }
-
-        return res.status(upstream.status).json(
-          errorData || {
-            error: { message: 'Authentication failed', type: 'unauthorized', code: 'unauthorized' }
-          }
-        )
-      }
-
-      logger.error(`❌ Images upstream error ${upstream.status}: ${rawBody.slice(0, 500)}`)
-      return res.status(upstream.status).json(
-        errorData && errorData.error
-          ? errorData
-          : {
-              error: {
-                message: getSafeMessage(rawBody || `upstream error ${upstream.status}`),
-                type: 'upstream_error'
-              }
-            }
+      throw imagesUpstreamError(
+        data?.error || { message: getSafeMessage(data || 'Image upstream error') },
+        upstream.status
       )
     }
-
-    // 请求成功，检查并移除限流状态
-    const isRateLimited = await unifiedOpenAIScheduler.isAccountRateLimited(accountId)
-    if (isRateLimited) {
-      logger.info(`✅ Removing rate limit for OpenAI account ${accountId} after successful request`)
-      await unifiedOpenAIScheduler.removeAccountRateLimit(accountId, 'openai')
-    }
-
-    const best = {}
-    let buf = ''
-    let meta = {}
-    let usageData = null
-    let actualModel = null
-    upstream.data.on('data', (chunk) => {
-      buf += chunk.toString()
-      let idx
-      while ((idx = buf.indexOf('\n')) >= 0) {
-        const line = buf.slice(0, idx)
-        buf = buf.slice(idx + 1)
-        if (!line.startsWith('data:')) {
-          continue
+    if (apiAccount && streaming) {
+      let completedCount = 0
+      await consumeImageEvents(upstream.data, async (event) => {
+        if (event.type === 'error' || event.error) {
+          throw imagesUpstreamError(event.error || event)
         }
-        const p = line.slice(5).trim()
-        if (!p || p === '[DONE]') {
-          continue
-        }
-        let j
-        try {
-          j = JSON.parse(p)
-        } catch (e) {
-          continue
-        }
-        if (j && typeof j.partial_image_b64 === 'string') {
-          const i = Number.isInteger(j.partial_image_index) ? j.partial_image_index : 0
-          if (!best[i] || j.partial_image_b64.length >= best[i].length) {
-            best[i] = j.partial_image_b64
+        if (event.type === 'image_generation.completed') {
+          if (typeof event.b64_json !== 'string' || !event.b64_json) {
+            throw imagesUpstreamError({ message: 'no final image produced by upstream' })
           }
+          completedCount++
+          // Persist usage before exposing the final event, even if the client
+          // disconnects immediately after receiving its image.
+          await recordImageUsage(event.usage, imageModel)
         }
-        if (j && j.type === 'response.completed' && j.response) {
-          if (Array.isArray(j.response.tools) && j.response.tools[0]) {
-            meta = j.response.tools[0]
-          }
-          if (j.response.model) {
-            actualModel = j.response.model
-          }
-          if (j.response.usage) {
-            usageData = j.response.usage
-          }
-        }
-      }
-    })
-    upstream.data.on('end', async () => {
-      const keys = Object.keys(best).sort((a, b) => Number(a) - Number(b))
-      if (!keys.length) {
-        if (!res.headersSent) {
-          res
-            .status(502)
-            .json({ error: { message: 'no image produced by upstream', type: 'upstream_error' } })
-        }
-      } else if (!res.headersSent) {
-        const data = keys.map((k) => ({ b64_json: best[k] }))
-        res.status(200).json({
-          created: Math.floor(Date.now() / 1000),
-          data,
-          size: meta.size,
-          quality: meta.quality,
-          background: meta.background,
-          output_format: meta.output_format
-        })
-      }
-
-      // 记录使用统计
-      if (usageData) {
-        try {
-          const totalInputTokens = usageData.input_tokens || 0
-          const outputTokens = usageData.output_tokens || 0
-          const cacheReadTokens = extractOpenAICacheReadTokens(usageData)
-          // 计算实际输入token（总输入减去缓存部分）
-          const actualInputTokens = Math.max(0, totalInputTokens - cacheReadTokens)
-          const modelToRecord = actualModel || imageModel
-
-          const imageCosts = await apiKeyService.recordUsage(
-            apiKeyData.id,
-            actualInputTokens,
-            outputTokens,
-            0, // OpenAI没有cache_creation_tokens
-            cacheReadTokens,
-            modelToRecord,
-            accountId,
-            'openai',
-            null,
-            createRequestDetailMeta(req, {
-              requestBody: req.body,
-              stream: false,
-              statusCode: res.statusCode
-            })
-          )
-
-          logger.info(
-            `📊 Recorded OpenAI images usage - Input: ${totalInputTokens}(actual:${actualInputTokens}+cached:${cacheReadTokens}), Output: ${outputTokens}, Model: ${modelToRecord}`
-          )
-
-          await applyRateLimitTracking(
-            req,
-            {
-              inputTokens: actualInputTokens,
-              outputTokens,
-              cacheCreateTokens: 0,
-              cacheReadTokens
-            },
-            modelToRecord,
-            'openai-images',
-            'openai',
-            imageCosts
-          )
-        } catch (usageError) {
-          logger.error('Failed to record OpenAI images usage:', usageError)
-        }
-      }
-    })
-    upstream.data.on('error', (e) => {
-      logger.error('Images upstream stream error:', e)
-      if (!res.headersSent) {
-        res.status(502).json({
-          error: { message: getSafeMessage(e), type: 'upstream_error' }
-        })
-      }
-    })
-
-    // 客户端断开时清理上游流
-    const cleanup = () => {
-      try {
-        upstream.data?.destroy?.()
-      } catch (_) {
-        //
-      }
-    }
-    req.on('close', cleanup)
-    req.on('aborted', cleanup)
-  } catch (error) {
-    logger.error('handleImages error:', error)
-    const status = error.statusCode || error.response?.status || 500
-
-    if ((status === 401 || status === 402) && accountId) {
-      const statusLabel = status === 401 ? '401错误' : '402错误'
-      const extraHint = status === 402 ? '，可能欠费' : ''
-      try {
-        await unifiedOpenAIScheduler.markAccountUnauthorized(
-          accountId,
-          'openai',
-          sessionHash,
-          `OpenAI账号认证失败（${statusLabel}${extraHint}）`
-        )
-      } catch (markError) {
-        logger.error('❌ Failed to mark OpenAI account unauthorized (images bridge):', markError)
-      }
-    }
-
-    if (!res.headersSent) {
-      res.status(status).json({
-        error: { message: getSafeMessage(error), type: 'api_error' }
+        await writeEvent(event)
       })
+      if (!completedCount) {
+        throw imagesUpstreamError({ message: 'Image generation ended before completion' })
+      }
+      if (!res.destroyed) {
+        res.end()
+      }
+      return
     }
+    const result = apiAccount
+      ? {
+          response: upstream.data,
+          usage: upstream.data?.usage,
+          model: upstream.data?.model || imageModel
+        }
+      : await readCodexImages(upstream.data, streaming ? writeEvent : null)
+    if (result.response?.error) {
+      throw imagesUpstreamError(result.response.error)
+    }
+    if (!Array.isArray(result.response?.data) || !result.response.data.length) {
+      throw imagesUpstreamError({ message: 'no image produced by upstream' })
+    }
+    if (controller.signal.aborted) {
+      return
+    }
+    // Only clear OAuth rate limits once generation has actually completed.
+    if (!apiAccount && (await unifiedOpenAIScheduler.isAccountRateLimited(accountId))) {
+      await unifiedOpenAIScheduler.removeAccountRateLimit(accountId, accountType)
+    }
+    await recordImageUsage(result.usage, result.model || imageModel, result.imageUsages)
+    if (!apiAccount) {
+      // Codex response.usage belongs to the outer text model. Only separately
+      // reported tool usage can be priced as image tokens; never relabel it.
+      if (!result.imageUsages.length) {
+        logger.warn('Codex did not report image tool usage; image cost is unavailable', {
+          accountId,
+          imageModel
+        })
+      }
+    }
+    if (streaming && !res.destroyed) {
+      for (const item of result.response.data) {
+        await writeEvent({
+          type: 'image_generation.completed',
+          b64_json: item.b64_json,
+          created_at: result.response.created,
+          size: result.response.size,
+          quality: result.response.quality,
+          background: result.response.background,
+          output_format: result.response.output_format
+        })
+      }
+      res.end()
+    } else if (!res.destroyed && !res.headersSent) {
+      res.status(200).json(result.response)
+    }
+  } catch (error) {
+    if (controller.signal.aborted || res.destroyed) {
+      return
+    }
+    const status = error.statusCode || error.response?.status || 502
+    const detail = error.upstreamData?.error
+    try {
+      if (accountId && status === 429) {
+        await unifiedOpenAIScheduler.markAccountRateLimited(
+          accountId,
+          accountType,
+          sessionHash,
+          detail?.resets_in_seconds || null
+        )
+      } else if (accountId && (status === 401 || status === 402)) {
+        if (accountType === 'openai-responses') {
+          if (account.disableAutoProtection !== true && account.disableAutoProtection !== 'true') {
+            const upstreamErrorHelper = require('../utils/upstreamErrorHelper')
+            await upstreamErrorHelper.markTempUnavailable(accountId, accountType, status)
+          }
+          if (sessionHash) {
+            await unifiedOpenAIScheduler._deleteSessionMapping(sessionHash)
+          }
+        } else {
+          await unifiedOpenAIScheduler.markAccountUnauthorized(
+            accountId,
+            accountType,
+            sessionHash,
+            getSafeMessage(error)
+          )
+        }
+      }
+    } catch (markError) {
+      logger.error('Failed to mark images account error:', markError)
+    }
+    logger.warn('Images request failed:', { accountId, status, message: getSafeMessage(error) })
+    if (res.headersSent && streaming) {
+      await writeEvent({
+        type: 'error',
+        error: detail || { message: getSafeMessage(error), type: 'upstream_error' }
+      })
+      res.end()
+    } else if (!res.headersSent) {
+      res.status(status).json(
+        error.upstreamData || {
+          error: { message: getSafeMessage(error), type: 'upstream_error' }
+        }
+      )
+    }
+  } finally {
+    res.removeListener('close', disconnect)
+    req.removeListener('aborted', disconnect)
+    upstream?.data?.destroy?.()
   }
 }
 

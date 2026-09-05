@@ -5,6 +5,10 @@ const mockRouter = {
   post: jest.fn()
 }
 
+jest.mock('../src/routes/azureOpenaiRoutes', () => ({
+  handleEmbeddingsRequest: jest.fn()
+}))
+
 jest.mock(
   'express',
   () => ({

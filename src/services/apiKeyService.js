@@ -1697,24 +1697,49 @@ class ApiKeyService {
     accountId = null,
     accountType = null,
     serviceTier = null,
-    requestMeta = null
+    requestMeta = null,
+    imageUsage = null
   ) {
     try {
       const finalizedRequestMeta = finalizeRequestDetailMeta(requestMeta)
-      const totalTokens = inputTokens + outputTokens + cacheCreateTokens + cacheReadTokens
+      let totalTokens = inputTokens + outputTokens + cacheCreateTokens + cacheReadTokens
 
       // 计算费用
       const CostCalculator = require('../utils/costCalculator')
       const costInfo = CostCalculator.calculateCost(
-        {
-          input_tokens: inputTokens,
-          output_tokens: outputTokens,
-          cache_creation_input_tokens: cacheCreateTokens,
-          cache_read_input_tokens: cacheReadTokens
-        },
+        imageUsage && typeof model === 'string' && model.startsWith('gpt-image-')
+          ? imageUsage
+          : {
+              // recordUsage inputTokens excludes cache reads; image pricing consumes
+              // the provider's total input count and separates cached inputs itself.
+              input_tokens:
+                typeof model === 'string' && model.startsWith('gpt-image-')
+                  ? inputTokens + cacheReadTokens
+                  : inputTokens,
+              output_tokens: outputTokens,
+              cache_creation_input_tokens: cacheCreateTokens,
+              cache_read_input_tokens: cacheReadTokens
+            },
         model,
         serviceTier
       )
+      // A Codex request can report outer text usage plus image tool usage. Add
+      // tool cost to this same request record so request counters increment once.
+      if (imageUsage?.model?.startsWith('gpt-image-') && Array.isArray(imageUsage.usages)) {
+        const toolCosts = imageUsage.usages.map((usage) =>
+          CostCalculator.calculateCost(usage, imageUsage.model)
+        )
+        costInfo.imageTokenDetails = toolCosts.map((item) => item.imageTokenDetails)
+        for (const toolCost of toolCosts) {
+          for (const key of ['input', 'output', 'cacheRead', 'total']) {
+            costInfo.costs[key] += toolCost.costs[key]
+          }
+          inputTokens += toolCost.usage.inputTokens - toolCost.usage.cacheReadTokens
+          outputTokens += toolCost.usage.outputTokens
+          cacheReadTokens += toolCost.usage.cacheReadTokens
+          totalTokens += toolCost.usage.totalTokens
+        }
+      }
 
       // 检查是否为 1M 上下文请求
       let isLongContextRequest = false
@@ -1823,6 +1848,7 @@ class ApiKeyService {
         realCost: Number(realCost.toFixed(6)),
         costBreakdown: costInfo?.costs || undefined,
         realCostBreakdown: costInfo?.costs || undefined,
+        ...(costInfo.imageTokenDetails ? { imageTokenDetails: costInfo.imageTokenDetails } : {}),
         isLongContext: isLongContextRequest,
         serviceTier: serviceTier || null
       }

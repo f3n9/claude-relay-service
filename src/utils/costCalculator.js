@@ -309,6 +309,13 @@ class CostCalculator {
    * @returns {Object} 费用详情
    */
   static calculateCost(usage, model = 'unknown', serviceTier = null) {
+    if (typeof model === 'string' && model.startsWith('gpt-image-')) {
+      const result = require('./openaiImagePricing').calculateImageCost(usage, model)
+      result.formatted = Object.fromEntries(
+        Object.entries(result.costs).map(([key, value]) => [key, this.formatCost(value)])
+      )
+      return result
+    }
     // 如果 usage 包含详细的 cache_creation 对象或是 1M 模型，优先使用 pricingService
     if (this.isDetailedPricingRequest(usage, model)) {
       const result = pricingService.calculateCost(usage, model)
@@ -340,6 +347,9 @@ class CostCalculator {
         aggregatedUsage.cacheCreateTokens || aggregatedUsage.totalCacheCreateTokens || 0,
       cache_read_input_tokens:
         aggregatedUsage.cacheReadTokens || aggregatedUsage.totalCacheReadTokens || 0
+    }
+    if (typeof model === 'string' && model.startsWith('gpt-image-')) {
+      usage.input_tokens += usage.cache_read_input_tokens
     }
 
     // 如果有 ephemeral 拆分数据，构建 cache_creation 子对象
