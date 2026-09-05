@@ -790,6 +790,24 @@
               </p>
             </div>
 
+            <div v-if="form.platform === 'openai' || form.platform === 'openai-responses'">
+              <label class="mb-2 block text-sm font-semibold text-gray-700 dark:text-gray-300">
+                模型列表展示规则（可选）
+              </label>
+              <textarea
+                v-model="form.modelDiscoveryPatternsInput"
+                aria-label="模型列表展示规则"
+                class="form-input w-full font-mono"
+                placeholder="gpt-5&#10;gpt-5.6-*"
+                rows="3"
+              />
+              <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                每行一条，支持逗号分隔。gpt-5 仅匹配同名模型；gpt-5.6-* 匹配该前缀。
+                留空返回全部模型；填写后仅返回匹配项。仅影响 /openai/models 和
+                /openai/v1/models，不限制模型调用。
+              </p>
+            </div>
+
             <!-- 到期时间 - 仅在创建账户时显示，编辑时使用独立的过期时间编辑弹窗，Gemini API 不需要 -->
             <div v-if="!isEdit && form.platform !== 'gemini-api'">
               <label class="mb-2 block text-sm font-semibold text-gray-700 dark:text-gray-300"
@@ -3123,6 +3141,24 @@
             </p>
           </div>
 
+          <div v-if="form.platform === 'openai' || form.platform === 'openai-responses'">
+            <label class="mb-2 block text-sm font-semibold text-gray-700 dark:text-gray-300">
+              模型列表展示规则（可选）
+            </label>
+            <textarea
+              v-model="form.modelDiscoveryPatternsInput"
+              aria-label="模型列表展示规则"
+              class="form-input w-full font-mono"
+              placeholder="gpt-5&#10;gpt-5.6-*"
+              rows="3"
+            />
+            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              每行一条，支持逗号分隔。gpt-5 仅匹配同名模型；gpt-5.6-* 匹配该前缀。
+              留空返回全部模型；填写后仅返回匹配项。仅影响 /openai/models 和
+              /openai/v1/models，不限制模型调用。
+            </p>
+          </div>
+
           <!-- 到期时间 - 仅在创建账户时显示，编辑时使用独立的过期时间编辑弹窗 -->
           <div v-if="!isEdit">
             <label class="mb-2 block text-sm font-semibold text-gray-700 dark:text-gray-300"
@@ -5092,6 +5128,7 @@ const form = ref({
   tempUnavailable5xxTtlSeconds: toFormCooldownOverrideValue(
     props.account?.tempUnavailable5xxTtlSeconds
   ),
+  modelDiscoveryPatternsInput: (props.account?.modelDiscoveryPatterns || []).join('\n'),
   passThrough: props.account?.passThrough === true || props.account?.passThrough === 'true',
   // 额度管理字段
   dailyQuota: props.account?.dailyQuota || 0,
@@ -5775,6 +5812,16 @@ const handleOAuthSuccess = async (tokenInfoOrList) => {
       expiresAt: form.value.expiresAt || undefined,
       proxy: proxyPayload
     }
+    if (['openai', 'openai-responses'].includes(form.value.platform)) {
+      data.modelDiscoveryPatterns = [
+        ...new Set(
+          form.value.modelDiscoveryPatternsInput
+            .split(/[\n,，]+/)
+            .map((pattern) => pattern.trim())
+            .filter(Boolean)
+        )
+      ]
+    }
 
     if (currentPlatform === 'claude') {
       // Claude使用claudeAiOauth字段
@@ -6149,6 +6196,16 @@ const createAccount = async () => {
       expiresAt: form.value.expiresAt || undefined,
       proxy: proxyPayload
     }
+    if (['openai', 'openai-responses'].includes(form.value.platform)) {
+      data.modelDiscoveryPatterns = [
+        ...new Set(
+          form.value.modelDiscoveryPatternsInput
+            .split(/[\n,，]+/)
+            .map((pattern) => pattern.trim())
+            .filter(Boolean)
+        )
+      ]
+    }
 
     if (form.value.platform === 'claude') {
       // Claude手动模式需要构建claudeAiOauth对象
@@ -6502,6 +6559,16 @@ const updateAccount = async () => {
       groupIds: form.value.accountType === 'group' ? form.value.groupIds : undefined,
       expiresAt: form.value.expiresAt || undefined,
       proxy: proxyPayload
+    }
+    if (['openai', 'openai-responses'].includes(form.value.platform)) {
+      data.modelDiscoveryPatterns = [
+        ...new Set(
+          form.value.modelDiscoveryPatternsInput
+            .split(/[\n,，]+/)
+            .map((pattern) => pattern.trim())
+            .filter(Boolean)
+        )
+      ]
     }
     const accountPassThrough =
       props.account?.passThrough === true || props.account?.passThrough === 'true'
@@ -7379,6 +7446,7 @@ watch(
         enableRateLimit:
           newAccount.rateLimitDuration && newAccount.rateLimitDuration > 0 ? true : false,
         rateLimitDuration: newAccount.rateLimitDuration || 60,
+        modelDiscoveryPatternsInput: (newAccount.modelDiscoveryPatterns || []).join('\n'),
         passThrough: newAccount.passThrough === true || newAccount.passThrough === 'true',
         // Bedrock 特定字段
         accessKeyId: '', // 编辑模式不显示现有的访问密钥

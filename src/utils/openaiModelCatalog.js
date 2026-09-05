@@ -1,3 +1,5 @@
+const { matchesModelDiscoveryPatterns } = require('./modelDiscoveryPatterns')
+
 // OpenAI /v1/models contains identifiers, not Codex capability metadata. Supply
 // conservative protocol defaults only; never infer context windows or reasoning
 // levels from a model name. Native Codex entries are preserved unchanged.
@@ -26,7 +28,7 @@ function toCodexModel(model, priority) {
   }
 }
 
-function normalizeModelCatalog(payload, apiKey, supportedModels = []) {
+function normalizeModelCatalog(payload, apiKey, supportedModels = [], modelDiscoveryPatterns = []) {
   const hasCodexModels = Array.isArray(payload?.models)
   const hasOpenAIModels = Array.isArray(payload?.data)
   if (
@@ -46,7 +48,9 @@ function normalizeModelCatalog(payload, apiKey, supportedModels = []) {
       : []
   const supported = Array.isArray(supportedModels) ? supportedModels : []
   const allowed = (id) =>
-    !restricted.includes(id) && (supported.length === 0 || supported.includes(id))
+    !restricted.includes(id) &&
+    (supported.length === 0 || supported.includes(id)) &&
+    matchesModelDiscoveryPatterns(id, modelDiscoveryPatterns)
   const models = hasCodexModels
     ? payload.models.filter((model) => allowed(model.slug))
     : payload.data.filter((model) => allowed(model.id)).map(toCodexModel)

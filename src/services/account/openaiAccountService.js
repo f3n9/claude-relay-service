@@ -1,3 +1,7 @@
+const {
+  normalizeModelDiscoveryPatterns,
+  readModelDiscoveryPatterns
+} = require('../../utils/modelDiscoveryPatterns')
 const redisClient = require('../../models/redis')
 const { v4: uuidv4 } = require('uuid')
 const axios = require('axios')
@@ -458,6 +462,9 @@ async function createAccount(accountData) {
     id: accountId,
     name: accountData.name,
     description: accountData.description || '',
+    modelDiscoveryPatterns: JSON.stringify(
+      normalizeModelDiscoveryPatterns(accountData.modelDiscoveryPatterns)
+    ),
     accountType: accountData.accountType || 'shared',
     groupId: accountData.groupId || null,
     priority: accountData.priority || 50,
@@ -525,7 +532,10 @@ async function createAccount(accountData) {
   }
 
   logger.info(`Created OpenAI account: ${accountId}`)
-  return account
+  return {
+    ...account,
+    modelDiscoveryPatterns: readModelDiscoveryPatterns(account.modelDiscoveryPatterns)
+  }
 }
 
 // 获取账户
@@ -568,6 +578,9 @@ async function getAccount(accountId) {
     }
   }
 
+  accountData.modelDiscoveryPatterns = readModelDiscoveryPatterns(
+    accountData.modelDiscoveryPatterns
+  )
   return accountData
 }
 
@@ -576,6 +589,12 @@ async function updateAccount(accountId, updates) {
   const existingAccount = await getAccount(accountId)
   if (!existingAccount) {
     throw new Error('Account not found')
+  }
+
+  if (updates.modelDiscoveryPatterns !== undefined) {
+    updates.modelDiscoveryPatterns = JSON.stringify(
+      normalizeModelDiscoveryPatterns(updates.modelDiscoveryPatterns)
+    )
   }
 
   updates.updatedAt = new Date().toISOString()
@@ -652,6 +671,9 @@ async function updateAccount(accountId, updates) {
     }
   }
 
+  updatedAccount.modelDiscoveryPatterns = readModelDiscoveryPatterns(
+    updatedAccount.modelDiscoveryPatterns
+  )
   return updatedAccount
 }
 
@@ -750,6 +772,7 @@ async function getAllAccounts() {
       // 不解密敏感字段，只返回基本信息
       accounts.push({
         ...accountData,
+        modelDiscoveryPatterns: readModelDiscoveryPatterns(accountData.modelDiscoveryPatterns),
         isActive: accountData.isActive === 'true',
         schedulable: accountData.schedulable !== 'false',
         passThrough: accountData.passThrough === 'true',

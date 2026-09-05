@@ -1819,7 +1819,12 @@ async function handleModels(req, res) {
       throw error
     }
     return res.json(
-      normalizeModelCatalog(upstream.data, req.apiKey, apiAccount ? [] : account.supportedModels)
+      normalizeModelCatalog(
+        upstream.data,
+        req.apiKey,
+        apiAccount ? [] : account.supportedModels,
+        account.modelDiscoveryPatterns
+      )
     )
   } catch (error) {
     if (controller.signal.aborted || res.destroyed) {

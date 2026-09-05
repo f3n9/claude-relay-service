@@ -3,6 +3,7 @@
  * 处理 OpenAI-Responses 账户的增删改查和状态管理
  */
 
+const { validateModelDiscoveryPatterns } = require('../../utils/modelDiscoveryPatterns')
 const express = require('express')
 const axios = require('axios')
 const openaiResponsesAccountService = require('../../services/account/openaiResponsesAccountService')
@@ -19,6 +20,7 @@ const { getProxyAgent } = require('../../utils/proxyHelper')
 const DEFAULT_OPENAI_RESPONSES_API_VERSION = '2025-04-01-preview'
 
 const router = express.Router()
+const validateAccount = [authenticateAdmin, validateModelDiscoveryPatterns]
 
 function appendApiVersion(targetUrl, apiVersion) {
   const normalizedVersion =
@@ -159,7 +161,7 @@ router.get('/openai-responses-accounts', authenticateAdmin, async (req, res) => 
 })
 
 // 创建 OpenAI-Responses 账户
-router.post('/openai-responses-accounts', authenticateAdmin, async (req, res) => {
+router.post('/openai-responses-accounts', validateAccount, async (req, res) => {
   try {
     const accountData = req.body
 
@@ -206,7 +208,7 @@ router.post('/openai-responses-accounts', authenticateAdmin, async (req, res) =>
 })
 
 // 更新 OpenAI-Responses 账户
-router.put('/openai-responses-accounts/:id', authenticateAdmin, async (req, res) => {
+router.put('/openai-responses-accounts/:id', validateAccount, async (req, res) => {
   try {
     const { id } = req.params
     const updates = req.body

@@ -1,3 +1,7 @@
+const {
+  normalizeModelDiscoveryPatterns,
+  readModelDiscoveryPatterns
+} = require('../../utils/modelDiscoveryPatterns')
 const { v4: uuidv4 } = require('uuid')
 const crypto = require('crypto')
 const redis = require('../../models/redis')
@@ -112,6 +116,9 @@ class OpenAIResponsesAccountService {
       quotaStoppedAt: '',
       disableAutoProtection: disableAutoProtection.toString(), // 关闭自动防护
       passThrough: passThrough === true || passThrough === 'true' ? 'true' : 'false',
+      modelDiscoveryPatterns: JSON.stringify(
+        normalizeModelDiscoveryPatterns(options.modelDiscoveryPatterns)
+      ),
       providerEndpoint // Provider 端点类型：responses(默认) | auto
     }
 
@@ -122,6 +129,7 @@ class OpenAIResponsesAccountService {
 
     return {
       ...accountData,
+      modelDiscoveryPatterns: readModelDiscoveryPatterns(accountData.modelDiscoveryPatterns),
       apiKey: '***' // 返回时隐藏敏感信息
     }
   }
@@ -148,6 +156,9 @@ class OpenAIResponsesAccountService {
       }
     }
 
+    accountData.modelDiscoveryPatterns = readModelDiscoveryPatterns(
+      accountData.modelDiscoveryPatterns
+    )
     accountData.apiVersion = this._normalizeApiVersion(accountData.apiVersion)
 
     return accountData
@@ -158,6 +169,12 @@ class OpenAIResponsesAccountService {
     const account = await this.getAccount(accountId)
     if (!account) {
       throw new Error('Account not found')
+    }
+
+    if (updates.modelDiscoveryPatterns !== undefined) {
+      updates.modelDiscoveryPatterns = JSON.stringify(
+        normalizeModelDiscoveryPatterns(updates.modelDiscoveryPatterns)
+      )
     }
 
     // 处理敏感字段加密
@@ -297,6 +314,9 @@ class OpenAIResponsesAccountService {
       accountData.schedulable = accountData.schedulable !== 'false'
       accountData.isActive = accountData.isActive === 'true'
       accountData.passThrough = accountData.passThrough === 'true'
+      accountData.modelDiscoveryPatterns = readModelDiscoveryPatterns(
+        accountData.modelDiscoveryPatterns
+      )
       accountData.apiVersion = this._normalizeApiVersion(accountData.apiVersion)
       accountData.expiresAt = accountData.subscriptionExpiresAt || null
       accountData.platform = accountData.platform || 'openai-responses'

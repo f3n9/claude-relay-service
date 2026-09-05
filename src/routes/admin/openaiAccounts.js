@@ -3,6 +3,7 @@
  * 处理 OpenAI 账户的 CRUD 操作和 OAuth 授权流程
  */
 
+const { validateModelDiscoveryPatterns } = require('../../utils/modelDiscoveryPatterns')
 const express = require('express')
 const crypto = require('crypto')
 const axios = require('axios')
@@ -17,6 +18,7 @@ const webhookNotifier = require('../../utils/webhookNotifier')
 const { formatAccountExpiry, mapExpiryField } = require('./utils')
 
 const router = express.Router()
+const validateAccount = [authenticateAdmin, validateModelDiscoveryPatterns]
 
 // OpenAI OAuth 配置
 const OPENAI_CONFIG = {
@@ -317,7 +319,7 @@ router.get('/', authenticateAdmin, async (req, res) => {
 })
 
 // 创建 OpenAI 账户
-router.post('/', authenticateAdmin, async (req, res) => {
+router.post('/', validateAccount, async (req, res) => {
   try {
     const {
       name,
@@ -331,6 +333,7 @@ router.post('/', authenticateAdmin, async (req, res) => {
       rateLimitDuration,
       priority,
       passThrough,
+      modelDiscoveryPatterns,
       needsImmediateRefresh, // 是否需要立即刷新
       requireRefreshSuccess // 是否必须刷新成功才能创建
     } = req.body
@@ -355,6 +358,7 @@ router.post('/', authenticateAdmin, async (req, res) => {
       proxy: proxy || null,
       isActive: true,
       schedulable: true,
+      modelDiscoveryPatterns,
       passThrough: passThrough === true || passThrough === 'true'
     }
 
@@ -478,7 +482,7 @@ router.post('/', authenticateAdmin, async (req, res) => {
 })
 
 // 更新 OpenAI 账户
-router.put('/:id', authenticateAdmin, async (req, res) => {
+router.put('/:id', validateAccount, async (req, res) => {
   try {
     const { id } = req.params
     const updates = req.body

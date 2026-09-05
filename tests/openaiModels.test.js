@@ -308,3 +308,29 @@ test('redirects are rejected without sending credentials to a second endpoint', 
     await new Promise((resolve) => server.close(resolve))
   }
 })
+
+test.each(['openai', 'openai-responses'])(
+  'applies %s account discovery allowlist to both response formats',
+  async (accountType) => {
+    scheduler.selectAccountForApiKey.mockResolvedValue({ accountId: 'account-1', accountType })
+    const account = {
+      id: 'account-1',
+      accessToken: 'encrypted',
+      apiKey: 'provider-secret',
+      baseApi: 'https://provider.test/v1',
+      modelDiscoveryPatterns: ['gpt-5', 'gpt-5.6-*']
+    }
+    oauthAccounts.getAccount.mockResolvedValue(account)
+    apiAccounts.getAccount.mockResolvedValue(account)
+    axios.get.mockResolvedValue({
+      status: 200,
+      data: { models: ['gpt-5', 'gpt-5.1', 'gpt-5.6-mini', 'gpt-4o'].map((slug) => ({ slug })) }
+    })
+    for (const path of ['/openai/models', '/openai/v1/models']) {
+      const res = await getModels(path)
+      expect(res.status).toBe(200)
+      expect(res.body.models.map((model) => model.slug)).toEqual(['gpt-5', 'gpt-5.6-mini'])
+      expect(res.body.data.map((model) => model.id)).toEqual(['gpt-5', 'gpt-5.6-mini'])
+    }
+  }
+)
