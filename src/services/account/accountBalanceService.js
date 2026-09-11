@@ -32,6 +32,7 @@ class AccountBalanceService {
       'azure_openai',
       'bedrock',
       'droid',
+      'grok',
       'ccr'
     ]
   }
@@ -222,6 +223,7 @@ class AccountBalanceService {
       azure_openai: require('./azureOpenaiAccountService'),
       bedrock: require('./bedrockAccountService'),
       droid: require('./droidAccountService'),
+      grok: require('./grokAccountService'),
       ccr: require('./ccrAccountService')
     }
 
@@ -258,6 +260,7 @@ class AccountBalanceService {
       azure_openai: require('./azureOpenaiAccountService'),
       bedrock: require('./bedrockAccountService'),
       droid: require('./droidAccountService'),
+      grok: require('./grokAccountService'),
       ccr: require('./ccrAccountService')
     }
 

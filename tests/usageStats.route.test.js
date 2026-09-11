@@ -50,6 +50,7 @@ jest.mock('../src/models/redis', () => ({
   getApiKey: jest.fn(),
   getUsageRecords: jest.fn(),
   getAccountUsageStats: jest.fn(),
+  getAccountRollingUsage: jest.fn().mockResolvedValue({}),
   getDateInTimezone: jest.fn(),
   getDateStringInTimezone: jest.fn(),
   getClientSafe: jest.fn(),

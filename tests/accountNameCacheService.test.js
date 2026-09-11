@@ -38,6 +38,9 @@ jest.mock('../src/services/account/bedrockAccountService', () => ({
 jest.mock('../src/services/account/droidAccountService', () => ({
   getAllAccounts: jest.fn()
 }))
+jest.mock('../src/services/account/grokAccountService', () => ({
+  getAllAccounts: jest.fn()
+}))
 jest.mock('../src/services/account/ccrAccountService', () => ({
   getAllAccounts: jest.fn()
 }))
@@ -56,6 +59,7 @@ const openaiResponsesAccountService = require('../src/services/account/openaiRes
 const azureOpenaiAccountService = require('../src/services/account/azureOpenaiAccountService')
 const bedrockAccountService = require('../src/services/account/bedrockAccountService')
 const droidAccountService = require('../src/services/account/droidAccountService')
+const grokAccountService = require('../src/services/account/grokAccountService')
 const ccrAccountService = require('../src/services/account/ccrAccountService')
 const accountGroupService = require('../src/services/accountGroupService')
 const accountNameCacheService = require('../src/services/accountNameCacheService')
@@ -79,6 +83,7 @@ describe('AccountNameCacheService', () => {
     azureOpenaiAccountService.getAllAccounts.mockResolvedValue([])
     bedrockAccountService.getAllAccounts.mockResolvedValue([])
     droidAccountService.getAllAccounts.mockResolvedValue([])
+    grokAccountService.getAllAccounts.mockResolvedValue([])
     ccrAccountService.getAllAccounts.mockResolvedValue([])
     accountGroupService.getAllGroups.mockResolvedValue([])
   })
@@ -126,5 +131,25 @@ describe('AccountNameCacheService', () => {
       platform: 'Claude OpenAI Bridge',
       name: 'Bridge Only Binding'
     })
+  })
+
+  it('keeps Grok, CCR and group results aligned alongside Vertex and Bridge', async () => {
+    grokAccountService.getAllAccounts.mockResolvedValue([{ id: 'grok-1', name: 'Grok 1' }])
+    ccrAccountService.getAllAccounts.mockResolvedValue([{ id: 'ccr-1', name: 'CCR 1' }])
+    accountGroupService.getAllGroups.mockResolvedValue([{ id: 'group-1', name: 'Group 1' }])
+
+    await accountNameCacheService.refresh()
+
+    expect(grokAccountService.getAllAccounts).toHaveBeenCalledWith(true)
+    expect(accountNameCacheService.accountCache.get('grok-1')).toEqual({
+      name: 'Grok 1',
+      platform: 'grok'
+    })
+    expect(accountNameCacheService.accountCache.get('ccr-1')).toEqual({
+      name: 'CCR 1',
+      platform: 'ccr'
+    })
+    expect(accountNameCacheService.groupCache.get('group-1')).toEqual({ name: 'Group 1' })
+    expect(accountNameCacheService.getAccountDisplayName('vertex-1')).toBe('Vertex Account 1')
   })
 })

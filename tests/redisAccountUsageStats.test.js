@@ -64,4 +64,21 @@ describe('redis account usage stats', () => {
     expect(result.averages.dailyRequests).toBe(72)
     expect(result.averages.dailyTokens).toBe(72000)
   })
+
+  it('uses Grok hash metadata without falling back to Claude prefixes', async () => {
+    await redis.getAccountUsageStats('grok-1', 'grok')
+    expect(redis.client.hgetall).toHaveBeenCalledWith('grok_account:grok-1')
+    expect(redis.client.hgetall).not.toHaveBeenCalledWith('claude:account:grok-1')
+  })
+
+  it('continues to read Vertex account metadata as JSON', async () => {
+    redis.client.get.mockResolvedValue(
+      JSON.stringify({
+        id: 'vertex-1',
+        createdAt: '2026-06-14T00:00:00.000Z'
+      })
+    )
+    await redis.getAccountUsageStats('vertex-1', 'claude-vertex')
+    expect(redis.client.get).toHaveBeenCalledWith('claude_vertex_account:vertex-1')
+  })
 })

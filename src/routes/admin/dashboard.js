@@ -7,6 +7,7 @@ const gcpVertexAccountService = require('../../services/account/gcpVertexAccount
 const ccrAccountService = require('../../services/account/ccrAccountService')
 const geminiAccountService = require('../../services/account/geminiAccountService')
 const droidAccountService = require('../../services/account/droidAccountService')
+const grokAccountService = require('../../services/account/grokAccountService')
 const openaiResponsesAccountService = require('../../services/account/openaiResponsesAccountService')
 const redis = require('../../models/redis')
 const { authenticateAdmin } = require('../../middleware/auth')
@@ -39,6 +40,7 @@ router.get('/dashboard', authenticateAdmin, async (req, res) => {
       ccrAccounts,
       openaiResponsesAccounts,
       droidAccounts,
+      grokAccounts,
       todayStats,
       systemAverages,
       realtimeMetrics
@@ -52,6 +54,7 @@ router.get('/dashboard', authenticateAdmin, async (req, res) => {
       ccrAccountService.getAllAccounts(),
       openaiResponsesAccountService.getAllAccounts(true),
       droidAccountService.getAllAccounts(),
+      grokAccountService.getAllAccounts(true),
       redis.getTodayStats(),
       redis.getSystemAverages(),
       redis.getRealtimeSystemMetrics()
@@ -187,6 +190,7 @@ router.get('/dashboard', authenticateAdmin, async (req, res) => {
     const openaiStats = countAccountStats(openaiAccounts, { isStringType: true })
     const ccrStats = countAccountStats(ccrAccounts)
     const openaiResponsesStats = countAccountStats(openaiResponsesAccounts, { isStringType: true })
+    const grokStats = countAccountStats(grokAccounts, { isStringType: true })
 
     const dashboard = {
       overview: {
@@ -201,7 +205,8 @@ router.get('/dashboard', authenticateAdmin, async (req, res) => {
           gcpVertexAccounts.length +
           openaiAccounts.length +
           openaiResponsesAccounts.length +
-          ccrAccounts.length,
+          ccrAccounts.length +
+          grokAccounts.length,
         normalAccounts:
           claudeStats.normal +
           claudeConsoleStats.normal +
@@ -210,7 +215,8 @@ router.get('/dashboard', authenticateAdmin, async (req, res) => {
           gcpVertexStats.normal +
           openaiStats.normal +
           openaiResponsesStats.normal +
-          ccrStats.normal,
+          ccrStats.normal +
+          grokStats.normal,
         abnormalAccounts:
           claudeStats.abnormal +
           claudeConsoleStats.abnormal +
@@ -220,6 +226,7 @@ router.get('/dashboard', authenticateAdmin, async (req, res) => {
           openaiStats.abnormal +
           openaiResponsesStats.abnormal +
           ccrStats.abnormal +
+          grokStats.abnormal +
           abnormalDroidAccounts,
         pausedAccounts:
           claudeStats.paused +
@@ -230,6 +237,7 @@ router.get('/dashboard', authenticateAdmin, async (req, res) => {
           openaiStats.paused +
           openaiResponsesStats.paused +
           ccrStats.paused +
+          grokStats.paused +
           pausedDroidAccounts,
         rateLimitedAccounts:
           claudeStats.rateLimited +
@@ -240,6 +248,7 @@ router.get('/dashboard', authenticateAdmin, async (req, res) => {
           openaiStats.rateLimited +
           openaiResponsesStats.rateLimited +
           ccrStats.rateLimited +
+          grokStats.rateLimited +
           rateLimitedDroidAccounts,
         // 各平台详细统计
         accountsByPlatform: {
@@ -305,6 +314,13 @@ router.get('/dashboard', authenticateAdmin, async (req, res) => {
             abnormal: abnormalDroidAccounts,
             paused: pausedDroidAccounts,
             rateLimited: rateLimitedDroidAccounts
+          },
+          grok: {
+            total: grokAccounts.length,
+            normal: grokStats.normal,
+            abnormal: grokStats.abnormal,
+            paused: grokStats.paused,
+            rateLimited: grokStats.rateLimited
           }
         },
         // 保留旧字段以兼容
@@ -317,6 +333,7 @@ router.get('/dashboard', authenticateAdmin, async (req, res) => {
           openaiStats.normal +
           openaiResponsesStats.normal +
           ccrStats.normal +
+          grokStats.normal +
           normalDroidAccounts,
         totalClaudeAccounts: claudeAccounts.length + claudeConsoleAccounts.length,
         activeClaudeAccounts: claudeStats.normal + claudeConsoleStats.normal,
@@ -356,6 +373,7 @@ router.get('/dashboard', authenticateAdmin, async (req, res) => {
         claudeAccountsHealthy: claudeStats.normal + claudeConsoleStats.normal > 0,
         geminiAccountsHealthy: geminiStats.normal > 0,
         droidAccountsHealthy: normalDroidAccounts > 0,
+        grokAccountsHealthy: grokStats.normal > 0,
         uptime: process.uptime()
       },
       systemTimezone: config.system.timezoneOffset || 8

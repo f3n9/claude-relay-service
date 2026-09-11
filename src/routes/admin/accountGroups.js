@@ -6,6 +6,7 @@ const gcpVertexAccountService = require('../../services/account/gcpVertexAccount
 const geminiAccountService = require('../../services/account/geminiAccountService')
 const openaiAccountService = require('../../services/account/openaiAccountService')
 const droidAccountService = require('../../services/account/droidAccountService')
+const grokAccountService = require('../../services/account/grokAccountService')
 const { authenticateAdmin } = require('../../middleware/auth')
 const logger = require('../../utils/logger')
 
@@ -140,6 +141,9 @@ router.get('/:groupId/members', authenticateAdmin, async (req, res) => {
             accountSource = 'droid'
           }
           break
+        case 'grok':
+          account = await grokAccountService.getAccount(memberId, { includeSecrets: false })
+          break
         case 'gemini':
           account = await geminiAccountService.getAccount(memberId)
           if (account) {
@@ -209,6 +213,9 @@ router.get('/:groupId/members', authenticateAdmin, async (req, res) => {
         if (account) {
           accountSource = 'droid'
         }
+      }
+      if (!account && group.platform !== 'grok') {
+        account = await grokAccountService.getAccount(memberId, { includeSecrets: false })
       }
 
       if (account) {

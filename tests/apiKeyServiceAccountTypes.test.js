@@ -79,7 +79,9 @@ describe('apiKeyService account type metadata', () => {
   })
 
   it('unbinds claude-openai-bridge accounts from all API keys', async () => {
-    const updateApiKey = jest.spyOn(apiKeyService, 'updateApiKey').mockResolvedValue({ success: true })
+    const updateApiKey = jest
+      .spyOn(apiKeyService, 'updateApiKey')
+      .mockResolvedValue({ success: true })
     jest.spyOn(apiKeyService, 'getAllApiKeysFast').mockResolvedValue([
       {
         id: 'key-1',
@@ -100,5 +102,44 @@ describe('apiKeyService account type metadata', () => {
     expect(updateApiKey).toHaveBeenCalledWith('key-1', {
       claudeOpenAIBridgeAccountId: null
     })
+  })
+
+  it('keeps lite binding indexes aligned and excludes deleted keys after adding Grok', async () => {
+    const redis = require('../src/models/redis')
+    const fields = ['claude-1', 'bridge-1', 'gemini-1', 'openai-1', 'vertex-1', 'droid-1', 'grok-1']
+    const pipeline = {
+      hmget: jest.fn(),
+      exec: jest.fn().mockResolvedValue([
+        [null, [...fields, 'false']],
+        [null, [...fields, 'true']]
+      ])
+    }
+    redis.getClientSafe = jest.fn(() => ({ pipeline: () => pipeline }))
+    redis.scanApiKeyIds = jest.fn().mockResolvedValue(['active-key', 'deleted-key'])
+
+    await expect(apiKeyService.getAllApiKeysLite()).resolves.toEqual([
+      {
+        id: 'active-key',
+        claudeAccountId: 'claude-1',
+        claudeOpenAIBridgeAccountId: 'bridge-1',
+        geminiAccountId: 'gemini-1',
+        openaiAccountId: 'openai-1',
+        claudeVertexAccountId: 'vertex-1',
+        droidAccountId: 'droid-1',
+        grokAccountId: 'grok-1',
+        isDeleted: false
+      }
+    ])
+    expect(pipeline.hmget).toHaveBeenCalledWith(
+      'apikey:active-key',
+      'claudeAccountId',
+      'claudeOpenAIBridgeAccountId',
+      'geminiAccountId',
+      'openaiAccountId',
+      'claudeVertexAccountId',
+      'droidAccountId',
+      'grokAccountId',
+      'isDeleted'
+    )
   })
 })

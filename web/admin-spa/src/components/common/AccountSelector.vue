@@ -163,9 +163,11 @@
                           ? 'OpenAI 专属账号'
                           : platform === 'droid'
                             ? 'Droid 专属账号'
-                            : platform === 'gemini'
-                              ? 'Gemini OAuth 专属账号'
-                              : 'OAuth 专属账号'
+                            : platform === 'grok'
+                              ? 'Grok 专属账号'
+                              : platform === 'gemini'
+                                ? 'Gemini OAuth 专属账号'
+                                : 'OAuth 专属账号'
                 }}
               </div>
               <div
@@ -389,7 +391,8 @@ const props = defineProps({
         'gemini',
         'openai',
         'bedrock',
-        'droid'
+        'droid',
+        'grok'
       ].includes(value)
   },
   accounts: {
@@ -621,6 +624,8 @@ const filteredOAuthAccounts = computed(() => {
     accounts = sortedAccounts.value.filter((a) => a.platform === 'openai')
   } else if (props.platform === 'droid') {
     accounts = sortedAccounts.value.filter((a) => a.platform === 'droid')
+  } else if (props.platform === 'grok') {
+    accounts = sortedAccounts.value.filter((a) => a.platform === 'grok')
   } else if (props.platform === 'gemini') {
     // 对于 Gemini，只显示 OAuth 类型的账号（排除 gemini-api）
     accounts = sortedAccounts.value.filter((a) => a.platform === 'gemini')
