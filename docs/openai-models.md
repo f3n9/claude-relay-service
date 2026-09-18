@@ -19,7 +19,8 @@ curl 'http://localhost:3000/openai/models?api-version=2025-04-01-preview&client_
 
 响应同时包含标准 OpenAI 的 `{ object: "list", data: [...] }` 和 Codex 的
 `{ models: [...] }`。保留上游明确声明的推理配置，缺失时按下表补充。
-上游只有标准模型 ID 时，补充 Codex 基础协议字段及推理选项，不推测上下文窗口或工具能力；
+上游只有标准模型 ID 时，补充 Codex 基础协议字段、推理选项及已公开确认的输入模态；
+不推测上下文窗口或工具能力；
 模型 ID 可发现不代表上游保证该模型支持 Responses 或所有 Codex 工具。
 
 列表会排除 API Key 的 `restrictedModels` 黑名单（启用模型限制时），并遵循 OAuth
@@ -106,3 +107,78 @@ Azure 自定义部署名称、日期后缀和未列出的型号不会按前缀�
 - https://developers.openai.com/api/docs/models/gpt-image-2
 - https://developers.openai.com/api/reference/resources/images/methods/generate
 - https://developers.openai.com/api/docs/guides/image-generation
+
+## 自动补充输入模态
+
+于 **2026-09-18** 核对官方模型页、文件/音频指南和 Codex 协议。标准 OpenAI/Azure
+模型列表经转换后，不再一律声明 `input_modalities: ["text"]`：
+
+| 已确认的模型 | 补充的 `input_modalities` |
+| --- | --- |
+| `gpt-6-astra`、`gpt-5.6-sol`、`gpt-5.6-terra`、`gpt-5.6-luna`、官方别名 `gpt-5.6` | `["text", "image"]` |
+| `gpt-5.5`、`gpt-5.4`、`gpt-5.3-codex`、`gpt-image-2` | `["text", "image"]` |
+| `gpt-5`、`gpt-5-mini`、`gpt-5-nano`、`gpt-5.1`、`gpt-5.2` | `["text", "image"]` |
+| `gpt-4.1`、`gpt-4.1-mini`、`gpt-4.1-nano`、`gpt-4o`、`gpt-4o-mini` | `["text", "image"]` |
+| `gpt-audio`、`gpt-audio-mini` | `["text", "audio"]` |
+| `gpt-realtime`、`gpt-realtime-mini` | `["text", "image", "audio"]` |
+
+同时支持上述模型页列出的已核实快照名，例如 `gpt-5.4-2026-03-05`、
+`gpt-5.5-2026-04-23`、`gpt-image-2-2026-04-21`；具体映射在
+`src/utils/openaiModelModalities.js`。只做完整 ID 匹配，不给任意后缀或 Azure 自定义部署名猜测能力。
+
+处理规则：
+
+- 上游明确的 `input_modalities` 数组优先，包含空数组和仅文本配置。标准 `data` 条目中的
+  模态扩展也会保留到 Codex `models` 条目，避免被固定 `text` 覆盖。
+- 上游缺失模态且模型已核实：无论原生 `models` 还是标准 `data`，均补充已知能力。
+- 未知标准模型缺失模态：保持仅文本；未知原生 Codex 模型缺失模态：保留省略字段的旧行为，
+  由客户端应用默认值。自定义多模态部署可以由上游明确返回 `input_modalities`。
+- 标准 `data` 列表、模型 ID、展示规则、推理配置及账户调度保持原有行为。本服务不下载附件，
+  不因为发现模型支持某种模态而新增相应 API 路由。
+
+### 图片、文档与语音的边界
+
+Codex 的模态枚举为 `text`、`image`、`audio`，没有 `document`、`file`、`pdf` 或 `video`。
+不要将这些文件类别加入 `input_modalities`，否则客户端可能无法解析整个目录。
+本机 ChatGPT 26.915.31029 的图片控件会检查 `inputModalities.includes("image")`；修正目录
+可以解除由错误的仅文本声明导致的图片附件禁用，客户端需要刷新其模型目录缓存。
+
+- **图片**：视觉模型通过 Responses 的 `input_image` 接收。`gpt-image-2` 的图像输入主要用于
+  Images 编辑接口；它不是可直接作为外层模型调用 `/responses` 的通用对话模型。本服务现有
+  `/images/generations` 不等同于图片编辑接口，目录元数据不表示已新增 `/images/edits`。
+- **文档**：使用 Responses 的 `input_file`。官方 API 对 PDF 提取文字和页面图像，非 PDF
+  文档主要提取文字；因此视觉模型应声明 `text,image`，不新增 `document` 模态。
+  本服务保留内联 `file_data`、`file_url` 和 `file_id`；实际支持的文件类型仍由 Azure 部署决定。
+  使用 `file_id` 时须由选中后端可访问；本服务尚未提供 OpenAI Files 上传路由。
+  桌面端的本地文件工具、云端文件上传和模型输入是不同处理路径，不能只凭目录保证所有附件可用。
+- **语音**：上述 GPT-5/5.6/6 视觉模型公开的是文本和图片输入，不将原始音频能力强行加给它们。
+  `gpt-audio` 需要 Chat Completions 音频输入路径，`gpt-realtime` 需要 Realtime 会话路径；
+  本服务当前 `/openai` 的对话转发走 Responses，尚未提供原生音频 Chat Completions、
+  转写或 Realtime 转发。目录声明只描述模型，不会打通这些链路。
+  桌面听写、实时语音还可能调用客户端独立服务，不能仅靠增加模态字段启用。
+
+验证包含标准/原生目录、双路由 HTTP 返回、上游模态优先、展示过滤、旧模型兼容，以及
+Responses 中图片和文件内容在开启/关闭直通及 Codex 适配时不丢失。未使用真实 Azure 凭据
+验证图片识别、文档解析或音频推理；元数据与本地模拟转发测试不代表这些端到端功能已验证。
+
+公开来源（前八个模型页见上文，此处补充其他型号与协议说明）：
+
+- https://developers.openai.com/api/docs/models/gpt-image-2
+- https://developers.openai.com/api/docs/models/gpt-5
+- https://developers.openai.com/api/docs/models/gpt-5-mini
+- https://developers.openai.com/api/docs/models/gpt-5-nano
+- https://developers.openai.com/api/docs/models/gpt-5.1
+- https://developers.openai.com/api/docs/models/gpt-5.2
+- https://developers.openai.com/api/docs/models/gpt-4.1
+- https://developers.openai.com/api/docs/models/gpt-4.1-mini
+- https://developers.openai.com/api/docs/models/gpt-4.1-nano
+- https://developers.openai.com/api/docs/models/gpt-4o
+- https://developers.openai.com/api/docs/models/gpt-4o-mini
+- https://developers.openai.com/api/docs/models/gpt-audio
+- https://developers.openai.com/api/docs/models/gpt-audio-mini
+- https://developers.openai.com/api/docs/models/gpt-realtime
+- https://developers.openai.com/api/docs/models/gpt-realtime-mini
+- https://developers.openai.com/api/docs/guides/file-inputs
+- https://developers.openai.com/api/docs/guides/audio-chat-completions
+- https://developers.openai.com/codex/app-server
+- https://github.com/openai/codex/blob/main/codex-rs/protocol/src/openai_models.rs

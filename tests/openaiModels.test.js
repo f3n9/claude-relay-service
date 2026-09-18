@@ -371,3 +371,43 @@ test('supplements Azure standard models with reasoning options on both aliases',
     ])
   }
 })
+
+test('real HTTP preserves Azure input capabilities through both discovery aliases', async () => {
+  const upstream = express()
+  const data = [
+    { id: 'gpt-5.6-sol', object: 'model' },
+    { id: 'gpt-audio', object: 'model' },
+    { id: 'private-audio-deployment', object: 'model', input_modalities: ['text', 'audio'] },
+    { id: 'gpt-4o', object: 'model', input_modalities: ['text'] },
+    { id: 'text-embedding-3-small', object: 'model' }
+  ]
+  upstream.get('/openai/v1/models', (_req, res) => res.json({ object: 'list', data }))
+  const server = upstream.listen(0, '127.0.0.1')
+  await new Promise((resolve) => server.once('listening', resolve))
+  try {
+    scheduler.selectAccountForApiKey.mockResolvedValue({
+      accountId: 'api-1',
+      accountType: 'openai-responses'
+    })
+    apiAccounts.getAccount.mockResolvedValue({
+      id: 'api-1',
+      apiKey: 'provider-secret',
+      baseApi: `http://127.0.0.1:${server.address().port}/openai/v1`
+    })
+    axios.get.mockImplementation(jest.requireActual('axios').get)
+    for (const path of ['/openai/models', '/openai/v1/models']) {
+      const res = await getModels(path)
+      expect(res.status).toBe(200)
+      expect(res.body.data).toEqual(data)
+      expect(res.body.models.map((model) => [model.slug, model.input_modalities])).toEqual([
+        ['gpt-5.6-sol', ['text', 'image']],
+        ['gpt-audio', ['text', 'audio']],
+        ['private-audio-deployment', ['text', 'audio']],
+        ['gpt-4o', ['text']],
+        ['text-embedding-3-small', ['text']]
+      ])
+    }
+  } finally {
+    await new Promise((resolve) => server.close(resolve))
+  }
+})

@@ -47,7 +47,8 @@ test('preserves native upstream reasoning, descriptions and all other capabiliti
     default_reasoning_level: 'high',
     supported_reasoning_levels: [{ effort: 'high', description: 'Provider-specific' }],
     context_window: 123,
-    supports_reasoning_summaries: true
+    supports_reasoning_summaries: true,
+    input_modalities: ['text', 'image']
   }
   const result = normalizeModelCatalog({ models: [model] }, {})
   expect(result.models).toEqual([model])
@@ -55,7 +56,12 @@ test('preserves native upstream reasoning, descriptions and all other capabiliti
 })
 
 test('respects explicitly empty upstream support instead of enabling reasoning', () => {
-  const model = { slug: 'gpt-5.4', default_reasoning_level: null, supported_reasoning_levels: [] }
+  const model = {
+    slug: 'gpt-5.4',
+    default_reasoning_level: null,
+    supported_reasoning_levels: [],
+    input_modalities: ['text']
+  }
   expect(normalizeModelCatalog({ models: [model] }, {}).models).toEqual([model])
 })
 
@@ -137,6 +143,7 @@ test.each(['data', 'models'])(
 test('gpt-image-2 still preserves explicit provider reasoning metadata', () => {
   const entry = {
     slug: 'gpt-image-2',
+    input_modalities: ['text', 'image'],
     default_reasoning_level: 'low',
     supported_reasoning_levels: [{ effort: 'low', description: 'Provider extension' }]
   }

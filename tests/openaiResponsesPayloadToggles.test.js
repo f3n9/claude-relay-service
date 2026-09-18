@@ -214,6 +214,41 @@ describe('openai responses payload toggles', () => {
     )
   })
 
+  test.each([false, true])(
+    'preserves image and file inputs with Codex adaptation %s',
+    async (adaptation) => {
+      const content = [
+        { type: 'input_text', text: 'Compare the image and document.' },
+        { type: 'input_image', image_url: 'data:image/png;base64,aW1hZ2U=', detail: 'high' },
+        {
+          type: 'input_file',
+          filename: 'report.pdf',
+          file_data: 'data:application/pdf;base64,JVBERi0xLjcK',
+          detail: 'high'
+        },
+        { type: 'input_file', file_id: 'file-from-selected-provider' },
+        { type: 'input_file', file_url: 'https://example.test/report.docx' }
+      ]
+      const req = createReq({
+        body: {
+          model: 'gpt-5.6-sol',
+          stream: false,
+          input: [{ type: 'message', role: 'user', content }]
+        },
+        apiKeyOverrides: {
+          enableOpenAIResponsesCodexAdaptation: adaptation,
+          enableOpenAIResponsesPayloadRules: false
+        }
+      })
+      await openaiRoutes.handleResponses(req, createRes())
+      expect(openaiResponsesRelayService.handleRequest).toHaveBeenCalledTimes(1)
+      expect(openaiResponsesRelayService.handleRequest.mock.calls[0][0].body.input).toEqual([
+        { type: 'message', role: 'user', content }
+      ])
+      expect(req.body.model).toBe('gpt-5.6-sol')
+    }
+  )
+
   test('applies Codex adaptation only when adaptation toggle is on', async () => {
     const req = createReq({
       body: {

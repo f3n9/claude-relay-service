@@ -153,6 +153,55 @@ describe('openaiResponsesRelayService passThrough behavior', () => {
     expect(getHeader(options.headers, 'x-api-key')).toBeUndefined()
   })
 
+  it.each([false, true])(
+    'forwards image and file content to Azure with passThrough %s',
+    async (passThrough) => {
+      const account = {
+        id: 'resp-1',
+        name: 'Azure',
+        apiKey: 'provider-secret',
+        dailyQuota: '0',
+        passThrough,
+        baseApi: 'https://provider.services.ai.azure.com/openai/v1'
+      }
+      openaiResponsesAccountService.getAccount.mockResolvedValue(account)
+      filterForOpenAI.mockReturnValue({})
+      const body = {
+        model: 'gpt-5.6-sol',
+        stream: false,
+        input: [
+          {
+            role: 'user',
+            content: [
+              { type: 'input_text', text: 'Compare these attachments.' },
+              { type: 'input_image', image_url: 'data:image/png;base64,aW1hZ2U=', detail: 'high' },
+              {
+                type: 'input_file',
+                filename: 'report.pdf',
+                file_data: 'data:application/pdf;base64,JVBERi0xLjcK',
+                detail: 'high'
+              },
+              { type: 'input_file', file_id: 'file-from-selected-provider' },
+              { type: 'input_file', file_url: 'https://example.test/report.docx' }
+            ]
+          }
+        ]
+      }
+      const original = JSON.parse(JSON.stringify(body))
+      await openaiResponsesRelayService.handleRequest(
+        createReq({ path: '/v1/responses', body }),
+        createRes(),
+        account,
+        { id: 'key-1' }
+      )
+      expect(axios).toHaveBeenCalledTimes(1)
+      const options = axios.mock.calls[0][0]
+      expect(new URL(options.url).pathname).toBe('/openai/v1/responses')
+      expect(options.data).toEqual(original)
+      expect(body).toEqual(original)
+    }
+  )
+
   it('keeps legacy filtered-header behavior when passThrough is disabled', async () => {
     openaiResponsesAccountService.getAccount.mockResolvedValue({
       id: 'resp-1',
