@@ -1,7 +1,10 @@
 // Public model-page snapshot checked 2026-09-18; sources are in docs/openai-models.md.
+// GPT-6 Sol/Luna input and output checked 2026-09-23.
 // Only exact documented IDs/aliases/snapshots qualify. Azure deployment names alone
 // do not establish capabilities, and input_file is a content type, not a modality.
 const visionModels = new Set([
+  'gpt-6-sol',
+  'gpt-6-luna',
   'gpt-6-astra',
   'gpt-5.6-sol',
   'gpt-5.6-terra',
@@ -51,6 +54,8 @@ const realtimeModels = new Set([
   'gpt-realtime-mini-2025-10-06',
   'gpt-realtime-mini-2025-12-15'
 ])
+// Output profiles are added only for models whose output has been verified here.
+const textOutputModels = new Set(['gpt-6-sol', 'gpt-6-luna'])
 
 function getModelInputModalities(modelId, upstream = {}) {
   // Provider metadata may describe a narrower deployment or a custom audio model.
@@ -70,10 +75,22 @@ function getModelInputModalities(modelId, upstream = {}) {
   return undefined
 }
 
-function supplementModelModalities(model) {
-  const modalities = getModelInputModalities(model.slug, model)
-  // Keep legacy native-catalog defaults for unrecognized models with no metadata.
-  return modalities === undefined ? model : { ...model, input_modalities: modalities }
+function getModelOutputModalities(modelId, upstream = {}) {
+  if (Array.isArray(upstream.output_modalities)) {
+    return [...upstream.output_modalities]
+  }
+  return textOutputModels.has(modelId) ? ['text'] : undefined
 }
 
-module.exports = { getModelInputModalities, supplementModelModalities }
+function supplementModelModalities(model) {
+  const input = getModelInputModalities(model.slug, model)
+  const output = getModelOutputModalities(model.slug, model)
+  // Keep legacy native-catalog defaults for unrecognized models with no metadata.
+  return {
+    ...model,
+    ...(input === undefined ? {} : { input_modalities: input }),
+    ...(output === undefined ? {} : { output_modalities: output })
+  }
+}
+
+module.exports = { getModelInputModalities, getModelOutputModalities, supplementModelModalities }

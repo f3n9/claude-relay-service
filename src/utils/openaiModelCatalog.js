@@ -1,10 +1,15 @@
 const { matchesModelDiscoveryPatterns } = require('./modelDiscoveryPatterns')
 const { getModelReasoning, supplementModelReasoning } = require('./openaiModelReasoning')
-const { getModelInputModalities, supplementModelModalities } = require('./openaiModelModalities')
+const {
+  getModelInputModalities,
+  getModelOutputModalities,
+  supplementModelModalities
+} = require('./openaiModelModalities')
 
 // Standard model catalogs usually omit Codex capability metadata. Supplement
-// reasoning and input modalities from documented profiles; retain provider overrides.
+// reasoning and modalities from documented profiles; retain provider overrides.
 function toCodexModel(model, priority) {
+  const output = getModelOutputModalities(model.id, model)
   return {
     slug: model.id,
     display_name: model.id,
@@ -24,7 +29,8 @@ function toCodexModel(model, priority) {
     supports_parallel_tool_calls: false,
     context_window: null,
     experimental_supported_tools: [],
-    input_modalities: getModelInputModalities(model.id, model) ?? ['text']
+    input_modalities: getModelInputModalities(model.id, model) ?? ['text'],
+    ...(output === undefined ? {} : { output_modalities: output })
   }
 }
 

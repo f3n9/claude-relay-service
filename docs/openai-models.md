@@ -68,6 +68,31 @@ gpt-5.6-*
 | `gpt-image-2` | 无公开 reasoning effort 选项（空数组） | `null` |
 | 其他模型 | `medium` | `medium`（通用兜底） |
 
+### GPT-6 Sol / Luna（2026-09-23）
+
+新增核对的 `gpt-6-sol`、`gpt-6-luna` 均支持
+`none`、`low`、`medium`、`high`、`xhigh`、`max`，官方默认值为 `medium`。
+两者均接受文本和图片输入，仅输出文本，不支持原始音频或视频模态。
+当上游目录包含完整匹配的模型 ID 且展示规则允许返回时，在 Codex `models` 条目中补充：
+
+- `supported_reasoning_levels`：上述六档，`default_reasoning_level: "medium"`。
+- `input_modalities: ["text", "image"]`。
+- `output_modalities: ["text"]`。
+
+`/openai/models` 与 `/openai/v1/models` 均适用，兼容标准 `data` 和原生 `models` 上游目录。
+上游明确的推理声明、输入/输出模态数组（包括空数组）优先；标准 `data` 列表保持原样。
+不会自动添加模型、放宽展示过滤或按前缀推断自定义部署名的能力。
+此次仅为这两个型号补充已核实的输出默认值，其他型号仍保持原有行为；
+上游标准目录明确提供的 `output_modalities` 数组也会保留到 Codex 条目。
+模型支持图片生成工具不表示模型本身具有图片输出模态。
+
+来源：
+
+- https://developers.openai.com/api/docs/models/gpt-6-sol
+- https://developers.openai.com/api/docs/models/gpt-6-luna
+
+### 原有模型来源
+
 来源：
 
 - https://developers.openai.com/api/docs/models/gpt-6-astra

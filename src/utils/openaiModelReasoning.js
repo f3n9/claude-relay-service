@@ -1,7 +1,16 @@
-// Public model-page snapshot checked 2026-09-05. See docs/openai-models.md for
+// Public model-page snapshot checked 2026-09-05; GPT-6 Sol/Luna checked 2026-09-23.
+// See docs/openai-models.md for
 // sources and the distinction between API defaults and relay-selected defaults.
 // Exact model IDs only: Azure deployment aliases do not establish model identity.
 const profiles = new Map([
+  [
+    'gpt-6-sol',
+    { efforts: ['none', 'low', 'medium', 'high', 'xhigh', 'max'], defaultEffort: 'medium' }
+  ],
+  [
+    'gpt-6-luna',
+    { efforts: ['none', 'low', 'medium', 'high', 'xhigh', 'max'], defaultEffort: 'medium' }
+  ],
   ['gpt-6-astra', { efforts: ['low', 'medium', 'high', 'xhigh', 'max'], defaultEffort: 'medium' }],
   [
     'gpt-5.6-sol',

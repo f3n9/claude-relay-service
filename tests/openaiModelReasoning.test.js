@@ -4,6 +4,8 @@ const supported = (model) => model.supported_reasoning_levels.map((level) => lev
 const fromStandard = (id) => normalizeModelCatalog({ data: [{ id }] }, {}).models[0]
 
 test.each([
+  ['gpt-6-sol', ['none', 'low', 'medium', 'high', 'xhigh', 'max'], 'medium'],
+  ['gpt-6-luna', ['none', 'low', 'medium', 'high', 'xhigh', 'max'], 'medium'],
   ['gpt-6-astra', ['low', 'medium', 'high', 'xhigh', 'max'], 'medium'],
   ['gpt-5.6-sol', ['none', 'low', 'medium', 'high', 'xhigh', 'max'], 'medium'],
   ['gpt-5.6-terra', ['none', 'low', 'medium', 'high', 'xhigh', 'max'], 'medium'],

@@ -1,6 +1,8 @@
 const { normalizeModelCatalog } = require('../src/utils/openaiModelCatalog')
 
 const visionModels = [
+  'gpt-6-sol',
+  'gpt-6-luna',
   'gpt-6-astra',
   'gpt-5.6-sol',
   'gpt-5.6-terra',
@@ -129,4 +131,63 @@ test('returned arrays cannot modify subsequent catalog defaults', () => {
   const first = catalog('gpt-5.6-sol')
   first.models[0].input_modalities.push('audio')
   expect(catalog('gpt-5.6-sol').models[0].input_modalities).toEqual(['text', 'image'])
+})
+
+test.each(['gpt-6-sol', 'gpt-6-luna'])(
+  '%s advertises text output and preserves explicit provider capabilities',
+  (id) => {
+    for (const format of ['data', 'models']) {
+      const model = catalog(id, {}, format).models[0]
+      expect(model.output_modalities).toEqual(['text'])
+      expect(model.default_reasoning_level).toBe('medium')
+      expect(model.supported_reasoning_levels.map((level) => level.effort)).toEqual([
+        'none',
+        'low',
+        'medium',
+        'high',
+        'xhigh',
+        'max'
+      ])
+      for (const modalities of [[], ['text'], ['audio']]) {
+        const fields = {
+          input_modalities: modalities,
+          output_modalities: modalities,
+          supported_reasoning_levels: [],
+          default_reasoning_level: null
+        }
+        expect(catalog(id, fields, format).models[0]).toMatchObject(fields)
+      }
+      const fields = {
+        supported_reasoning_levels: [{ effort: 'high', description: 'Provider setting' }]
+      }
+      expect(catalog(id, fields, format).models[0]).toMatchObject({
+        ...fields,
+        default_reasoning_level: 'high'
+      })
+      model.output_modalities.push('image')
+      expect(catalog(id, {}, format).models[0].output_modalities).toEqual(['text'])
+    }
+  }
+)
+
+test.each(['gpt-6-sol-custom', 'gpt-6-luna-2099-01-01'])(
+  'does not infer new model capabilities from prefix %s',
+  (id) => {
+    for (const format of ['data', 'models']) {
+      const model = catalog(id, {}, format).models[0]
+      expect(model).not.toHaveProperty('output_modalities')
+      expect(model.input_modalities).toEqual(format === 'data' ? ['text'] : undefined)
+      expect(model.supported_reasoning_levels.map((level) => level.effort)).toEqual(['medium'])
+    }
+  }
+)
+
+test('keeps older model output defaults and explicit custom output metadata', () => {
+  for (const format of ['data', 'models']) {
+    expect(catalog('gpt-5.6-sol', {}, format).models[0]).not.toHaveProperty('output_modalities')
+    expect(catalog('custom', { output_modalities: ['audio'] }, format).models[0]).toHaveProperty(
+      'output_modalities',
+      ['audio']
+    )
+  }
 })

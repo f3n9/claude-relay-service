@@ -372,6 +372,61 @@ test('supplements Azure standard models with reasoning options on both aliases',
   }
 })
 
+test.each(['data', 'models'])(
+  'both discovery aliases supplement new models in %s catalogs only when allowed',
+  async (format) => {
+    const ids = ['gpt-6-sol', 'gpt-6-luna', 'gpt-5.6-sol']
+    const entries = ids.map((id) => ({ [format === 'data' ? 'id' : 'slug']: id }))
+    axios.get.mockResolvedValue({ status: 200, data: { [format]: entries } })
+    const account = {
+      id: 'account-1',
+      accessToken: 'encrypted',
+      apiKey: 'provider-secret',
+      baseApi: 'https://provider.test/v1',
+      modelDiscoveryPatterns: ['gpt-6-*']
+    }
+    scheduler.selectAccountForApiKey.mockResolvedValue({
+      accountId: 'account-1',
+      accountType: format === 'data' ? 'openai-responses' : 'openai'
+    })
+    oauthAccounts.getAccount.mockResolvedValue(account)
+    apiAccounts.getAccount.mockResolvedValue(account)
+    for (const path of ['/openai/models', '/openai/v1/models']) {
+      const res = await getModels(path)
+      expect(res.status).toBe(200)
+      expect(res.body.models.map((model) => model.slug)).toEqual(ids.slice(0, 2))
+      expect(res.body.data.map((model) => model.id)).toEqual(ids.slice(0, 2))
+      if (format === 'data') {
+        expect(res.body.data).toEqual(entries.slice(0, 2))
+      }
+      for (const model of res.body.models) {
+        expect(model.input_modalities).toEqual(['text', 'image'])
+        expect(model.output_modalities).toEqual(['text'])
+        expect(model.default_reasoning_level).toBe('medium')
+        expect(model.supported_reasoning_levels.map((level) => level.effort)).toEqual([
+          'none',
+          'low',
+          'medium',
+          'high',
+          'xhigh',
+          'max'
+        ])
+      }
+      key.enableModelRestriction = true
+      key.restrictedModels = ['gpt-6-luna']
+      expect((await getModels(path)).body.models.map((model) => model.slug)).toEqual(['gpt-6-sol'])
+      key.enableModelRestriction = false
+      account.modelDiscoveryPatterns = ['gpt-5.6-*']
+      expect((await getModels(path)).body.models.map((model) => model.slug)).toEqual([
+        'gpt-5.6-sol'
+      ])
+      account.modelDiscoveryPatterns = ['gpt-6-*']
+    }
+    axios.get.mockResolvedValue({ status: 200, data: { [format]: [] } })
+    expect((await getModels()).body.models).toEqual([])
+  }
+)
+
 test('real HTTP preserves Azure input capabilities through both discovery aliases', async () => {
   const upstream = express()
   const data = [
