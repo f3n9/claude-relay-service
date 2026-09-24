@@ -313,6 +313,33 @@ test('redirects are rejected without sending credentials to a second endpoint', 
 })
 
 test.each(['openai', 'openai-responses'])(
+  '%s account can disable model listing on both aliases without upstream discovery',
+  async (accountType) => {
+    scheduler.selectAccountForApiKey.mockResolvedValue({ accountId: 'account-1', accountType })
+    const account = {
+      id: 'account-1',
+      accessToken: 'encrypted',
+      apiKey: 'provider-secret',
+      baseApi: 'https://provider.test/v1',
+      modelDiscoveryPatterns: ['gpt-5'],
+      disableModelListing: 'true'
+    }
+    oauthAccounts.getAccount.mockResolvedValue(account)
+    apiAccounts.getAccount.mockResolvedValue(account)
+
+    for (const path of ['/openai/models', '/openai/v1/models']) {
+      const res = await getModels(path)
+      expect(res.status).toBe(404)
+      expect(res.body.data).toBeUndefined()
+      expect(res.headers['cache-control']).toBe('private, no-store')
+    }
+    expect(axios.get).not.toHaveBeenCalled()
+    expect(oauthAccounts.refreshAccountToken).not.toHaveBeenCalled()
+    expect(oauthAccounts.decrypt).not.toHaveBeenCalled()
+  }
+)
+
+test.each(['openai', 'openai-responses'])(
   'applies %s account discovery allowlist to both response formats',
   async (accountType) => {
     scheduler.selectAccountForApiKey.mockResolvedValue({ accountId: 'account-1', accountType })

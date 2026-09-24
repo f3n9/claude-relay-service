@@ -333,7 +333,12 @@ async function applyRateLimitTracking(
 }
 
 // 使用统一调度器选择 OpenAI 账户
-async function getOpenAIAuthToken(apiKeyData, sessionId = null, requestedModel = null) {
+async function getOpenAIAuthToken(
+  apiKeyData,
+  sessionId = null,
+  requestedModel = null,
+  forModelDiscovery = false
+) {
   try {
     // 生成会话哈希（如果有会话ID）
     const sessionHash = sessionId
@@ -361,6 +366,12 @@ async function getOpenAIAuthToken(apiKeyData, sessionId = null, requestedModel =
     if (result.accountType === 'openai-responses') {
       // 处理 OpenAI-Responses 账户
       account = await openaiResponsesAccountService.getAccount(result.accountId)
+      if (
+        forModelDiscovery &&
+        (account?.disableModelListing === true || account?.disableModelListing === 'true')
+      ) {
+        return { account }
+      }
       if (!account || !account.apiKey) {
         const error = new Error(`OpenAI-Responses account ${result.accountId} has no valid apiKey`)
         error.statusCode = 403 // Forbidden - 账户配置错误
@@ -383,6 +394,12 @@ async function getOpenAIAuthToken(apiKeyData, sessionId = null, requestedModel =
     } else {
       // 处理普通 OpenAI 账户
       account = await openaiAccountService.getAccount(result.accountId)
+      if (
+        forModelDiscovery &&
+        (account?.disableModelListing === true || account?.disableModelListing === 'true')
+      ) {
+        return { account }
+      }
       if (!account || !account.accessToken) {
         const error = new Error(`OpenAI account ${result.accountId} has no valid accessToken`)
         error.statusCode = 403 // Forbidden - 账户配置错误
@@ -1753,10 +1770,17 @@ async function handleModels(req, res) {
     const sessionId = req.headers.session_id || req.headers['x-session-id'] || null
     const { account, accountId, accountType, accessToken, proxy } = await getOpenAIAuthToken(
       req.apiKey,
-      sessionId
+      sessionId,
+      null,
+      true
     )
     if (controller.signal.aborted) {
       return
+    }
+    if (account.disableModelListing === true || account.disableModelListing === 'true') {
+      return res.status(404).json({
+        error: { message: 'Model listing is not available', type: 'not_found' }
+      })
     }
 
     const apiAccount = accountType === 'openai-responses'

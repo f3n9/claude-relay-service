@@ -334,6 +334,7 @@ router.post('/', validateAccount, async (req, res) => {
       priority,
       passThrough,
       modelDiscoveryPatterns,
+      disableModelListing,
       needsImmediateRefresh, // 是否需要立即刷新
       requireRefreshSuccess // 是否必须刷新成功才能创建
     } = req.body
@@ -359,6 +360,7 @@ router.post('/', validateAccount, async (req, res) => {
       isActive: true,
       schedulable: true,
       modelDiscoveryPatterns,
+      disableModelListing,
       passThrough: passThrough === true || passThrough === 'true'
     }
 

@@ -119,6 +119,10 @@ class OpenAIResponsesAccountService {
       modelDiscoveryPatterns: JSON.stringify(
         normalizeModelDiscoveryPatterns(options.modelDiscoveryPatterns)
       ),
+      disableModelListing:
+        options.disableModelListing === true || options.disableModelListing === 'true'
+          ? 'true'
+          : 'false',
       providerEndpoint // Provider 端点类型：responses(默认) | auto
     }
 
@@ -130,6 +134,7 @@ class OpenAIResponsesAccountService {
     return {
       ...accountData,
       modelDiscoveryPatterns: readModelDiscoveryPatterns(accountData.modelDiscoveryPatterns),
+      disableModelListing: accountData.disableModelListing === 'true',
       apiKey: '***' // 返回时隐藏敏感信息
     }
   }
@@ -159,6 +164,7 @@ class OpenAIResponsesAccountService {
     accountData.modelDiscoveryPatterns = readModelDiscoveryPatterns(
       accountData.modelDiscoveryPatterns
     )
+    accountData.disableModelListing = accountData.disableModelListing === 'true'
     accountData.apiVersion = this._normalizeApiVersion(accountData.apiVersion)
 
     return accountData
@@ -169,6 +175,13 @@ class OpenAIResponsesAccountService {
     const account = await this.getAccount(accountId)
     if (!account) {
       throw new Error('Account not found')
+    }
+
+    if (updates.disableModelListing !== undefined) {
+      updates.disableModelListing =
+        updates.disableModelListing === true || updates.disableModelListing === 'true'
+          ? 'true'
+          : 'false'
     }
 
     if (updates.modelDiscoveryPatterns !== undefined) {
@@ -317,6 +330,7 @@ class OpenAIResponsesAccountService {
       accountData.modelDiscoveryPatterns = readModelDiscoveryPatterns(
         accountData.modelDiscoveryPatterns
       )
+      accountData.disableModelListing = accountData.disableModelListing === 'true'
       accountData.apiVersion = this._normalizeApiVersion(accountData.apiVersion)
       accountData.expiresAt = accountData.subscriptionExpiresAt || null
       accountData.platform = accountData.platform || 'openai-responses'

@@ -57,6 +57,21 @@ describe.each([
       expect.objectContaining({ modelDiscoveryPatterns: [] })
     )
   })
+  test('forwards the model-listing switch on create and edit', async () => {
+    expect(
+      (await request(app).post(path).send({ name: 'test', disableModelListing: true })).status
+    ).toBe(200)
+    expect(service.createAccount).toHaveBeenCalledWith(
+      expect.objectContaining({ disableModelListing: true })
+    )
+    expect(
+      (await request(app).put(`${path}/account-1`).send({ disableModelListing: false })).status
+    ).toBe(200)
+    expect(service.updateAccount).toHaveBeenCalledWith(
+      'account-1',
+      expect.objectContaining({ disableModelListing: false })
+    )
+  })
   test.each(['post', 'put'])(
     '%s rejects invalid rules before account or group writes',
     async (method) => {

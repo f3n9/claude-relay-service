@@ -870,6 +870,20 @@
             </div>
 
             <div v-if="form.platform === 'openai' || form.platform === 'openai-responses'">
+              <label class="inline-flex cursor-pointer items-center">
+                <input
+                  v-model="form.disableModelListing"
+                  class="mr-2 rounded border-gray-300 text-blue-600 focus:border-blue-500 dark:border-gray-600 dark:bg-gray-700"
+                  type="checkbox"
+                />
+                <span class="text-sm text-gray-700 dark:text-gray-300">不返回模型列表</span>
+              </label>
+              <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                启用后 /openai/models 和 /openai/v1/models 直接返回 404，不影响模型调用。
+              </p>
+            </div>
+
+            <div v-if="form.platform === 'openai' || form.platform === 'openai-responses'">
               <label class="mb-2 block text-sm font-semibold text-gray-700 dark:text-gray-300">
                 模型列表展示规则（可选）
               </label>
@@ -3341,6 +3355,20 @@
           </div>
 
           <div v-if="form.platform === 'openai' || form.platform === 'openai-responses'">
+            <label class="inline-flex cursor-pointer items-center">
+              <input
+                v-model="form.disableModelListing"
+                class="mr-2 rounded border-gray-300 text-blue-600 focus:border-blue-500 dark:border-gray-600 dark:bg-gray-700"
+                type="checkbox"
+              />
+              <span class="text-sm text-gray-700 dark:text-gray-300">不返回模型列表</span>
+            </label>
+            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              启用后 /openai/models 和 /openai/v1/models 直接返回 404，不影响模型调用。
+            </p>
+          </div>
+
+          <div v-if="form.platform === 'openai' || form.platform === 'openai-responses'">
             <label class="mb-2 block text-sm font-semibold text-gray-700 dark:text-gray-300">
               模型列表展示规则（可选）
             </label>
@@ -5383,6 +5411,8 @@ const form = ref({
     props.account?.tempUnavailable5xxTtlSeconds
   ),
   modelDiscoveryPatternsInput: (props.account?.modelDiscoveryPatterns || []).join('\n'),
+  disableModelListing:
+    props.account?.disableModelListing === true || props.account?.disableModelListing === 'true',
   passThrough: props.account?.passThrough === true || props.account?.passThrough === 'true',
   // 额度管理字段
   dailyQuota: props.account?.dailyQuota || 0,
@@ -6069,6 +6099,7 @@ const handleOAuthSuccess = async (tokenInfoOrList) => {
       proxy: proxyPayload
     }
     if (['openai', 'openai-responses'].includes(form.value.platform)) {
+      data.disableModelListing = !!form.value.disableModelListing
       data.modelDiscoveryPatterns = [
         ...new Set(
           form.value.modelDiscoveryPatternsInput
@@ -6482,6 +6513,7 @@ const createAccount = async () => {
       proxy: proxyPayload
     }
     if (['openai', 'openai-responses'].includes(form.value.platform)) {
+      data.disableModelListing = !!form.value.disableModelListing
       data.modelDiscoveryPatterns = [
         ...new Set(
           form.value.modelDiscoveryPatternsInput
@@ -6864,6 +6896,7 @@ const updateAccount = async () => {
       proxy: proxyPayload
     }
     if (['openai', 'openai-responses'].includes(form.value.platform)) {
+      data.disableModelListing = !!form.value.disableModelListing
       data.modelDiscoveryPatterns = [
         ...new Set(
           form.value.modelDiscoveryPatternsInput
@@ -7787,6 +7820,8 @@ watch(
           newAccount.rateLimitDuration && newAccount.rateLimitDuration > 0 ? true : false,
         rateLimitDuration: newAccount.rateLimitDuration || 60,
         modelDiscoveryPatternsInput: (newAccount.modelDiscoveryPatterns || []).join('\n'),
+        disableModelListing:
+          newAccount.disableModelListing === true || newAccount.disableModelListing === 'true',
         passThrough: newAccount.passThrough === true || newAccount.passThrough === 'true',
         // Bedrock 特定字段
         accessKeyId: '', // 编辑模式不显示现有的访问密钥

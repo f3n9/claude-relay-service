@@ -74,11 +74,26 @@ describe.each([
     await service.updateAccount(created.id, { modelDiscoveryPatterns: [] })
     expect((await service.getAccount(created.id)).modelDiscoveryPatterns).toEqual([])
   })
+  test('persists disabling model listing and supports re-enabling it', async () => {
+    const created = await service.createAccount({ ...options, disableModelListing: true })
+    expect(created.disableModelListing).toBe(true)
+    expect(redis.__hashes.get(prefix + created.id).disableModelListing).toBe('true')
+    expect((await service.getAccount(created.id)).disableModelListing).toBe(true)
+    expect((await service.getAllAccounts())[0].disableModelListing).toBe(true)
+    await service.updateAccount(created.id, { name: 'renamed' })
+    expect((await service.getAccount(created.id)).disableModelListing).toBe(true)
+    await service.updateAccount(created.id, { disableModelListing: false })
+    expect((await service.getAccount(created.id)).disableModelListing).toBe(false)
+    expect(redis.__hashes.get(prefix + created.id).disableModelListing).toBe('false')
+  })
   test('old accounts default to unrestricted discovery', async () => {
     const created = await service.createAccount(options)
+    delete redis.__hashes.get(prefix + created.id).disableModelListing
     delete redis.__hashes.get(prefix + created.id).modelDiscoveryPatterns
     expect((await service.getAccount(created.id)).modelDiscoveryPatterns).toEqual([])
     expect((await service.getAllAccounts())[0].modelDiscoveryPatterns).toEqual([])
+    expect((await service.getAccount(created.id)).disableModelListing).toBe(false)
+    expect((await service.getAllAccounts())[0].disableModelListing).toBe(false)
   })
   test('invalid configuration is rejected without writing', async () => {
     await expect(

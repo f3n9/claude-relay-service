@@ -465,6 +465,10 @@ async function createAccount(accountData) {
     modelDiscoveryPatterns: JSON.stringify(
       normalizeModelDiscoveryPatterns(accountData.modelDiscoveryPatterns)
     ),
+    disableModelListing:
+      accountData.disableModelListing === true || accountData.disableModelListing === 'true'
+        ? 'true'
+        : 'false',
     accountType: accountData.accountType || 'shared',
     groupId: accountData.groupId || null,
     priority: accountData.priority || 50,
@@ -534,7 +538,8 @@ async function createAccount(accountData) {
   logger.info(`Created OpenAI account: ${accountId}`)
   return {
     ...account,
-    modelDiscoveryPatterns: readModelDiscoveryPatterns(account.modelDiscoveryPatterns)
+    modelDiscoveryPatterns: readModelDiscoveryPatterns(account.modelDiscoveryPatterns),
+    disableModelListing: account.disableModelListing === 'true'
   }
 }
 
@@ -581,6 +586,7 @@ async function getAccount(accountId) {
   accountData.modelDiscoveryPatterns = readModelDiscoveryPatterns(
     accountData.modelDiscoveryPatterns
   )
+  accountData.disableModelListing = accountData.disableModelListing === 'true'
   return accountData
 }
 
@@ -589,6 +595,13 @@ async function updateAccount(accountId, updates) {
   const existingAccount = await getAccount(accountId)
   if (!existingAccount) {
     throw new Error('Account not found')
+  }
+
+  if (updates.disableModelListing !== undefined) {
+    updates.disableModelListing =
+      updates.disableModelListing === true || updates.disableModelListing === 'true'
+        ? 'true'
+        : 'false'
   }
 
   if (updates.modelDiscoveryPatterns !== undefined) {
@@ -674,6 +687,7 @@ async function updateAccount(accountId, updates) {
   updatedAccount.modelDiscoveryPatterns = readModelDiscoveryPatterns(
     updatedAccount.modelDiscoveryPatterns
   )
+  updatedAccount.disableModelListing = updatedAccount.disableModelListing === 'true'
   return updatedAccount
 }
 
@@ -773,6 +787,7 @@ async function getAllAccounts() {
       accounts.push({
         ...accountData,
         modelDiscoveryPatterns: readModelDiscoveryPatterns(accountData.modelDiscoveryPatterns),
+        disableModelListing: accountData.disableModelListing === 'true',
         isActive: accountData.isActive === 'true',
         schedulable: accountData.schedulable !== 'false',
         passThrough: accountData.passThrough === 'true',
