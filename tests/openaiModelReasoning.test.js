@@ -4,6 +4,7 @@ const supported = (model) => model.supported_reasoning_levels.map((level) => lev
 const fromStandard = (id) => normalizeModelCatalog({ data: [{ id }] }, {}).models[0]
 
 test.each([
+  ['gpt-6.1-sol', ['low', 'medium', 'high', 'xhigh', 'max'], 'medium'],
   ['gpt-6-sol', ['none', 'low', 'medium', 'high', 'xhigh', 'max'], 'medium'],
   ['gpt-6-luna', ['none', 'low', 'medium', 'high', 'xhigh', 'max'], 'medium'],
   ['gpt-6-astra', ['low', 'medium', 'high', 'xhigh', 'max'], 'medium'],
@@ -25,13 +26,16 @@ test.each([
   expect(model.slug).toBe(id)
 })
 
-test.each(['custom-deployment', 'gpt-5.6-sol-custom', 'gpt-5.4-mini', 'gpt-5.5-pro'])(
-  'uses a conservative medium fallback for unmatched %s',
-  (id) => {
-    expect(supported(fromStandard(id))).toEqual(['medium'])
-    expect(fromStandard(id).default_reasoning_level).toBe('medium')
-  }
-)
+test.each([
+  'custom-deployment',
+  'gpt-5.6-sol-custom',
+  'gpt-5.4-mini',
+  'gpt-5.5-pro',
+  'gpt-6.1-sol-custom'
+])('uses a conservative medium fallback for unmatched %s', (id) => {
+  expect(supported(fromStandard(id))).toEqual(['medium'])
+  expect(fromStandard(id).default_reasoning_level).toBe('medium')
+})
 
 test('does not alter the standard model list or fabricate models', () => {
   const payload = { data: [{ id: 'gpt-5.4', owned_by: 'azure' }] }

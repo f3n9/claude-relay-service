@@ -68,6 +68,17 @@ gpt-5.6-*
 | `gpt-image-2` | 无公开 reasoning effort 选项（空数组） | `null` |
 | 其他模型 | `medium` | `medium`（通用兜底） |
 
+### GPT-6.1 Sol（2026-10-06）
+
+已核对官方模型页：`gpt-6.1-sol` 支持 `low`、`medium`、`high`、`xhigh`、`max`，
+默认 `medium`，不支持 `none` 或 `minimal`。上游省略推理字段时，
+`/openai/models` 和 `/openai/v1/models` 的 `models` 条目均补充上述五档
+`supported_reasoning_levels`（含描述）和 `default_reasoning_level: "medium"`。
+兼容标准 `data` 和原生 `models` 目录；上游明确返回的推理字段仍优先保留，
+标准 `data` 列表保持原样。仅匹配完整模型 ID，不自动添加模型或推断自定义部署名。
+
+来源：https://developers.openai.com/api/docs/models/gpt-6.1-sol
+
 ### GPT-6 Sol / Luna（2026-09-23）
 
 新增核对的 `gpt-6-sol`、`gpt-6-luna` 均支持

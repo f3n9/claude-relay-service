@@ -493,3 +493,42 @@ test('real HTTP preserves Azure input capabilities through both discovery aliase
     await new Promise((resolve) => server.close(resolve))
   }
 })
+
+test.each(['data', 'models'])(
+  'both discovery aliases supplement GPT-6.1 Sol reasoning in %s catalogs',
+  async (format) => {
+    const entry = { [format === 'data' ? 'id' : 'slug']: 'gpt-6.1-sol' }
+    axios.get.mockResolvedValue({ status: 200, data: { [format]: [entry] } })
+    for (const path of ['/openai/models', '/openai/v1/models']) {
+      const res = await getModels(path)
+      expect(res.status).toBe(200)
+      expect(res.body.models[0].default_reasoning_level).toBe('medium')
+      expect(res.body.models[0].supported_reasoning_levels).toEqual([
+        { effort: 'low', description: 'Lower reasoning effort for faster responses' },
+        { effort: 'medium', description: 'Balanced reasoning effort' },
+        { effort: 'high', description: 'Higher reasoning effort for complex tasks' },
+        { effort: 'xhigh', description: 'Extra high reasoning effort' },
+        { effort: 'max', description: 'Maximum reasoning effort' }
+      ])
+      if (format === 'data') {
+        expect(res.body.data).toEqual([entry])
+      }
+    }
+  }
+)
+
+test.each(['data', 'models'])(
+  'preserves explicit GPT-6.1 Sol upstream reasoning in %s catalogs',
+  async (format) => {
+    const entry = {
+      [format === 'data' ? 'id' : 'slug']: 'gpt-6.1-sol',
+      default_reasoning_level: 'medium',
+      supported_reasoning_levels: [{ effort: 'medium', description: 'Provider setting' }]
+    }
+    axios.get.mockResolvedValue({ status: 200, data: { [format]: [entry] } })
+    const res = await getModels()
+    expect(res.status).toBe(200)
+    expect(res.body.models[0].default_reasoning_level).toBe('medium')
+    expect(res.body.models[0].supported_reasoning_levels).toEqual(entry.supported_reasoning_levels)
+  }
+)
