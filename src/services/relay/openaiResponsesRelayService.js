@@ -21,6 +21,40 @@ const {
 const lastUsedAtThrottle = new LRUCache(1000) // 最多缓存 1000 个账户
 const LAST_USED_AT_THROTTLE_MS = 60000
 
+const RATE_LIMIT_ERROR_LOG_MAX_LENGTH = 2000
+const RATE_LIMIT_HEADER_NAMES = ['retry-after', 'retry-after-ms', 'x-request-id', 'apim-request-id']
+
+// 提取上游限流相关响应头（OpenAI / Azure OpenAI 均使用 x-ratelimit-* 前缀）
+function extractRateLimitHeaders(headers) {
+  if (!headers) {
+    return {}
+  }
+  const plain = typeof headers.toJSON === 'function' ? headers.toJSON() : headers
+  const result = {}
+  for (const [rawKey, value] of Object.entries(plain)) {
+    const key = rawKey.toLowerCase()
+    if (key.startsWith('x-ratelimit-') || RATE_LIMIT_HEADER_NAMES.includes(key)) {
+      result[key] = value
+    }
+  }
+  return result
+}
+
+function stringifyErrorForLog(errorData) {
+  if (errorData === null || errorData === undefined) {
+    return undefined
+  }
+  let text
+  try {
+    text = typeof errorData === 'string' ? errorData : JSON.stringify(errorData)
+  } catch (e) {
+    text = String(errorData)
+  }
+  return text.length > RATE_LIMIT_ERROR_LOG_MAX_LENGTH
+    ? `${text.slice(0, RATE_LIMIT_ERROR_LOG_MAX_LENGTH)}...(truncated)`
+    : text
+}
+
 // 抽取缓存写入 token，兼容多种字段命名
 function extractCacheCreationTokens(usageData) {
   return extractOpenAICacheCreateTokens(usageData)
@@ -246,7 +280,8 @@ class OpenAIResponsesRelayService {
           account,
           response,
           req.body?.stream,
-          sessionHash
+          sessionHash,
+          req.body?.model
         )
 
         const oaiAutoProtectionDisabled =
@@ -555,6 +590,7 @@ class OpenAIResponsesRelayService {
     let buffer = ''
     let rateLimitDetected = false
     let rateLimitResetsInSeconds = null
+    let rateLimitError = null
     let streamEnded = false
     let usageRecordPromise = null
     let sawAnyParsedEvent = false
@@ -682,6 +718,7 @@ class OpenAIResponsesRelayService {
                 eventData.error.type === 'rate_limit_exceeded'
               ) {
                 rateLimitDetected = true
+                rateLimitError = eventData.error
                 if (eventData.error.resets_in_seconds) {
                   rateLimitResetsInSeconds = eventData.error.resets_in_seconds
                   logger.warn(
@@ -753,7 +790,14 @@ class OpenAIResponsesRelayService {
         )
 
         logger.warn(
-          `🚫 Processing rate limit for OpenAI-Responses account ${account.id} from stream`
+          `🚫 Processing rate limit for OpenAI-Responses account ${account.id} from stream`,
+          {
+            accountName: account.name,
+            model: actualModel || requestedModel || 'unknown',
+            rateLimitHeaders: extractRateLimitHeaders(response?.headers),
+            upstreamError: stringifyErrorForLog(rateLimitError),
+            resetsInSeconds: rateLimitResetsInSeconds || 'unknown'
+          }
         )
       }
 
@@ -941,7 +985,7 @@ class OpenAIResponsesRelayService {
   }
 
   // 处理 429 限流错误
-  async _handle429Error(account, response, isStream = false, sessionHash = null) {
+  async _handle429Error(account, response, isStream = false, sessionHash = null, model = null) {
     let resetsInSeconds = null
     let errorData = null
 
@@ -1034,6 +1078,9 @@ class OpenAIResponsesRelayService {
     logger.warn('OpenAI-Responses account rate limited', {
       accountId: account.id,
       accountName: account.name,
+      model: model || 'unknown',
+      rateLimitHeaders: extractRateLimitHeaders(response?.headers),
+      upstreamError: stringifyErrorForLog(errorData),
       resetsInSeconds: resetsInSeconds || 'unknown',
       resetInMinutes: resetsInSeconds ? Math.ceil(resetsInSeconds / 60) : 60,
       resetInHours: resetsInSeconds ? Math.ceil(resetsInSeconds / 3600) : 1
