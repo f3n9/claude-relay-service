@@ -26,6 +26,31 @@ curl 'http://localhost:3000/openai/models?api-version=2025-04-01-preview&client_
 列表会排除 API Key 的 `restrictedModels` 黑名单（启用模型限制时），并遵循 OAuth
 账户的 `supportedModels` 限制。响应不缓存，避免不同 Key 或账户共享目录。
 
+### Codex CLI 0.156.0 的 `/model` 列表
+
+服务端返回模型不等于 Codex 一定会在 `/model` 中展示。Codex CLI 0.156.0 对自定义
+`base_url` 默认使用内置模型目录；仅在启用 API Key 模型发现、且为该提供商配置显式
+`model_catalog_url` 后，才会请求中转服务的模型目录。仅配置 `model` 或仅在账户中设置
+「模型列表展示规则」不能改变客户端模型选择器。
+
+在 Codex 的 `~/.codex/config.toml` 中，为实际使用的提供商增加以下配置（保留现有
+鉴权、`base_url` 等字段）：
+
+```toml
+[features]
+api_key_model_discovery = true
+
+[model_providers.crs]
+base_url = "https://your-relay.example/openai"
+model_catalog_url = "https://your-relay.example/openai/models"
+```
+
+重新启动 Codex 后，先用 `codex debug models` 查看客户端实际加载的 `models` 条目，
+再用 `/model` 选择。`codex debug models --bundled` 只显示客户端内置目录；不要据此
+判断服务端是否返回了新模型。若仍只看到内置目录，先用实际 API Key 请求
+`GET /openai/models`，核对返回的 `models[].slug` 是否有目标模型，以及账户展示规则、
+API Key 黑名单和 OAuth 账户的 `supportedModels` 是否允许该模型。
+
 无可调度账户时返回调度器错误；上游拒绝访问或不提供 models 接口时返回对应 HTTP 错误。
 超时返回 504，网络错误、重定向或非法目录返回 502。这些发现错误不会自动禁用推理账户。
 无需新增配置；部署后仍需使用实际 Key 验证上游是否支持模型发现。
