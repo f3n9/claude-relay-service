@@ -745,6 +745,28 @@ npm run service:status
 🚫 Client restriction failed for key: key-id (测试Key) from 127.0.0.1, User-Agent: Mozilla/5.0...
 ```
 
+### 上游模型错误日志
+
+上游模型接口返回非 2xx、网络错误或模型错误时，自动写入 `error` 级别的
+`Upstream model request failed` 日志（`type: upstream_error`），无需开启调试开关。
+日志同时输出到控制台、`logs/claude-relay-日期.log` 和 `logs/claude-relay-error-日期.log`
+（目录遵循 `config.logging.dirname`）。HTTP 200 响应中的 JSON/SSE 模型错误也会记录。
+
+每条日志包含：
+
+- `requestId`、`provider`、`apiKeyId`、`apiKeyName`：客户端请求、供应商及 APIKey 名称。
+- `modelId`、`requestBody`：客户端指定的模型 ID、路由转换前的完整请求 body。
+- `upstreamUrl`、`upstreamRequestBody`：实际请求上游的地址与完整 body。
+- `upstreamStatus`、`upstreamStatusText`：上游 HTTP 状态码和状态说明。
+- `upstreamResponseHeaders`、`upstreamResponseBody`：上游响应头及完整响应 body。
+- `errorCode`、`errorMessage`、`responseBodyComplete`：错误信息与响应是否完整。
+
+这些日志不会应用普通日志的 50KB 截断，保留完整文本和多字节字符。
+流式响应在结束或中断时记录；中断时保留已收到的 body，并标记
+`responseBodyComplete: false`。网络错误未收到响应时，状态码、响应头和响应 body 为 `null`。
+APIKey 凭证不作为身份字段记录；响应头中的认证凭证和 Cookie、URL 查询参数中的密钥以
+`[REDACTED_SECRET]` 替换。请求和响应 body 按完整内容保留。
+
 ### 常见问题处理
 
 **Redis连不上？**

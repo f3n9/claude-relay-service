@@ -1,5 +1,6 @@
 const express = require('express')
-const axios = require('axios')
+const { createLoggedAxios } = require('../utils/upstreamErrorLogger')
+const axios = createLoggedAxios(require('axios'), 'openai')
 const router = express.Router()
 const logger = require('../utils/logger')
 const config = require('../../config/config')

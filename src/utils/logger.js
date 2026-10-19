@@ -7,7 +7,7 @@ const fs = require('fs')
 const os = require('os')
 
 // 安全的 JSON 序列化函数，处理循环引用和特殊字符
-const safeStringify = (obj, maxDepth = Infinity) => {
+const safeStringify = (obj, maxDepth = Infinity, preserveFullContent = false) => {
   const seen = new WeakSet()
 
   const replacer = (key, value, depth = 0) => {
@@ -17,6 +17,9 @@ const safeStringify = (obj, maxDepth = Infinity) => {
 
     // 处理字符串值，清理可能导致JSON解析错误的特殊字符
     if (typeof value === 'string') {
+      if (preserveFullContent) {
+        return value
+      }
       try {
         // 移除或转义可能导致JSON解析错误的字符
         const cleanValue = value
@@ -72,7 +75,12 @@ const safeStringify = (obj, maxDepth = Infinity) => {
     const processed = replacer('', obj)
     const result = JSON.stringify(processed)
     // 体积保护: 超过 50KB 时对大字段做截断，保留顶层结构
-    if (result.length > 50000 && processed && typeof processed === 'object') {
+    if (
+      !preserveFullContent &&
+      result.length > 50000 &&
+      processed &&
+      typeof processed === 'object'
+    ) {
       const truncated = { ...processed, _truncated: true, _totalChars: result.length }
       // 第一轮: 截断单个大字段
       for (const [k, v] of Object.entries(truncated)) {
@@ -140,7 +148,9 @@ const createConsoleFormat = () =>
           const isLast = i === entries.length - 1
           const branch = isLast ? '└─' : '├─'
           const displayValue =
-            value !== null && typeof value === 'object' ? safeStringify(value) : String(value)
+            value !== null && typeof value === 'object'
+              ? safeStringify(value, Infinity, rest.type === 'upstream_error')
+              : String(value)
           logMessage += `\n${indent}${branch} ${key}: ${displayValue}`
         })
       }
@@ -175,7 +185,7 @@ const createFileFormat = () =>
       if (stack) {
         entry.stack = stack
       }
-      return safeStringify(entry)
+      return safeStringify(entry, Infinity, entry.type === 'upstream_error')
     })
   )
 

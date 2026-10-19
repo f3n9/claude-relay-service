@@ -1,4 +1,5 @@
-const axios = require('axios')
+const { createLoggedAxios } = require('../utils/upstreamErrorLogger')
+const axios = createLoggedAxios(require('axios'), 'antigravity')
 const https = require('https')
 const { v4: uuidv4 } = require('uuid')
 

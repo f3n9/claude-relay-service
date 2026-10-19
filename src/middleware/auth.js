@@ -10,6 +10,7 @@ const ClaudeCodeValidator = require('../validators/clients/claudeCodeValidator')
 const claudeRelayConfigService = require('../services/claudeRelayConfigService')
 const { calculateWaitTimeStats } = require('../utils/statsHelper')
 const { isClaudeFamilyModel } = require('../utils/modelHelper')
+const { runWithUpstreamRequestContext } = require('../utils/upstreamErrorLogger')
 
 // 工具函数
 function sleep(ms) {
@@ -1338,7 +1339,7 @@ const authenticateApiKey = async (req, res, next) => {
       logger.api(`   User-Agent: "${userAgent}"`)
     }
 
-    return next()
+    return runWithUpstreamRequestContext(req, next)
   } catch (error) {
     authErrored = true
     const authDuration = Date.now() - startTime

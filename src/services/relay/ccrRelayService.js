@@ -1,4 +1,5 @@
-const axios = require('axios')
+const { createLoggedAxios } = require('../../utils/upstreamErrorLogger')
+const axios = createLoggedAxios(require('axios'), 'ccr')
 const ccrAccountService = require('../account/ccrAccountService')
 const logger = require('../../utils/logger')
 const config = require('../../../config/config')

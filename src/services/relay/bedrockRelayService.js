@@ -8,6 +8,10 @@ const logger = require('../../utils/logger')
 const config = require('../../../config/config')
 const userMessageQueueService = require('../userMessageQueueService')
 const upstreamErrorHelper = require('../../utils/upstreamErrorHelper')
+const {
+  bedrockLoggingMiddleware,
+  observeBedrockEventStream
+} = require('../../utils/upstreamErrorLogger')
 
 class BedrockRelayService {
   constructor() {
@@ -73,6 +77,22 @@ class BedrockRelayService {
     }
 
     const client = new BedrockRuntimeClient(clientConfig)
+    client.middlewareStack.add(bedrockLoggingMiddleware, {
+      step: 'deserialize',
+      name: 'bedrockUpstreamErrorLogging',
+      priority: 'low'
+    })
+    // 反序列化后保留响应头，供 HTTP 200 中的模型错误事件记录使用。
+    client.middlewareStack.add(
+      (next) => async (args) => {
+        const result = await next(args)
+        if (result.output && result.response) {
+          result.output._upstreamResponseHeaders = result.response.headers
+        }
+        return result
+      },
+      { step: 'deserialize', name: 'bedrockUpstreamResponseHeaders', priority: 'high' }
+    )
 
     // Bedrock API Key (ABSK) 模式：注入 Bearer Token 到 Authorization header
     if (bedrockAccount?.bearerToken) {
@@ -378,7 +398,7 @@ class BedrockRelayService {
       // 处理流式响应
       // Bedrock InvokeModelWithResponseStream 返回的 JSON 事件结构与 Claude API 完全一致，
       // 直接透传即可，无需重新构造。避免丢失字段或与新版本 API 不兼容。
-      for await (const chunk of response.body) {
+      for await (const chunk of observeBedrockEventStream(response, command.input.body)) {
         // 客户端已断开，停止处理
         if (abortController.signal.aborted) {
           logger.debug(`🔌 Bedrock 流处理中止 - 客户端已断开`)

@@ -1,4 +1,5 @@
-const axios = require('axios')
+const { createLoggedAxios } = require('../../utils/upstreamErrorLogger')
+const axios = createLoggedAxios(require('axios'), 'openaiResponses')
 const ProxyHelper = require('../../utils/proxyHelper')
 const logger = require('../../utils/logger')
 const { cdnHeaders, filterForOpenAI } = require('../../utils/headerFilter')

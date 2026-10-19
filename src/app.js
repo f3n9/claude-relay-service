@@ -12,6 +12,9 @@ const redis = require('./models/redis')
 const pricingService = require('./services/pricingService')
 const cacheMonitor = require('./utils/cacheMonitor')
 const { getSafeMessage } = require('./utils/errorSanitizer')
+const { installGeminiUpstreamLogging } = require('./utils/upstreamErrorLogger')
+
+installGeminiUpstreamLogging(require('axios'))
 
 // Import routes
 const apiRoutes = require('./routes/api')

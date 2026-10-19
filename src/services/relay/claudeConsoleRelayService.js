@@ -1,4 +1,5 @@
-const axios = require('axios')
+const { createLoggedAxios } = require('../../utils/upstreamErrorLogger')
+const axios = createLoggedAxios(require('axios'), 'claudeConsole')
 const { v4: uuidv4 } = require('uuid')
 const claudeConsoleAccountService = require('../account/claudeConsoleAccountService')
 const redis = require('../../models/redis')

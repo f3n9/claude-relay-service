@@ -1,5 +1,6 @@
 const https = require('https')
-const axios = require('axios')
+const { createLoggedAxios, createLoggedHttpsRequest } = require('../../utils/upstreamErrorLogger')
+const axios = createLoggedAxios(require('axios'), 'droid')
 const ProxyHelper = require('../../utils/proxyHelper')
 const droidScheduler = require('../scheduler/droidScheduler')
 const droidAccountService = require('../account/droidAccountService')
@@ -526,7 +527,11 @@ class DroidRelayService {
         timeout: 600 * 1000
       }
 
-      const req = https.request(options, (res) => {
+      const requestUpstream = createLoggedHttpsRequest(https, {
+        provider: 'droid',
+        requestBody: bodyString
+      })
+      const req = requestUpstream(options, (res) => {
         upstreamResponse = res
         logger.info(`✅ Factory.ai stream response status: ${res.statusCode}`)
 

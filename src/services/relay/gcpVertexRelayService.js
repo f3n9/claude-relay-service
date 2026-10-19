@@ -1,4 +1,5 @@
-const axios = require('axios')
+const { createLoggedAxios } = require('../../utils/upstreamErrorLogger')
+const axios = createLoggedAxios(require('axios'), 'gcpVertex')
 const { v4: uuidv4 } = require('uuid')
 const config = require('../../../config/config')
 const logger = require('../../utils/logger')

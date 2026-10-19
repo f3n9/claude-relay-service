@@ -1,4 +1,5 @@
 const https = require('https')
+const { createLoggedHttpsRequest } = require('../../utils/upstreamErrorLogger')
 const zlib = require('zlib')
 const path = require('path')
 const ProxyHelper = require('../../utils/proxyHelper')
@@ -1773,6 +1774,10 @@ class ClaudeRelayService {
 
     let { bodyString } = prepared
     const { headers, isRealClaudeCode, toolNameMap } = prepared
+    const requestUpstream = createLoggedHttpsRequest(https, {
+      provider: 'claude',
+      requestBody: bodyString
+    })
 
     return new Promise((resolve, reject) => {
       // 支持自定义路径（如 count_tokens）
@@ -1793,7 +1798,7 @@ class ClaudeRelayService {
         timeout: config.requestTimeout || 600000
       }
 
-      const req = https.request(options, (res) => {
+      const req = requestUpstream(options, (res) => {
         // 使用数组收集 chunks，避免 O(n²) 的 Buffer.concat
         const chunks = []
 
@@ -2212,6 +2217,10 @@ class ClaudeRelayService {
 
     let { bodyString } = prepared
     const { headers, toolNameMap } = prepared
+    const requestUpstream = createLoggedHttpsRequest(https, {
+      provider: 'claude',
+      requestBody: bodyString
+    })
     const toolNameStreamTransformer = this._createToolNameStripperStreamTransformer(
       streamTransformer,
       toolNameMap
@@ -2229,7 +2238,7 @@ class ClaudeRelayService {
         timeout: config.requestTimeout || 600000
       }
 
-      const req = https.request(options, async (res) => {
+      const req = requestUpstream(options, async (res) => {
         logger.debug(`🌊 Claude stream response status: ${res.statusCode}`)
 
         // 错误响应处理
