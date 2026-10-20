@@ -158,6 +158,7 @@ class OpenAIResponsesRelayService {
   // 处理请求转发
   async handleRequest(req, res, account, apiKeyData) {
     let abortController = null
+    let handleClientDisconnect = null
     // 获取会话哈希（如果有的话）
     const sessionId = req.headers['session_id'] || req.body?.session_id
     const sessionHash = sessionId
@@ -175,15 +176,18 @@ class OpenAIResponsesRelayService {
       abortController = new AbortController()
 
       // 设置客户端断开监听器
-      const handleClientDisconnect = () => {
+      handleClientDisconnect = () => {
+        if (res.writableEnded || res.writableFinished) {
+          return
+        }
         logger.info('🔌 Client disconnected, aborting OpenAI-Responses request')
         if (abortController && !abortController.signal.aborted) {
-          abortController.abort()
+          abortController.abort('client_disconnected')
         }
       }
 
-      // 监听客户端断开事件
-      req.once('close', handleClientDisconnect)
+      // IncomingMessage close 也表示请求 body 已读完，不能据此中止仍在返回的响应。
+      req.once('aborted', handleClientDisconnect)
       res.once('close', handleClientDisconnect)
 
       // 构建目标 URL（根据 providerEndpoint 配置决定端点路径）
@@ -396,7 +400,7 @@ class OpenAIResponsesRelayService {
           }
 
           // 清理监听器
-          req.removeListener('close', handleClientDisconnect)
+          req.removeListener('aborted', handleClientDisconnect)
           res.removeListener('close', handleClientDisconnect)
 
           return res.status(401).json(unauthorizedResponse)
@@ -426,7 +430,7 @@ class OpenAIResponsesRelayService {
         }
 
         // 清理监听器
-        req.removeListener('close', handleClientDisconnect)
+        req.removeListener('aborted', handleClientDisconnect)
         res.removeListener('close', handleClientDisconnect)
 
         return res
@@ -451,8 +455,33 @@ class OpenAIResponsesRelayService {
       }
 
       // 处理非流式响应
-      return this._handleNormalResponse(response, res, account, apiKeyData, req.body?.model, req)
+      const result = await this._handleNormalResponse(
+        response,
+        res,
+        account,
+        apiKeyData,
+        req.body?.model,
+        req
+      )
+      req.removeListener('aborted', handleClientDisconnect)
+      res.removeListener('close', handleClientDisconnect)
+      return result
     } catch (error) {
+      const clientCanceled =
+        isCanceledStreamError(error) &&
+        abortController?.signal.aborted &&
+        abortController.signal.reason === 'client_disconnected'
+      if (handleClientDisconnect) {
+        req.removeListener('aborted', handleClientDisconnect)
+        res.removeListener('close', handleClientDisconnect)
+      }
+      if (clientCanceled) {
+        logger.info('OpenAI-Responses request canceled by client', buildCompactErrorInfo(error))
+        if (!res.destroyed && !res.writableEnded) {
+          res.end()
+        }
+        return
+      }
       // 清理 AbortController
       if (abortController && !abortController.signal.aborted) {
         abortController.abort()
@@ -803,7 +832,7 @@ class OpenAIResponsesRelayService {
       }
 
       // 清理监听器
-      req.removeListener('close', handleClientDisconnect)
+      req.removeListener('aborted', handleClientDisconnect)
       res.removeListener('close', handleClientDisconnect)
 
       if (!sawTerminalEvent) {
@@ -853,8 +882,7 @@ class OpenAIResponsesRelayService {
       streamEnded = true
       const compactError = buildCompactErrorInfo(error)
       const canceled = isCanceledStreamError(error)
-      const clientDisconnected =
-        req.destroyed || req.aborted || res.destroyed || res.writableEnded || res.closed
+      const clientDisconnected = req.aborted || res.destroyed || res.writableEnded || res.closed
 
       if (canceled) {
         logger.info('OpenAI-Responses stream canceled', {
@@ -868,7 +896,7 @@ class OpenAIResponsesRelayService {
       void recordUsageIfNeeded(canceled ? 'stream canceled' : 'stream error')
 
       // 清理监听器
-      req.removeListener('close', handleClientDisconnect)
+      req.removeListener('aborted', handleClientDisconnect)
       res.removeListener('close', handleClientDisconnect)
 
       if (canceled) {
@@ -896,7 +924,6 @@ class OpenAIResponsesRelayService {
       }
     }
 
-    req.on('close', cleanup)
     req.on('aborted', cleanup)
   }
 

@@ -147,6 +147,38 @@ function logUpstreamError({
   }
 }
 
+function isLocalCancellation(error, signal) {
+  if (!signal?.aborted || signal.reason?.name === 'TimeoutError') {
+    return false
+  }
+  return (
+    error?.code === 'ERR_CANCELED' ||
+    error?.name === 'CanceledError' ||
+    error?.name === 'AbortError' ||
+    error?.message === 'Upstream response aborted' ||
+    error?.message === 'Upstream response closed before completion'
+  )
+}
+
+function logUpstreamCancellation(details, error) {
+  try {
+    const context = details.context || requestContext.getStore()
+    logger.info('Upstream model request canceled', {
+      type: 'upstream_canceled',
+      provider: details.provider,
+      requestId: context?.requestId || null,
+      apiKeyName: context?.apiKeyName || null,
+      modelId: context?.modelId || details.requestBody?.model || null,
+      upstreamStatus: details.status ?? null,
+      cancellationReason:
+        typeof details.signal?.reason === 'string' ? details.signal.reason : 'local_abort',
+      errorCode: error?.code || error?.name || null
+    })
+  } catch {
+    // Cancellation logging must not change relay behavior.
+  }
+}
+
 function decodeBody(chunks, headers, compressed) {
   let bytes = Buffer.concat(chunks)
   if (compressed) {
@@ -212,7 +244,10 @@ function observeUpstreamResponse(response, details = {}) {
     stream.push = originalPush
     const value = decodeBody(chunks, headers, details.compressed)
     chunks = []
-    if (failed || error || details.error || hasModelError(value)) {
+    const modelError = hasModelError(value)
+    if (!failed && !modelError && isLocalCancellation(error || details.error, details.signal)) {
+      logUpstreamCancellation(info, error || details.error)
+    } else if (failed || error || details.error || modelError) {
       logUpstreamError({
         ...info,
         body: value,
@@ -248,6 +283,7 @@ function createLoggedAxios(axios, provider) {
       provider,
       url: options.url,
       requestBody: snapshot(options.data),
+      signal: options.signal,
       context: requestContext.getStore()
     }
     try {
@@ -272,6 +308,8 @@ function observeAxiosError(error, details) {
   observedErrors.add(error)
   if (error.response) {
     observeUpstreamResponse(error.response, { ...details, error })
+  } else if (isLocalCancellation(error, details.signal)) {
+    logUpstreamCancellation(details, error)
   } else {
     logUpstreamError({ ...details, error, responseBodyComplete: false })
   }
@@ -295,6 +333,7 @@ function installGeminiUpstreamLogging(axios) {
           provider: 'gemini',
           url: url.toString(),
           requestBody: snapshot(options.data),
+          signal: options.signal,
           context: requestContext.getStore()
         })
       }

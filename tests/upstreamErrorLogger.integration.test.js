@@ -43,9 +43,16 @@ describe('upstream error logging with real transports', () => {
   let server
   let upstreamUrl
   let logSpy
+  let infoSpy
 
   beforeAll(async () => {
     server = http.createServer((req, res) => {
+      if (req.url === '/completed-stream') {
+        res.writeHead(200, { 'Content-Type': 'text/event-stream' })
+        res.write('data: {"type":"response.completed","response":{"status":"completed"}}\n\n')
+        // 保持 HTTP 流打开，模拟客户端读到完成事件后主动关闭。
+        return
+      }
       res.writeHead(503, { 'x-upstream-id': 'real-upstream', 'Content-Type': 'application/json' })
       res.write('{"error":{"message":"')
       res.end(`${'完整错误😀'.repeat(15000)}"}}`)
@@ -56,11 +63,13 @@ describe('upstream error logging with real transports', () => {
     })
     upstreamUrl = `http://127.0.0.1:${server.address().port}/v1/messages`
     logSpy = jest.spyOn(logger, 'error')
+    infoSpy = jest.spyOn(logger, 'info')
   })
 
   afterAll(async () => {
     await new Promise((resolve) => server.close(resolve))
     logSpy?.mockRestore()
+    infoSpy?.mockRestore()
     for (const instance of mockLoggers) {
       instance.close()
     }
@@ -150,6 +159,44 @@ describe('upstream error logging with real transports', () => {
     const data = logSpy.mock.calls.find(([, info]) => info?.provider === 'native-integration')[1]
     expect(data.upstreamResponseBody).toBe(value)
     expect(data.upstreamStatus).toBe(503)
+  })
+
+  it('logs actual Axios cancellation after a model completion event as info', async () => {
+    const controller = new AbortController()
+    const client = createLoggedAxios(require('axios'), 'completed-stream-test')
+    const response = await client({
+      url: upstreamUrl.replace('/v1/messages', '/completed-stream'),
+      method: 'POST',
+      data: { model: 'test-model', stream: true },
+      responseType: 'stream',
+      signal: controller.signal,
+      proxy: false
+    })
+    const chunks = []
+    const error = await new Promise((resolve) => {
+      response.data.once('error', resolve)
+      response.data.on('data', (chunk) => {
+        chunks.push(chunk)
+        if (Buffer.concat(chunks).toString().includes('response.completed')) {
+          controller.abort('client_disconnected')
+        }
+      })
+    })
+    expect(error.code).toBe('ERR_CANCELED')
+    expect(Buffer.concat(chunks).toString()).toContain('response.completed')
+    expect(
+      logSpy.mock.calls.filter(([, data]) => data?.provider === 'completed-stream-test')
+    ).toEqual([])
+    expect(infoSpy).toHaveBeenCalledWith(
+      'Upstream model request canceled',
+      expect.objectContaining({
+        type: 'upstream_canceled',
+        provider: 'completed-stream-test',
+        upstreamStatus: 200,
+        cancellationReason: 'client_disconnected',
+        errorCode: 'ERR_CANCELED'
+      })
+    )
   })
 
   it('captures Bedrock errors before the real SDK consumes their HTTP body', async () => {

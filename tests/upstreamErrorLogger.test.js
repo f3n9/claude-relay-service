@@ -2,7 +2,7 @@ const { PassThrough } = require('stream')
 const { EventEmitter } = require('events')
 const zlib = require('zlib')
 
-jest.mock('../src/utils/logger', () => ({ error: jest.fn() }))
+jest.mock('../src/utils/logger', () => ({ error: jest.fn(), info: jest.fn() }))
 
 const logger = require('../src/utils/logger')
 const {
@@ -28,6 +28,91 @@ const record = () =>
 
 describe('upstream error logging', () => {
   beforeEach(() => jest.clearAllMocks())
+
+  it('records a local request cancellation as compact info instead of an upstream failure', async () => {
+    const controller = new AbortController()
+    const error = Object.assign(new Error('canceled'), {
+      code: 'ERR_CANCELED',
+      name: 'CanceledError'
+    })
+    const client = createLoggedAxios(async () => {
+      controller.abort('client_disconnected')
+      throw error
+    }, 'openaiResponses')
+    await expect(
+      runWithUpstreamRequestContext(request(), () =>
+        client({
+          data: request().body,
+          signal: controller.signal
+        })
+      )
+    ).rejects.toBe(error)
+    expect(logger.error).not.toHaveBeenCalled()
+    expect(logger.info).toHaveBeenCalledWith(
+      'Upstream model request canceled',
+      expect.objectContaining({
+        type: 'upstream_canceled',
+        apiKeyName: '客户端测试 Key',
+        modelId: 'client-model',
+        cancellationReason: 'client_disconnected',
+        errorCode: 'ERR_CANCELED'
+      })
+    )
+    expect(logger.info.mock.calls[0][1].requestBody).toBeUndefined()
+  })
+
+  it('does not report successful model output followed by local stream cancellation as an error', async () => {
+    const controller = new AbortController()
+    const stream = new PassThrough()
+    await createLoggedAxios(
+      jest.fn().mockResolvedValue({ status: 200, headers: {}, data: stream }),
+      'test'
+    )({
+      data: {},
+      signal: controller.signal
+    })
+    stream.write('data: {"type":"response.completed","response":{"status":"completed"}}\n\n')
+    controller.abort('client_disconnected')
+    stream.emit('error', Object.assign(new Error('canceled'), { code: 'ERR_CANCELED' }))
+    stream.emit('close')
+    expect(logger.error).not.toHaveBeenCalled()
+    expect(logger.info).toHaveBeenCalledTimes(1)
+  })
+
+  it('keeps genuine upstream failures when a locally aborted stream already has HTTP 429 or a model error', () => {
+    for (const response of [
+      { status: 429, headers: {}, data: new PassThrough() },
+      { status: 200, headers: {}, data: new PassThrough() }
+    ]) {
+      const controller = new AbortController()
+      observeUpstreamResponse(response, { provider: 'test', signal: controller.signal })
+      response.data.write('data: {"error":{"message":"rate limit"}}\n\n')
+      controller.abort('client_disconnected')
+      response.data.emit('error', Object.assign(new Error('canceled'), { code: 'ERR_CANCELED' }))
+    }
+    expect(logger.error).toHaveBeenCalledTimes(2)
+    expect(logger.info).not.toHaveBeenCalled()
+  })
+
+  it('keeps cancellations without an aborted local signal and local deadline failures as errors', async () => {
+    const error = Object.assign(new Error('canceled'), { code: 'ERR_CANCELED' })
+    await expect(
+      createLoggedAxios(jest.fn().mockRejectedValue(error), 'test')({ data: {} })
+    ).rejects.toBe(error)
+    const controller = new AbortController()
+    controller.abort(Object.assign(new Error('deadline exceeded'), { name: 'TimeoutError' }))
+    await expect(
+      createLoggedAxios(
+        jest.fn().mockRejectedValue({ ...error, code: 'ERR_CANCELED' }),
+        'test'
+      )({
+        data: {},
+        signal: controller.signal
+      })
+    ).rejects.toMatchObject({ code: 'ERR_CANCELED' })
+    expect(logger.error).toHaveBeenCalledTimes(2)
+    expect(logger.info).not.toHaveBeenCalled()
+  })
 
   it('records original client context and complete upstream details without changing a response', async () => {
     const req = request()

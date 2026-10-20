@@ -767,6 +767,10 @@ npm run service:status
 APIKey 凭证不作为身份字段记录；响应头中的认证凭证和 Cookie、URL 查询参数中的密钥以
 `[REDACTED_SECRET]` 替换。请求和响应 body 按完整内容保留。
 
+客户端断开或本地主动取消触发的 `ERR_CANCELED`，在上游没有返回非 2xx 或模型错误时，
+记录为 `info` 级别的 `type: upstream_canceled`，包含请求标识与 `cancellationReason`，
+不写入上游错误日志，也不重复打印完整 body。该记录表示本地取消，不能据此认定模型生成失败。
+
 ### 常见问题处理
 
 **Redis连不上？**

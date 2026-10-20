@@ -1,4 +1,5 @@
 const { EventEmitter } = require('events')
+const { PassThrough } = require('stream')
 
 jest.mock('axios', () => jest.fn())
 
@@ -261,6 +262,114 @@ describe('openaiResponsesRelayService stream error logging', () => {
     res.closed = false
     return res
   }
+
+  it('does not cancel or destroy an upstream stream when the client request body closes normally', async () => {
+    openaiResponsesAccountService.getAccount.mockResolvedValue({
+      id: 'close-test',
+      baseApi: 'https://example.com/v1',
+      apiKey: 'test-key',
+      dailyQuota: '0'
+    })
+    const stream = new PassThrough()
+    axios.mockResolvedValue({ status: 200, headers: {}, data: stream })
+    const req = createReq({ complete: true, body: { model: 'gpt-4.1', stream: true } })
+    const res = createStreamRes()
+    await openaiResponsesRelayService.handleRequest(req, res, { id: 'close-test' }, { id: 'key-1' })
+    req.emit('close')
+    const { signal } = axios.mock.calls[0][0]
+    expect(signal.aborted).toBe(false)
+    expect(stream.destroyed).toBe(false)
+    stream.end('data: {"type":"response.completed","response":{"status":"completed"}}\n\n')
+    await flushAsyncEvents()
+    expect(res.write).toHaveBeenCalled()
+    expect(res.end).toHaveBeenCalled()
+    expect(logger.error).not.toHaveBeenCalled()
+  })
+
+  it('cancels the upstream only for a response connection closed before completion', async () => {
+    openaiResponsesAccountService.getAccount.mockResolvedValue({
+      id: 'disconnect-test',
+      baseApi: 'https://example.com/v1',
+      apiKey: 'test-key',
+      dailyQuota: '0'
+    })
+    const stream = new PassThrough()
+    axios.mockResolvedValue({ status: 200, headers: {}, data: stream })
+    const req = createReq({ complete: true, body: { model: 'gpt-4.1', stream: true } })
+    const res = createStreamRes()
+    await openaiResponsesRelayService.handleRequest(
+      req,
+      res,
+      { id: 'disconnect-test' },
+      { id: 'key-1' }
+    )
+    res.destroyed = true
+    res.emit('close')
+    expect(axios.mock.calls[0][0].signal.aborted).toBe(true)
+    expect(axios.mock.calls[0][0].signal.reason).toBe('client_disconnected')
+    stream.destroy()
+  })
+
+  it('does not abort the upstream when the downstream response closes after a normal end', async () => {
+    openaiResponsesAccountService.getAccount.mockResolvedValue({
+      id: 'normal-close-test',
+      baseApi: 'https://example.com/v1',
+      apiKey: 'test-key',
+      dailyQuota: '0'
+    })
+    const req = createReq()
+    const res = createStreamRes()
+    res.end.mockImplementation(() => {
+      res.writableEnded = true
+      res.emit('close')
+    })
+    res.json.mockImplementation(() => res.end())
+    axios.mockResolvedValue({ status: 200, headers: {}, data: { ok: true } })
+    await openaiResponsesRelayService.handleRequest(
+      req,
+      res,
+      { id: 'normal-close-test' },
+      { id: 'key-1' }
+    )
+    expect(axios.mock.calls[0][0].signal.aborted).toBe(false)
+    expect(req.listenerCount('aborted')).toBe(0)
+    expect(res.listenerCount('close')).toBe(0)
+  })
+
+  it('does not treat client cancellation before upstream headers as a relay failure', async () => {
+    openaiResponsesAccountService.getAccount.mockResolvedValue({
+      id: 'before-headers-test',
+      baseApi: 'https://example.com/v1',
+      apiKey: 'test-key',
+      dailyQuota: '0'
+    })
+    const req = createReq()
+    const res = createStreamRes()
+    axios.mockImplementation(
+      (options) =>
+        new Promise((_resolve, reject) => {
+          options.signal.addEventListener('abort', () => {
+            reject(Object.assign(new Error('canceled'), { code: 'ERR_CANCELED' }))
+          })
+          res.destroyed = true
+          res.emit('close')
+        })
+    )
+    await openaiResponsesRelayService.handleRequest(
+      req,
+      res,
+      { id: 'before-headers-test' },
+      { id: 'key-1' }
+    )
+    expect(logger.error).not.toHaveBeenCalled()
+    expect(logger.info).toHaveBeenCalledWith(
+      'OpenAI-Responses request canceled by client',
+      expect.any(Object)
+    )
+    expect(res.status).not.toHaveBeenCalledWith(502)
+    expect(req.listenerCount('aborted')).toBe(0)
+    expect(res.listenerCount('close')).toBe(0)
+  })
 
   it('logs canceled stream errors compactly without dumping axios config', async () => {
     const req = createReq({
